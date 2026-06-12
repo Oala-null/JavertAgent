@@ -1,0 +1,35 @@
+{
+  "a_concept": "肩锁关节脱位切开复位内固定术",
+  "b_concept": "韧带重建术",
+  "catalog_basis": "按各省《医疗服务诊疗目录》, 肩锁关节脱位切开复位内固定术项目内涵已包含韧带重建术, 单独再收韧带重建术费 = 重复收费.",
+  "fee_category": "手术类",
+  "a_class_label": "主项手术",
+  "b_class_label": "附属手术",
+  "a_class_items": [
+    "肩锁关节脱位切开复位内固定术",
+    "肩锁关节切开复位内固定",
+    "肩锁关节脱位切开复位术"
+  ],
+  "b_class_items": [
+    "韧带重建术",
+    "肩锁韧带重建",
+    "喙锁韧带重建术"
+  ],
+  "scan_action_term": "肩锁关节脱位切开复位",
+  "aux_short_label": "韧带重建费",
+  "notes_sections": ["手术记录", "诊疗经过"],
+  "third_party_clause": "韧带重建为独立手术指征单独实施 (而非内固定术内涵)",
+  "violation_evidence": "两笔手术费用项目名 + 价格 + 手术记录原文",
+  "inconclusive_example": "手术类只 1 项, 名字模糊无法判断是 A 还是 B",
+  "basic_diagnosis_subject": "肩锁关节脱位",
+  "basic_diagnosis_keywords": ["肩锁关节脱位", "韧带损伤"],
+  "aux_keywords": [
+    "肩锁关节脱位",
+    "切开复位内固定术",
+    "韧带重建术",
+    "肩锁韧带",
+    "喙锁韧带"
+  ],
+  "aux_tools": ["note_diagnosis", "search_fees", "search_notes"],
+  "aux_signal": "典型违规: 同次住院里同时存在 \"肩锁关节脱位切开复位内固定术\" 与 \"韧带重建术\" 两笔手术费用项, 且手术记录中未将韧带重建作为独立手术叙述.\n典型 CLEAN: 仅有内固定术费用; 或手术记录明确将韧带重建作为额外独立指征单独施行."
+}

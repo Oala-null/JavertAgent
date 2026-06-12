@@ -1,0 +1,105 @@
+template_id: M1
+name: 重复收费
+description: 主项费用 + 附属费用并存 + 文书无反证
+master_prompt: |
+  本规则关注: 患者本次住院里, 是否同时被收取了「{{a_concept}}」项目 + 独立的「{{b_concept}}」费用.
+  {{catalog_basis}}
+
+  审计步骤:
+  1. 用 search_fees(category="{{fee_category}}") 取{{fee_category}}全部明细; 关注是否同时存在以下两类:
+     A 类 ({{a_class_label}}): {% for it in a_class_items %}"{{it}}"{% if not loop.last %} / {% endif %}{% endfor %}
+     B 类 ({{b_class_label}}): {% for it in b_class_items %}"{{it}}"{% if not loop.last %} / {% endif %}{% endfor %}
+  2. 若 A 类无命中 → CLEAN (该患者根本没做{{scan_action_term}}, 规则不适用).
+  3. 若 A 类有命中且 B 类无命中 → CLEAN ({{a_class_label}}费用单一, 未重复收{{aux_short_label}}).
+  4. 若 A 类与 B 类都命中, 且文书 (search_notes section={% for s in notes_sections %}"{{s}}"{% if not loop.last %}/{% endif %}{% endfor %}) 没有提到该报告由
+     {{third_party_clause}} → VIOLATION, evidence 引{{violation_evidence}}.
+  5. 信息明确不足 (例如{{inconclusive_example}}) → INCONCLUSIVE.
+
+  注意: 患者基础诊断必须含{{basic_diagnosis_subject}} (note_diagnosis 命中{% for kw in basic_diagnosis_keywords %}"{{kw}}"{% if not loop.last %}/{% endif %}{% endfor %}); 否则该规则不适用, 应判 CLEAN.
+keywords_template: |
+  {% for kw in aux_keywords %}- {{kw}}
+  {% endfor %}
+tools_template: |
+  {% for t in aux_tools %}- {{t}}
+  {% endfor %}
+signal_template: |
+  {{aux_signal}}
+fields:
+  - name: a_concept
+    type: str
+    desc: "A 类项目类别描述 (例: 肿瘤全身断层显像类)"
+    required: true
+  - name: b_concept
+    type: str
+    desc: "B 类项目类别描述 (例: 人工/图文报告)"
+    required: true
+  - name: catalog_basis
+    type: str
+    desc: "规章依据/重复收费判定依据语句"
+    required: true
+  - name: fee_category
+    type: enum
+    options: [手术类, 药品类, 耗材类, 检查类, 其他类]
+    default: 检查类
+    desc: "search_fees(category=...) 取值"
+    required: true
+  - name: a_class_label
+    type: str
+    desc: "A 类标签简称 (例: 扫描)"
+    required: true
+  - name: b_class_label
+    type: str
+    desc: "B 类标签简称 (例: 报告)"
+    required: true
+  - name: a_class_items
+    type: list[str]
+    desc: "A 类项目示例名列表 (用于列出 fees 命中模式)"
+    required: true
+  - name: b_class_items
+    type: list[str]
+    desc: "B 类项目示例名列表"
+    required: true
+  - name: scan_action_term
+    type: str
+    desc: "A 类动作的一般称谓, 用于 CLEAN 文案 (例: 断层显像)"
+    required: true
+  - name: aux_short_label
+    type: str
+    desc: "B 类短称, 用于 '未重复收...' 句式 (例: 报告费)"
+    required: true
+  - name: notes_sections
+    type: list[str]
+    desc: "search_notes section 候选列表"
+    required: true
+  - name: third_party_clause
+    type: str
+    desc: "免责声明文本; 文书提到该清句时 B 类来源外部, 不视为重复收费 (例: 第三方人工出具)"
+    required: true
+  - name: violation_evidence
+    type: str
+    desc: "违规取证条目模板 (例: 两笔费用项目名 + 价格)"
+    required: true
+  - name: inconclusive_example
+    type: str
+    desc: "信息不足的典型示例"
+    required: true
+  - name: basic_diagnosis_subject
+    type: str
+    desc: "基础诊断主语, 用于 '诊断必须含 X' (例: 肿瘤)"
+    required: true
+  - name: basic_diagnosis_keywords
+    type: list[str]
+    desc: "诊断关键词列表; note_diagnosis 命中条件"
+    required: true
+  - name: aux_keywords
+    type: list[str]
+    desc: "该规则 trigger_keywords 列表"
+    required: true
+  - name: aux_tools
+    type: list[str]
+    desc: "该规则 suggested_tools 列表 (推荐 [note_diagnosis, search_fees, search_notes])"
+    required: true
+  - name: aux_signal
+    type: str
+    desc: "expected_signal 整段文本 (典型违规 / 典型 CLEAN 描述)"
+    required: true

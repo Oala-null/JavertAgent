@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="auth-card">
+  <h1>登录</h1>
+  {% if notice %}
+    <div class="banner-ok">{{ notice }}</div>
+  {% endif %}
+  {% if error %}
+    <div class="banner-error">{{ error }}</div>
+  {% endif %}
+  <form method="post" action="/login" class="auth-form">
+    <label>
+      <span>用户名</span>
+      <input type="text" name="username" required autofocus maxlength="64">
+    </label>
+    <label>
+      <span>密码</span>
+      <input type="password" name="password" required>
+    </label>
+    <input type="hidden" name="next" value="{{ next or '/workbench' }}">
+    <button type="submit" class="btn-primary">登录</button>
+  </form>
+  <p class="auth-aux muted" style="font-size:12px;">账号由运维统一分配; 没账号请联系运维</p>
+</section>
+{% endblock %}

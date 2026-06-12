@@ -1,0 +1,13 @@
+rule_id: R281
+domain: 精神医学
+violation_type: 诱导住院骗取医保基金
+question: 以免费体检、免除费用、上门接送、提供返利、转诊提成等方式，拉拢非必要住院的轻症患者或康养需求的非精神障碍老人群体、困难群体住院。
+example: 示例：某医院与养老院合作，以免费治疗、管吃管住、车接车送等形式，给销售人员发放“佣金”“人头费”，拉拢老人住院，多数老人无住院指征。
+status: drafting
+priority: P2
+prompt_addon: ''
+trigger_keywords: []
+suggested_tools: []
+expected_signal: ''
+notes: 诱导住院 (拉拢轻症), 行为审计, 工具不可见. 留 audit-behavior change.
+derived_from_template: null

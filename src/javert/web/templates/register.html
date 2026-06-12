@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="auth-card">
+  <h1>注册</h1>
+  {% if error %}
+    <div class="banner-error">{{ error }}</div>
+  {% endif %}
+  <form method="post" action="/register" class="auth-form">
+    <label>
+      <span>用户名</span>
+      <input type="text" name="username" required autofocus maxlength="64">
+    </label>
+    <label>
+      <span>显示名 (可选)</span>
+      <input type="text" name="display_name" maxlength="128">
+    </label>
+    <label>
+      <span>密码</span>
+      <input type="password" name="password" required>
+    </label>
+    <button type="submit" class="btn-primary">创建账号并登录</button>
+  </form>
+  <p class="auth-aux">已有账号? <a href="/login">登录</a></p>
+</section>
+{% endblock %}

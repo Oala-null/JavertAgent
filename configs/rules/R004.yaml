@@ -1,0 +1,13 @@
+rule_id: R004
+domain: 各科室通用类
+violation_type: 虚构医药服务项目
+question: 药品耗材，申请医保支付数量大于实际采购、使用数量。
+example: 示例：某医院2022年-2023年间，申请医保支付香丹注射液2.9万支，但同期库存量与采购量之和仅1.5万支，不足部分系虚构医药服务项目。
+status: drafting
+priority: P2
+prompt_addon: ''
+trigger_keywords: []
+suggested_tools: []
+expected_signal: ''
+notes: 药品申请数量 > 实际采购量需采购侧数据, 当前数据无采购表. 留 add-procurement-data change.
+derived_from_template: null

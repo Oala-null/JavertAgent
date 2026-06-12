@@ -1,0 +1,66 @@
+{
+  "global": {
+    "comment": "RuleItemBase.checkRuleValid 通用 prune 字段, 在条目级 entry.pruning_hints 体现",
+    "fields_known": [
+      "valid",
+      "start_date/end_date",
+      "checkflag_opt",
+      "checkflag_ipt",
+      "limit_opt_dept/limit_ipt_dept",
+      "limit_med_mdtrt_type"
+    ]
+  },
+  "by_java_rule": {
+    "RULE2": {
+      "dim": "visit_type",
+      "patient_field": "visit_type"
+    },
+    "RULE3": {
+      "dim": "patient_gender",
+      "patient_field": "gender"
+    },
+    "RULE4": {
+      "dim": "patient_age",
+      "patient_field": "age"
+    },
+    "RULE5": {
+      "dim": "hospital_level",
+      "patient_field": "hospital_level"
+    },
+    "RULE7": {
+      "dim": "diagnosis",
+      "patient_field": "diagnoses",
+      "note": "限定诊断: 若 entry 标 requires_diagnosis_context, 仅当患者诊断与 warn_msg 描述域有重叠时才触发"
+    },
+    "RULE9": {
+      "dim": "drug_form",
+      "patient_field": "drug_forms",
+      "note": "中药饮片: 仅当患者用过单味中药饮片才有意义"
+    },
+    "RULE15": {
+      "dim": "paired_items",
+      "patient_field": "items",
+      "note": "材料-项目配对: 仅当 A 出现但 B 缺失才触发"
+    },
+    "RULE17": {
+      "dim": "frequency",
+      "patient_field": "items",
+      "note": "频次: 至少有 1 个目标项即潜在触发, 具体频次靠 LLM"
+    },
+    "RULE19": {
+      "dim": "co_occurrence_AB",
+      "patient_field": "items",
+      "note": "重复收费: 必须 A 和 B 同时出现才触发"
+    },
+    "RULE35": {
+      "dim": "duration",
+      "patient_field": "items",
+      "note": "支付疗程: 仅当患者用过该项目, 具体天数靠 LLM"
+    },
+    "RULE36": {
+      "dim": "inscp_amt",
+      "patient_field": "items",
+      "note": "非医保目录: 仅当对应 item 有医保入账金额 (inscp_scp_amt > 0)"
+    }
+  }
+}

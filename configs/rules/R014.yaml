@@ -1,0 +1,53 @@
+rule_id: R014
+domain: 心血管内科
+violation_type: 串换项目
+question: 开展心内诊疗，不同厂家、不同规格、不同价格的一次性高值耗材之间相互串换收费。
+example: 示例：某医院为冠心病患者开展经皮冠状动脉腔内成形术，术中使用**公司生产的普通球囊（非药物涂层球囊，单价3300元/个），但按照该公司生产的药物涂层球囊（单价6400元/个）进行收费，属于串换项目。
+status: ready
+priority: P2
+prompt_addon: |
+  本规则关注: 患者本次住院里, 是否被收取的「高价高值耗材」实际使用的是「同类低价耗材」(不同厂家 / 规格 / 价格串换), 例如药物涂层球囊 vs 普通球囊串换.
+
+  ⚠️ **审计工具限制**: 此规则核心证据是「耗材厂家 / 规格 / 注册证号 / 批号」, Javert 当前 4 工具 (search_fees / search_notes / note_diagnosis / drug_indication) **看不到耗材实物消耗记录 / 采购侧数据**, 因此本规则在 pilot 阶段大概率 INCONCLUSIVE.
+
+  审计步骤 (受限版):
+  1. 用 search_fees(category="耗材类") 或 search_fees(keyword=...) 查命中.
+     检索关键词: "药物涂层球囊" / "DCB" / "药物洗脱球囊" / "雷帕霉素球囊" / "紫杉醇球囊"
+  2. 若 fee 无命中 → CLEAN.
+  3. 用 search_notes(section="手术记录" / "操作记录" / keyword=...) 提取实际使用耗材描述.
+  4. 检查文书是否含「高价耗材」独有特征 (多数命中 → CLEAN):
+     - 耗材厂家 + 型号 + 注册证号 (例: "雅培紫杉醇药物涂层球囊 ZG-XX-XX")
+     - 药物涂层 / 药物洗脱描述
+     - 球囊规格 (例: "DCB 3.0 × 20 mm")
+  5. 检查文书是否仅吻合「普通球囊」(若命中 + 无 Y 独有特征 → V):
+     - "普通球囊" / "非药物涂层球囊"
+     - "PTCA 球囊"
+     - 无药物涂层描述
+  6. **文书无耗材厂家 / 规格 / 批号记录 → INCONCLUSIVE conf 0.4-0.5**, 建议线下核实采购台账 + 实际消耗.
+
+  特殊注意:
+  - 当前 4 工具几乎不可能拿到 V 硬证据 (因为耗材实物消耗只在采购台账 / 物资模块).
+  - 此规则的 V 判定依赖 **add-material-registry change** (引入采购数据 + 耗材消耗记录).
+  - pilot 阶段输出 INCONCLUSIVE + evidence 引"工具受限, 建议医院级核实", 不强判 V.
+
+  关键判定逻辑: fee 命中 + 文书无耗材厂家/型号记录 → INCONCLUSIVE (工具受限).
+
+  注意: 红色难度规则. 多见于心内介入科. 建议结合医院采购台账独立审计.
+trigger_keywords:
+  - 药物涂层球囊
+  - DCB
+  - 药物洗脱球囊
+  - 紫杉醇
+  - 雷帕霉素
+  - 球囊
+  - 注册证号
+suggested_tools:
+  - search_fees
+  - search_notes
+expected_signal: |
+  典型违规: 仅靠 4 工具难判 V; 采购数据介入后, fee 收 DCB 但采购台账无 DCB 出库.
+  典型 CLEAN: 文书明确"雅培紫杉醇球囊 ZG-..."厂家+型号+注册证号.
+  典型 INCONCLUSIVE: 文书仅 "使用球囊扩张" 无耗材细节 (本规则最常见结局).
+notes: |
+  当前 4 工具受限, 此规则依赖 add-material-registry change. pilot 阶段大概率 INCONCLUSIVE.
+derived_from_template: M7

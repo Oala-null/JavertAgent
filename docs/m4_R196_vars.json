@@ -1,0 +1,40 @@
+{
+  "service_name": "高强度聚焦超声热消融肿瘤治疗 (HIFU)",
+  "service_kw_list": [
+    "高强度聚焦超声",
+    "HIFU",
+    "聚焦超声消融",
+    "热消融"
+  ],
+  "catalog_unit": "次 (同一病灶按一次计收)",
+  "catalog_price": "2000 (小: 瘤径 ≤3cm) / 10000 (大: 瘤径 >3cm)",
+  "addon_rule_text": "同一病灶 (大) 治疗按一次计收; 同一病灶 (小) 按实际治疗次数计收, 超过 5 次的最高按 5 次计收.",
+  "violation_pattern": "同一病灶按多次重复收费 (大病灶) / 全按 ¥17000+ 收 (混淆档位)",
+  "actual_event_kw_list": [
+    "肿瘤直径",
+    "瘤径",
+    "瘤体大小",
+    "病灶数",
+    "病灶位置"
+  ],
+  "notes_section": "手术记录",
+  "expected_calc_hint": "瘤径 ≤3cm 按小档 ¥2000; >3cm 按大档 ¥10000; 大病灶 1 次治疗 = 1 次费用, 不能多次收.",
+  "pilot_caveat": "J66252 甲状腺癌做的是根治手术, 非 HIFU, fee 不会命中 → CLEAN.",
+  "special_notes": [
+    "判定关键: 手术记录瘤体直径; 与 fee 收费档位匹配",
+    "fee 命中 (大) × 多次 + 文书描述单病灶, 强支持 V"
+  ],
+  "aux_keywords": [
+    "高强度聚焦超声",
+    "HIFU",
+    "聚焦超声消融",
+    "热消融",
+    "瘤径",
+    "病灶"
+  ],
+  "aux_tools": [
+    "search_fees",
+    "search_notes"
+  ],
+  "aux_signal": "典型违规: 子宫肌瘤患者 1 个病灶 HIFU 治疗, 收大档 ¥10000 × 3 次.\n典型 CLEAN: 单病灶 1 次治疗 = 1 次费用; 多病灶按目录分档.\n典型 INCONCLUSIVE: 手术记录未明示瘤体直径."
+}

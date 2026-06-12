@@ -1,0 +1,13 @@
+rule_id: R286
+domain: 精神医学
+violation_type: 虚构诊疗
+question: 虚构服务频次，记录的诊疗、护理、检查频次或总服务量，远超临床实际可能或医院最大服务能力（如量表测查总时长超医师工时）。
+example: 示例：某医院精神科B类量表（测查时间30-60分钟）和C类量表（60分钟以上）总次数按时间换算后，超过所有精神科医师可提供的工作总时长。
+status: drafting
+priority: P2
+prompt_addon: ''
+trigger_keywords: []
+suggested_tools: []
+expected_signal: ''
+notes: 虚构服务频次 (超工时) 跨患者统计, 工具不可见. 留 add-cross-patient-stats change.
+derived_from_template: null

@@ -1,0 +1,29 @@
+rule_id: R205
+domain: 麻醉
+violation_type: 重复收费
+question: 各种麻醉方式（如全身麻醉、神经阻滞麻醉、椎管内麻醉、局部麻醉等），收费时长大于实际麻醉记录时长。
+example: 示例：某省《诊疗目录》规定，全身麻醉收费标准为每2小时收费1次。某医院麻醉记录起止时间为09:30—11:30，应按照2小时收费1次，但医院实际按照3小时收费2次，属于重复收费。
+status: ready
+priority: P2
+prompt_addon: "\U0001F525 v1.6 STEP 0 (修 v1.5 LLM 卡在找时长):\n**最高优先 CLEAN 路径** (wangxin 标准: 1 手术 1 全麻 = CLEAN):\n1. search_fees(keyword=\"全身麻醉\") 算 fee 次数 N\n2. search_notes(section=\"手术信息\" 或 keyword=\"手术名称\") 算手术次数 M\n3. **若 M ≥ N → 直接 CLEAN conf 0.90** (无需查时长)\n   → wangxin: \"全身麻醉按次收费, 患者做了 1 次手术, 收取 1 次全身麻醉费用, 没有问题\"\n4. 仅当 N > M (全麻费多于手术次数) 才需要查具体时长 → 此时按麻醉记录走时长判定.\n\n⚠️ 不要因为找不到 HH:MM 精确时长就 INCONCLUSIVE — wangxin 标准不要时长.\n\n本规则关注: 患者本次住院里, 是否被收取的「麻醉时长」大于实际麻醉记录时长 (推算多收次数).\n\n\U0001F4D6 诊疗目录条款 (来源: 截至 2026-04-01 全量诊疗项目库):\n  项目名: 全身麻醉 (气管插管) / 神经阻滞麻醉 / 椎管内麻醉 / 局部麻醉\n  计价单位: 每 2 小时收费 1 次 (按实际麻醉记录起止时长向上取整)\n  加成规则: 不足 2 小时按 1 次, 满 2 小时 (含) 但不足 4 小时按 2 次, 以此类推.\n\n⚠️ 典型违规模式: 实际麻醉 2 小时 (09:30-11:30) 应收 1 次, 但按 3 小时收 2 次, 多收 1 次.\n\n审计步骤:\n1. 用 search_fees(keyword=...) 查 fee 命中次数 count + 实收金额合计.\n   检索关键词: \"全身麻醉\" / \"神经阻滞麻醉\" / \"椎管内麻醉\" / \"局部麻醉\" / \"气管插管\"\n2. 若 fee 无命中 → CLEAN.\n3. 用 search_notes(section=\"麻醉记录\") 提取实际麻醉时长.\n   量化关键词: \"麻醉时间\" / \"麻醉起止\" / \"麻醉开始\" / \"麻醉结束\" / \"诱导时间\"\
+  \ / \"拔管时间\"\n4. **v0.7 新增** 若 \"麻醉记录\" section 缺失或起止时间未提取, **必须**回退查:\n   a. search_notes(section=\"手术记录\") — 末尾常有 \"麻醉医师 + 麻醉时间 hh:mm-hh:mm\"\n   b. search_notes(section=\"术后首次病程记录\") — \"麻醉方法 / 麻醉时长\" 字段\n   c. search_notes(keyword=\"麻醉时间\") / search_notes(keyword=\"麻醉起止\") — 跨段检索\n   d. 手术记录里的\"手术开始-结束时间\"也可作为麻醉时长近似 (麻醉略长于手术, 推算用)\n5. 计算应收次数 expected:\n   - 实际麻醉时长 ÷ 2 小时, 向上取整.\n   - 例: 2 小时 → 1; 2 小时 1 分 → 2; 4 小时 → 2; 4 小时 1 分 → 3.\n6. 比对 count vs expected:\n   - count > expected → VIOLATION (超收),\n     evidence: 引 fee 项目名 × count + 价格合计 + 实际麻醉起止时间 (注明来源 section) + 应收 expected + 多收金额.\n   - count == expected → CLEAN.\n   - count < expected → CLEAN (未足量收, 不属本规则).\n7. 经过步骤 3+4 仍无法提取明确麻醉起止时间 → INCONCLUSIVE conf 0.5 + etl_warning.\n\n特殊注意:\n- 关键依赖文书\"麻醉记录\" section. ETL 缺失常见但 v0.7 后必须走步骤 4 回退查手术记录/术后病程, 不能直接 INCONCLUSIVE.\n- 计算时严格按整数小时向上取整 (按规则 \"每 2 小时 1 次\").\n- 多种麻醉方式 (全麻 + 神经阻滞) 同次可并存, 各自计算.\n\n\U0001F4CC 专家共识触发器 (v0.7, wangxin/jiweihui 加权 5C/4V/0I):\n\nCLEAN 触发器:\n- 患者本次住院 search_notes(section=\"\
+  手术记录\") 命中 N 次手术 + search_fees 全麻费次数 ≤ N → **CLEAN**\n  → wangxin: \"全身麻醉按次收费, 患者做了 1 次手术, 收取 1 次全身麻醉费用, 没有问题\"\n- 麻醉记录 section 缺失 → 走 R203 共识 6 (ETL 缺失) 路线, INCONCLUSIVE 不 V\n\n反例 (V): 全麻费次数 > 手术次数 + 明确时长拆分不合规 (≥2 小时 1 次但记录显示 1 小时).\n"
+trigger_keywords:
+- 全身麻醉
+- 神经阻滞麻醉
+- 椎管内麻醉
+- 麻醉时间
+- 麻醉起止
+- 诱导时间
+suggested_tools:
+- search_fees
+- search_notes
+expected_signal: '典型违规: 麻醉记录 09:30-11:30 (2 小时) 应收 1 次, fee 收 2 次.
+
+  典型 CLEAN: 4 小时麻醉收 2 次 (按规则).
+
+  典型 INCONCLUSIVE: 麻醉记录 section 未数字化 (ETL 缺失), 无法量化.
+
+  '
+notes: ''
+derived_from_template: M4

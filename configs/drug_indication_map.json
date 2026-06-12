@@ -1,0 +1,431 @@
+{
+  "version": "1.1",
+  "threshold_pct": 8.5,
+  "drugs": [
+    {
+      "pattern": "替妥尤单抗",
+      "generic_name": "Teprotumumab",
+      "tier": 1,
+      "indication": "甲状腺相关眼病(TAO/TED)",
+      "icd_candidates": ["E05.902+H58.8*", "E05.002+H06.2*"],
+      "note": "FDA批准唯一适应症"
+    },
+    {
+      "pattern": "泽布替尼|百悦泽",
+      "generic_name": "Zanubrutinib",
+      "tier": 1,
+      "indication": "套细胞淋巴瘤/慢性淋巴细胞白血病",
+      "icd_candidates": ["C83.100", "C91.100"],
+      "note": "BTK抑制剂"
+    },
+    {
+      "pattern": "奥希替尼|泰瑞沙",
+      "generic_name": "Osimertinib",
+      "tier": 1,
+      "indication": "EGFR突变非小细胞肺癌",
+      "icd_candidates": ["C34.900", "C34.100"],
+      "note": "第三代EGFR-TKI"
+    },
+    {
+      "pattern": "帕博利珠单抗|可瑞达|Keytruda",
+      "generic_name": "Pembrolizumab",
+      "tier": 2,
+      "indication": "多种实体瘤(PD-1抑制剂)",
+      "icd_candidates": ["C34.900", "C16.900", "C67.900"],
+      "note": "广谱适应症，需结合病理确认"
+    },
+    {
+      "pattern": "纳武利尤单抗|欧狄沃|Opdivo",
+      "generic_name": "Nivolumab",
+      "tier": 2,
+      "indication": "多种实体瘤(PD-1抑制剂)",
+      "icd_candidates": ["C34.900", "C64.900", "C43.900"],
+      "note": "广谱适应症"
+    },
+    {
+      "pattern": "阿替利珠单抗|泰圣奇",
+      "generic_name": "Atezolizumab",
+      "tier": 2,
+      "indication": "多种实体瘤(PD-L1抑制剂)",
+      "icd_candidates": ["C34.900", "C67.900"],
+      "note": "PD-L1免疫检查点"
+    },
+    {
+      "pattern": "贝伐珠单抗|安维汀",
+      "generic_name": "Bevacizumab",
+      "tier": 2,
+      "indication": "多种实体瘤(VEGF抑制剂)",
+      "icd_candidates": ["C18.900", "C34.900", "C56.900"],
+      "note": "抗血管生成"
+    },
+    {
+      "pattern": "曲妥珠单抗|赫赛汀",
+      "generic_name": "Trastuzumab",
+      "tier": 1,
+      "indication": "HER2阳性乳腺癌/胃癌",
+      "icd_candidates": ["C50.900", "C16.900"],
+      "note": "HER2靶向"
+    },
+    {
+      "pattern": "利妥昔单抗|美罗华",
+      "generic_name": "Rituximab",
+      "tier": 1,
+      "indication": "B细胞非霍奇金淋巴瘤/慢性淋巴细胞白血病",
+      "icd_candidates": ["C85.900", "C91.100"],
+      "note": "CD20靶向"
+    },
+    {
+      "pattern": "伊布替尼|亿珂",
+      "generic_name": "Ibrutinib",
+      "tier": 1,
+      "indication": "套细胞淋巴瘤/慢性淋巴细胞白血病/华氏巨球蛋白血症",
+      "icd_candidates": ["C83.100", "C91.100", "C88.000"],
+      "note": "第一代BTK抑制剂"
+    },
+    {
+      "pattern": "阿来替尼|安圣莎",
+      "generic_name": "Alectinib",
+      "tier": 1,
+      "indication": "ALK阳性非小细胞肺癌",
+      "icd_candidates": ["C34.900"],
+      "note": "ALK抑制剂"
+    },
+    {
+      "pattern": "克唑替尼|赛可瑞",
+      "generic_name": "Crizotinib",
+      "tier": 1,
+      "indication": "ALK/ROS1阳性非小细胞肺癌",
+      "icd_candidates": ["C34.900"],
+      "note": "ALK/ROS1抑制剂"
+    },
+    {
+      "pattern": "伊马替尼|格列卫",
+      "generic_name": "Imatinib",
+      "tier": 1,
+      "indication": "慢性粒细胞白血病/胃肠间质瘤",
+      "icd_candidates": ["C92.100", "C49.900"],
+      "note": "BCR-ABL/KIT靶向"
+    },
+    {
+      "pattern": "达沙替尼|施达赛",
+      "generic_name": "Dasatinib",
+      "tier": 1,
+      "indication": "慢性粒细胞白血病（伊马替尼耐药）",
+      "icd_candidates": ["C92.100"],
+      "note": "第二代BCR-ABL"
+    },
+    {
+      "pattern": "尼洛替尼|达希纳",
+      "generic_name": "Nilotinib",
+      "tier": 1,
+      "indication": "慢性粒细胞白血病",
+      "icd_candidates": ["C92.100"],
+      "note": "第二代BCR-ABL"
+    },
+    {
+      "pattern": "索拉非尼|多吉美",
+      "generic_name": "Sorafenib",
+      "tier": 2,
+      "indication": "肝细胞癌/肾细胞癌/甲状腺癌",
+      "icd_candidates": ["C22.000", "C64.900", "C73.900"],
+      "note": "多靶点TKI"
+    },
+    {
+      "pattern": "仑伐替尼|乐卫玛",
+      "generic_name": "Lenvatinib",
+      "tier": 2,
+      "indication": "肝细胞癌/甲状腺癌",
+      "icd_candidates": ["C22.000", "C73.900"],
+      "note": "VEGFR/FGFR多靶点"
+    },
+    {
+      "pattern": "舒尼替尼|索坦",
+      "generic_name": "Sunitinib",
+      "tier": 2,
+      "indication": "肾细胞癌/胃肠间质瘤",
+      "icd_candidates": ["C64.900", "C49.900"],
+      "note": "多靶点TKI"
+    },
+    {
+      "pattern": "阿帕替尼|艾坦",
+      "generic_name": "Apatinib",
+      "tier": 2,
+      "indication": "胃腺癌/肝细胞癌",
+      "icd_candidates": ["C16.900", "C22.000"],
+      "note": "VEGFR2选择性抑制"
+    },
+    {
+      "pattern": "西妥昔单抗|爱必妥",
+      "generic_name": "Cetuximab",
+      "tier": 1,
+      "indication": "KRAS野生型结直肠癌/头颈部鳞癌",
+      "icd_candidates": ["C18.900", "C20.900", "C10.900"],
+      "note": "EGFR靶向"
+    },
+    {
+      "pattern": "卡瑞利珠单抗|艾瑞卡",
+      "generic_name": "Camrelizumab",
+      "tier": 2,
+      "indication": "多种实体瘤(PD-1抑制剂)",
+      "icd_candidates": ["C22.000", "C15.900", "C34.900"],
+      "note": "国产PD-1"
+    },
+    {
+      "pattern": "信迪利单抗|达伯舒",
+      "generic_name": "Sintilimab",
+      "tier": 2,
+      "indication": "多种实体瘤/经典型霍奇金淋巴瘤",
+      "icd_candidates": ["C81.900", "C34.900"],
+      "note": "国产PD-1"
+    },
+    {
+      "pattern": "替雷利珠单抗|百泽安",
+      "generic_name": "Tislelizumab",
+      "tier": 2,
+      "indication": "多种实体瘤(PD-1抑制剂)",
+      "icd_candidates": ["C67.900", "C34.900", "C22.000"],
+      "note": "国产PD-1"
+    },
+    {
+      "pattern": "奥拉帕利|利普卓",
+      "generic_name": "Olaparib",
+      "tier": 1,
+      "indication": "BRCA突变卵巢癌/乳腺癌/前列腺癌/胰腺癌",
+      "icd_candidates": ["C56.900", "C50.900", "C61.900"],
+      "note": "PARP抑制剂"
+    },
+    {
+      "pattern": "尼拉帕利|则乐",
+      "generic_name": "Niraparib",
+      "tier": 1,
+      "indication": "铂敏感复发卵巢癌",
+      "icd_candidates": ["C56.900"],
+      "note": "PARP抑制剂"
+    },
+    {
+      "pattern": "恩扎卢胺|安可坦",
+      "generic_name": "Enzalutamide",
+      "tier": 1,
+      "indication": "去势抵抗性前列腺癌",
+      "icd_candidates": ["C61.900"],
+      "note": "雄激素受体抑制剂"
+    },
+    {
+      "pattern": "阿比特龙|泽珂",
+      "generic_name": "Abiraterone",
+      "tier": 1,
+      "indication": "去势抵抗性前列腺癌",
+      "icd_candidates": ["C61.900"],
+      "note": "CYP17抑制剂"
+    },
+    {
+      "pattern": "硼替佐米|万珂",
+      "generic_name": "Bortezomib",
+      "tier": 1,
+      "indication": "多发性骨髓瘤/套细胞淋巴瘤",
+      "icd_candidates": ["C90.000", "C83.100"],
+      "note": "蛋白酶体抑制剂"
+    },
+    {
+      "pattern": "来那度胺|瑞复美",
+      "generic_name": "Lenalidomide",
+      "tier": 1,
+      "indication": "多发性骨髓瘤/骨髓增生异常综合征",
+      "icd_candidates": ["C90.000", "D46.900"],
+      "note": "免疫调节剂"
+    },
+    {
+      "pattern": "达雷妥尤单抗|兆珂",
+      "generic_name": "Daratumumab",
+      "tier": 1,
+      "indication": "多发性骨髓瘤",
+      "icd_candidates": ["C90.000"],
+      "note": "CD38靶向"
+    },
+    {
+      "pattern": "维奈克拉|唯可来",
+      "generic_name": "Venetoclax",
+      "tier": 1,
+      "indication": "慢性淋巴细胞白血病/急性髓系白血病",
+      "icd_candidates": ["C91.100", "C92.000"],
+      "note": "BCL-2抑制剂"
+    },
+    {
+      "pattern": "吉非替尼|易瑞沙",
+      "generic_name": "Gefitinib",
+      "tier": 1,
+      "indication": "EGFR突变非小细胞肺癌",
+      "icd_candidates": ["C34.900"],
+      "note": "第一代EGFR-TKI"
+    },
+    {
+      "pattern": "厄洛替尼|特罗凯",
+      "generic_name": "Erlotinib",
+      "tier": 1,
+      "indication": "EGFR突变非小细胞肺癌/胰腺癌",
+      "icd_candidates": ["C34.900", "C25.900"],
+      "note": "第一代EGFR-TKI"
+    },
+    {
+      "pattern": "埃克替尼|凯美纳",
+      "generic_name": "Icotinib",
+      "tier": 1,
+      "indication": "EGFR突变非小细胞肺癌",
+      "icd_candidates": ["C34.900"],
+      "note": "国产EGFR-TKI"
+    },
+    {
+      "pattern": "阿法替尼|吉泰瑞",
+      "generic_name": "Afatinib",
+      "tier": 1,
+      "indication": "EGFR突变非小细胞肺癌",
+      "icd_candidates": ["C34.900"],
+      "note": "第二代EGFR-TKI"
+    },
+    {
+      "pattern": "维莫非尼|佐博伏",
+      "generic_name": "Vemurafenib",
+      "tier": 1,
+      "indication": "BRAF V600突变黑色素瘤",
+      "icd_candidates": ["C43.900"],
+      "note": "BRAF抑制剂"
+    },
+    {
+      "pattern": "达拉非尼|泰菲乐",
+      "generic_name": "Dabrafenib",
+      "tier": 1,
+      "indication": "BRAF V600突变黑色素瘤/非小细胞肺癌",
+      "icd_candidates": ["C43.900", "C34.900"],
+      "note": "BRAF抑制剂"
+    },
+    {
+      "pattern": "曲美替尼|迈吉宁",
+      "generic_name": "Trametinib",
+      "tier": 1,
+      "indication": "BRAF V600突变黑色素瘤（联合达拉非尼）",
+      "icd_candidates": ["C43.900"],
+      "note": "MEK抑制剂"
+    },
+    {
+      "pattern": "瑞戈非尼|拜万戈",
+      "generic_name": "Regorafenib",
+      "tier": 2,
+      "indication": "结直肠癌/肝细胞癌/胃肠间质瘤",
+      "icd_candidates": ["C18.900", "C22.000", "C49.900"],
+      "note": "多靶点TKI"
+    },
+    {
+      "pattern": "培美曲塞",
+      "generic_name": "Pemetrexed",
+      "tier": 2,
+      "indication": "非鳞非小细胞肺癌/恶性胸膜间皮瘤",
+      "icd_candidates": ["C34.900", "C45.000"],
+      "note": "叶酸抗代谢物化疗药"
+    },
+    {
+      "pattern": "多西他赛|泰索帝",
+      "generic_name": "Docetaxel",
+      "tier": 3,
+      "indication": "多种实体瘤化疗（非诊断特异性）",
+      "icd_candidates": [],
+      "note": "广谱化疗药，需结合文书判断肿瘤类型"
+    },
+    {
+      "pattern": "紫杉醇.*白蛋白|白蛋白.*紫杉醇|abraxane",
+      "generic_name": "Nab-Paclitaxel",
+      "tier": 3,
+      "indication": "多种实体瘤化疗（非诊断特异性）",
+      "icd_candidates": [],
+      "note": "广谱化疗药"
+    },
+    {
+      "pattern": "顺铂|卡铂|奥沙利铂|洛铂|奈达铂",
+      "generic_name": "铂类化疗药",
+      "tier": 3,
+      "indication": "多种实体瘤化疗（非诊断特异性）",
+      "icd_candidates": [],
+      "note": "铂类化疗基石药物，无诊断特异性"
+    },
+    {
+      "pattern": "吉西他滨|泽菲",
+      "generic_name": "Gemcitabine",
+      "tier": 3,
+      "indication": "胰腺癌/非小细胞肺癌/膀胱癌等",
+      "icd_candidates": ["C25.900", "C34.900", "C67.900"],
+      "note": "核苷类化疗药"
+    },
+    {
+      "pattern": "依托泊苷",
+      "generic_name": "Etoposide",
+      "tier": 3,
+      "indication": "小细胞肺癌/睾丸肿瘤/淋巴瘤等",
+      "icd_candidates": ["C34.900"],
+      "note": "拓扑异构酶抑制剂"
+    },
+    {
+      "pattern": "伊立替康",
+      "generic_name": "Irinotecan",
+      "tier": 2,
+      "indication": "结直肠癌/胃癌（二线+）",
+      "icd_candidates": ["C18.900", "C20.900", "C16.900"],
+      "note": "拓扑异构酶I抑制剂"
+    },
+    {
+      "pattern": "环磷酰胺",
+      "generic_name": "Cyclophosphamide",
+      "tier": 3,
+      "indication": "多种血液肿瘤/实体瘤（非诊断特异性）",
+      "icd_candidates": [],
+      "note": "烷化剂"
+    },
+    {
+      "pattern": "氟尿嘧啶|5-FU|卡培他滨|希罗达",
+      "generic_name": "氟尿嘧啶类",
+      "tier": 3,
+      "indication": "消化道肿瘤/乳腺癌等",
+      "icd_candidates": [],
+      "note": "嘧啶类抗代谢物"
+    },
+    {
+      "pattern": "阿霉素|多柔比星|表柔比星",
+      "generic_name": "蒽环类",
+      "tier": 3,
+      "indication": "多种肿瘤化疗（非诊断特异性）",
+      "icd_candidates": [],
+      "note": "蒽环类化疗药"
+    },
+    {
+      "pattern": "长春新碱|长春瑞滨",
+      "generic_name": "长春碱类",
+      "tier": 3,
+      "indication": "多种肿瘤化疗（非诊断特异性）",
+      "icd_candidates": [],
+      "note": "植物碱类化疗药"
+    },
+    {
+      "pattern": "重组人促红素|EPO|促红细胞生成素",
+      "generic_name": "Erythropoietin",
+      "tier": 3,
+      "indication": "化疗相关贫血（伴随治疗信号）",
+      "icd_candidates": ["D63.0*"],
+      "note": "提示正在接受化疗"
+    },
+    {
+      "pattern": "非格司亭|重组人粒细胞集落|G-CSF|聚乙二醇化.*集落",
+      "generic_name": "G-CSF",
+      "tier": 3,
+      "indication": "化疗后粒细胞减少（伴随治疗信号）",
+      "icd_candidates": ["D70.900"],
+      "note": "提示正在接受化疗"
+    }
+  ],
+  "exclusions": [
+    {"pattern": "纳米炭", "reason": "术中淋巴示踪，非诊断性"},
+    {"pattern": "声诺维|全氟丁烷", "reason": "超声造影剂，非诊断性"},
+    {"pattern": "碘.*造影|造影剂|碘海醇|碘克沙醇|碘佛醇", "reason": "CT/血管造影剂，非诊断性"},
+    {"pattern": "肝素|低分子.*肝素|依诺肝素|那屈肝素", "reason": "抗凝药，预防性用药"},
+    {"pattern": "白蛋白$|人血白蛋白", "reason": "支持治疗，非诊断性"},
+    {"pattern": "丙种球蛋白|免疫球蛋白", "reason": "免疫支持，非诊断特异性"},
+    {"pattern": "氯化钠.*注射|葡萄糖.*注射|注射用水", "reason": "溶媒/基础输液"}
+  ]
+}

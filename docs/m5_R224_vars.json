@@ -1,0 +1,39 @@
+{
+  "service_desc": "重症监护期间常规检验 (尿常规等)",
+  "service_kw_list": [
+    "尿常规",
+    "重症监护检验",
+    "血气分析",
+    "床旁监测"
+  ],
+  "catalog_basis": "按医保政策, 重症监护期间检验应针对患者实际状况 (如无尿患者不应收尿常规). 对所有重症患者无差别打包检验 = 虚构.",
+  "execution_evidence_kw_list": [
+    "检验报告",
+    "检验单号",
+    "监测数值",
+    "床旁记录"
+  ],
+  "notes_section_hints": [
+    "重症监护记录",
+    "辅助检查"
+  ],
+  "supporting_dx_kw_list": [],
+  "dept_check": "重症医学科",
+  "special_notes": [
+    "若诊断含'少尿'/'无尿'还收尿常规 → 强支持 VIOLATION (生理上不可能采样)."
+  ],
+  "pilot_caveat": "甲状腺手术患者一般不进 ICU, 若 fee 命中重症监护检验需关注是否走过 ICU.",
+  "aux_keywords": [
+    "尿常规",
+    "重症监护检验",
+    "血气分析",
+    "床旁监测",
+    "无尿"
+  ],
+  "aux_tools": [
+    "search_fees",
+    "search_notes",
+    "note_diagnosis"
+  ],
+  "aux_signal": "典型违规: ICU 无尿患者诊断含'急性肾衰无尿'还收尿常规 ¥10/天 × 7 天.\n典型 CLEAN: ICU 患者多次尿常规监测有对应检验报告.\n典型 INCONCLUSIVE: ICU 监测记录简略, 无明确检验数值."
+}

@@ -1,0 +1,42 @@
+{
+  "service_desc": "全身麻醉 (含气管插管全麻 / 静脉全麻)",
+  "service_kw_list": [
+    "全身麻醉",
+    "气管插管全麻",
+    "静脉全麻",
+    "全麻费用"
+  ],
+  "catalog_basis": "按医保政策, 全身麻醉必须有麻醉记录单 (诱导药物 + 维持药物 + 气管插管时间 + 苏醒过程). 实际开展数与收费数偏差大 = 虚构 (统计学异常需个案审核).",
+  "execution_evidence_kw_list": [
+    "麻醉记录",
+    "诱导药物",
+    "维持药物",
+    "气管插管",
+    "苏醒过程"
+  ],
+  "notes_section_hints": [
+    "麻醉记录",
+    "手术记录"
+  ],
+  "supporting_dx_kw_list": [],
+  "dept_check": "麻醉科",
+  "inconclusive_addendum": "若 search_fees(keyword='异丙酚'或'七氟烷'等麻醉药) 命中具体麻醉药但麻醉记录段空 → INCONCLUSIVE (用了药但记录不全, 不算完全虚构).",
+  "special_notes": [
+    "全麻必有麻醉医师签名 + 时长; 文书完全无麻醉记录是强 VIOLATION 证据."
+  ],
+  "pilot_caveat": "甲状腺手术多为全麻气管插管, 麻醉记录应完整; 若文书麻醉记录缺失需特别关注.",
+  "aux_keywords": [
+    "全身麻醉",
+    "气管插管全麻",
+    "静脉全麻",
+    "全麻费用",
+    "麻醉记录",
+    "诱导药物"
+  ],
+  "aux_tools": [
+    "search_fees",
+    "search_notes",
+    "note_diagnosis"
+  ],
+  "aux_signal": "典型违规: 同时间段实际开展全麻 1000 例但收 2 万次全麻费.\n典型 CLEAN: 每例全麻都有详细麻醉记录单 + 诱导/维持药物.\n典型 INCONCLUSIVE: 麻醉药费命中但麻醉记录段缺失."
+}

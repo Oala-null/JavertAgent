@@ -1,0 +1,30 @@
+rule_id: R278
+domain: 内分泌
+violation_type: 过度检查
+question: 无指征为住院患者普遍打包开展肾上腺皮质激素、性腺激素、血清生长激素、抗甲状腺球蛋白抗体(TGAb)、抗甲状腺微粒体抗体(TMAb)等多种内分泌相关检查并收费。
+example: 示例：某医院为患者开展入院检查时，未依据患者病情需要，无指征打包开展肾上腺皮质激素测定、性腺激素测定、血清生长激素测定、抗甲状腺球蛋白抗体测定(TGAb)、抗甲状腺微粒体抗体测定(TMAb)等多项检查并收费，属于过度检查。
+status: ready
+priority: P1
+prompt_addon: "本规则关注: 患者本次住院里, 是否被无指征打包收取了「内分泌检查多项套餐」(肾上腺皮质激素 / 性腺激素 / 生长激素 / 甲状腺抗体 TGAb / TMAb 等).\n按诊疗规范, 这类内分泌特殊抗体 / 激素检查仅用于特定内分泌疾病或可疑指征, 不应作为入院常规打包.\n专家共识 (v0.7 校准): **垂体占位 / 脑部肿瘤 / 神经内分泌肿瘤 / 全垂体功能评估** 查肾上腺+性腺+生长激素多组合是术前/分期评估常规, 合理.\n\n审计步骤:\n1. 用 search_fees(keyword=...) 检索, 记录每项命中次数 count.\n   检索关键词分组:\n   A 类 (肾上腺): \"肾上腺皮质激素\" / \"皮质醇\" / \"ACTH\"\n   B 类 (性腺): \"性腺激素\" / \"雌二醇\" / \"睾酮\" / \"FSH\" / \"LH\" / \"孕酮\"\n   C 类 (生长): \"血清生长激素\" / \"生长激素\" / \"GH\" / \"IGF-1\"\n   D 类 (甲状腺抗体): \"抗甲状腺球蛋白抗体\" / \"TGAb\" / \"抗甲状腺微粒体抗体\" / \"TMAb\" / \"TPO抗体\"\n2. 若 A-D 全无命中 → CLEAN (规则不适用).\n3. **v0.7 新增** 用 search_lab_results(item_keyword=...) 对应类别拉检验报告 + diagnosisOpinion:\n   A: item_keyword=\"皮质醇\" 或 \"ACTH\"\n   B: item_keyword=\"雌二醇\" 或 \"睾酮\" 或 \"FSH\"\n   C: item_keyword=\"生长激素\" 或 \"IGF\"\n   D: item_keyword=\"TG\" 或 \"TPO\" 或 \"甲状腺球蛋白\"\n   若任一 diagnosisOpinion 含 \"垂体\" / \"肾上腺占位\" / \"颅内占位\" / \"鉴别诊断\" / \"排查内分泌肿瘤\" 等\n   → CLEAN, evidence 引 lab + diagnosisOpinion.\n4. 用 note_diagnosis\
+  \ 列出诊断, 检查是否含对应指征:\n   A 肾上腺: 库欣综合征 / 艾迪生病 / 肾上腺占位 / 嗜铬细胞瘤\n   B 性腺: 不孕不育 / 月经不调 / 多囊卵巢 / 性早熟 / 性发育迟缓 / 肿瘤生殖系统\n   C 生长: 巨人症 / 矮小症 / 垂体瘤 / 生长发育异常\n   D 甲状腺抗体: 桥本甲状腺炎 / Graves 病 / 甲减 / 甲亢 / 甲状腺癌术后随访\n   **(扩大)** 任一类: 颅内占位 / 脑部肿瘤 (淋巴瘤、转移瘤等) → 垂体/全内分泌评估合理\n   **(扩大)** 不明原因体征 (闭经/库欣样面容/低钠/低血压等) → 内分泌排查合理\n5. 若 4 类中 ≥ 3 类都命中 (套餐式) 且对应指征 0 命中 (note + diagnosisOpinion 双向无) → VIOLATION,\n   evidence: 引 4 类项目名 × count + 价格合计 + 诊断完整列表 + lab diagnosisOpinion 汇总.\n6. 若仅 1-2 类命中且对应指征命中 (note 或 diagnosisOpinion) → CLEAN.\n7. 若 1-2 类命中但对应指征缺失 → INCONCLUSIVE (单项可能合理).\n\n特殊注意:\n- 重点防范: 入院常规生化套餐式打包. 4 类全命中是典型套餐.\n- 即使 1 类命中, 若文书 search_notes(keyword=\"内分泌科会诊\" / \"内分泌专项\") 提到会诊指示 → CLEAN.\n- 颅内/垂体占位患者全垂体评估是规范, 不应判 V.\n\n\U0001F4CC 专家共识触发器 (v0.7, wangxin/zhoulihong 加权 5C/8I/0V):\n\nCLEAN 触发器:\n- note_diagnosis 含淋巴瘤/中枢神经系统肿瘤/颅内占位/垂体占位/肾上腺占位/全身性血液肿瘤 → 内分泌套餐合理 → **CLEAN**\n  → wangxin: \"淋巴瘤有可能累及内分泌系统, 有检查的必要性\"\n  → zhoulihong: \"弥漫大B细胞淋巴瘤(中枢、肾上腺、胃部(待定))及颅内占位性病变, 查肾上腺及垂体激素类检查有鉴别诊断的合理性, 但缺少相关临床表现支撑, 建议定为疑似,\
+  \ 需线下核查\"\n- 4 类内分泌项目命中 ≤ 2 类 → CLEAN (单项可能合理)\n\nINCONCLUSIVE 触发器:\n- 4 类命中 ≥ 3 类 (套餐式打包) + 系统性肿瘤诊断模糊 → INCONCLUSIVE (zhoulihong 共识)\n\n反例 (V): 4 类全命中 + 完全局部良性疾病 + 无任何脏器累及证据.\n"
+trigger_keywords:
+- 肾上腺皮质激素
+- 性腺激素
+- 血清生长激素
+- TGAb
+- TMAb
+- 抗甲状腺微粒体抗体
+suggested_tools:
+- note_diagnosis
+- search_fees
+- search_notes
+expected_signal: '典型违规: 骨科 / 普外患者 fee 同次含 ACTH + 性激素 + 生长激素 + TGAb + TMAb 五项套餐.
+
+  典型 CLEAN: 桥本甲状腺炎患者单查 TGAb + TMAb.
+
+  典型 INCONCLUSIVE: 仅 1-2 类命中且诊断模糊.
+
+  '
+notes: ''
+derived_from_template: M2

@@ -1,0 +1,36 @@
+{
+  "exam_concept_desc": "控制性降压 (术中降压)",
+  "catalog_basis": "按诊疗规范, 控制性降压用于神经外科 / 血管外科 / 出血风险大手术中减少出血, 普通手术不需要.",
+  "exam_kw_primary_list": ["控制性降压", "术中降压"],
+  "indication_dx_list": [
+    "神经外科手术 / 颅内手术 / 开颅",
+    "脑动脉瘤 / 颅内动脉瘤夹闭",
+    "脑血管畸形 / AVM",
+    "主动脉手术 / 大血管手术",
+    "脊柱大手术 / 脊柱矫形",
+    "出血风险高的手术 (血管丰富区域)",
+    "鼻内镜手术 / 鼻窦手术",
+    "中耳手术 / 听神经瘤",
+    "颌面外科出血控制",
+    "嗜铬细胞瘤切除 (术中血压剧烈波动)"
+  ],
+  "min_count": 1,
+  "inconclusive_addendum": "",
+  "drug_check": false,
+  "drug_kw_list": [],
+  "drug_concept_desc": "",
+  "special_notes": [
+    "判定关键是 \"手术类型 + 出血控制需求\", 不仅看诊断. 文书 search_notes(section=\"手术记录\") 描述 \"术中控制血压\" 也算指征."
+  ],
+  "pilot_caveat": "甲状腺手术若伴 \"巨大甲状腺肿\" / \"丰富血供\" 描述, 控制性降压可能有指征, 慎判 VIOLATION.",
+  "aux_keywords": [
+    "控制性降压",
+    "术中降压",
+    "神经外科",
+    "颅内手术",
+    "鼻内镜手术",
+    "中耳手术"
+  ],
+  "aux_tools": ["note_diagnosis", "search_fees", "search_notes"],
+  "aux_signal": "典型违规: 普通甲状腺手术患者无血管丰富 / 出血风险描述, 费用列控制性降压.\n典型 CLEAN: 颅内动脉瘤夹闭术患者控制性降压减少出血.\n典型 INCONCLUSIVE: 文书未明示术中是否实际降压, 仅看费用条目."
+}

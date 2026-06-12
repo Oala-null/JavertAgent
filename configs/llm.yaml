@@ -1,0 +1,46 @@
+# Javert 默认配置 — 字段可被环境变量 JAVERT_<UPPER_KEY> 覆盖
+
+# LLM 后端 (复用 zadig_agent 同款 sglang 服务)
+llm_endpoint: "http://192.168.31.62:30000/v1"
+llm_model: "Qwen/Qwen3.5-35B-A3B-GPTQ-Int4"
+llm_temperature: 0.0
+llm_max_tokens: 8192
+llm_timeout: 300
+llm_enable_thinking: false
+
+# Audit runner 配置
+max_tool_calls: 10
+retry_budget: 3                 # LLM 不可达时的重试次数
+
+# 路径
+data_dir: "data"
+rules_dir: "configs/rules"
+audit_db: "output/audit.sqlite"
+prompts_dir: "src/javert/audit/prompts"
+
+# Snapshot 上游路径 (默认相对项目根目录)
+upstream_zadig_data: "../zadig_agent/data"
+
+# 文书 / 费用文件名 (相对 data_dir)
+notes_file: "case_notes.csv"
+fees_file: "shi_fee.csv"
+pilot_roster_file: "pilot_patients.txt"
+
+# SQL Server 142 双写归档 (与 zadig_agent 同库, 表前缀 Javert_)
+# 写入失败仅 warn 不阻塞, 本地 SQLite 仍是 source-of-truth
+# 字段可被 JAVERT_SQL_* 环境变量覆盖
+sql_enabled: true
+sql_host: "192.168.31.142"
+sql_port: 1433
+sql_user: "machendong"
+sql_password: "Jyn_Machendong"
+sql_database: "zadig"
+sql_driver: "ODBC Driver 18 for SQL Server"
+sql_pool_size: 5
+sql_max_overflow: 5
+sql_pool_timeout: 30
+
+# Web 服务 (javert web 子命令)
+web_host: "127.0.0.1"
+web_port: 8090
+web_reload: false

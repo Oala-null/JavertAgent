@@ -1,0 +1,734 @@
+{
+  "version": "1.0",
+  "generated_at": "2026-06-02T16:44:31+00:00",
+  "summary": {
+    "total_javert_rules": 156,
+    "overlapping_rules": 148,
+    "javert_only_rules": 82,
+    "by_template": {
+      "_no_template": {
+        "javert_only": 13
+      },
+      "M8": {
+        "javert_only": 32
+      },
+      "M7": {
+        "javert_only": 20
+      },
+      "M5": {
+        "RULE36": 7,
+        "RULE2": 1
+      },
+      "M1": {
+        "RULE19": 22
+      },
+      "M4": {
+        "RULE5": 11,
+        "RULE4": 2
+      },
+      "M6": {
+        "RULE35": 6,
+        "RULE17": 3
+      },
+      "M2": {
+        "RULE17": 22
+      },
+      "M3": {
+        "javert_only": 17
+      }
+    }
+  },
+  "case_A_overlapping": {
+    "RULE2": {
+      "java_rule_name": "限定就医方式",
+      "javert_rule_ids": [
+        "R015",
+        "R037",
+        "R080",
+        "R103",
+        "R105",
+        "R134",
+        "R203",
+        "R224"
+      ],
+      "javert_count": 8,
+      "routing": "deterministic — javert rules execute ONLY if this java rule triggers"
+    },
+    "RULE3": {
+      "java_rule_name": "限性别用药",
+      "javert_rule_ids": [
+        "R020",
+        "R063",
+        "R074",
+        "R165",
+        "R193",
+        "R196",
+        "R200",
+        "R205",
+        "R212",
+        "R250",
+        "R291",
+        "R292",
+        "R293"
+      ],
+      "javert_count": 13,
+      "routing": "deterministic — javert rules execute ONLY if this java rule triggers"
+    },
+    "RULE4": {
+      "java_rule_name": "限定儿童",
+      "javert_rule_ids": [
+        "R020",
+        "R063",
+        "R074",
+        "R165",
+        "R193",
+        "R196",
+        "R200",
+        "R205",
+        "R212",
+        "R250",
+        "R291",
+        "R292",
+        "R293"
+      ],
+      "javert_count": 13,
+      "routing": "deterministic — javert rules execute ONLY if this java rule triggers"
+    },
+    "RULE5": {
+      "java_rule_name": "限定医院类型级别",
+      "javert_rule_ids": [
+        "R020",
+        "R063",
+        "R074",
+        "R165",
+        "R193",
+        "R196",
+        "R200",
+        "R205",
+        "R212",
+        "R250",
+        "R291",
+        "R292",
+        "R293"
+      ],
+      "javert_count": 13,
+      "routing": "deterministic — javert rules execute ONLY if this java rule triggers"
+    },
+    "RULE7": {
+      "java_rule_name": "违反限定适应症(条件)用药",
+      "javert_rule_ids": [
+        "R099",
+        "R100",
+        "R108",
+        "R109",
+        "R129",
+        "R130",
+        "R131",
+        "R132",
+        "R141",
+        "R143",
+        "R146",
+        "R151",
+        "R153",
+        "R154",
+        "R155",
+        "R156",
+        "R160",
+        "R161",
+        "R162",
+        "R218",
+        "R219",
+        "R220",
+        "R221",
+        "R222",
+        "R225",
+        "R278",
+        "R279",
+        "R310",
+        "R311",
+        "R312",
+        "R313"
+      ],
+      "javert_count": 31,
+      "routing": "deterministic — javert rules execute ONLY if this java rule triggers"
+    },
+    "RULE9": {
+      "java_rule_name": "中药饮片审核",
+      "javert_rule_ids": [],
+      "javert_count": 0,
+      "routing": "deterministic — javert rules execute ONLY if this java rule triggers"
+    },
+    "RULE15": {
+      "java_rule_name": "医用材料与项目不符",
+      "javert_rule_ids": [],
+      "javert_count": 0,
+      "routing": "deterministic — javert rules execute ONLY if this java rule triggers"
+    },
+    "RULE17": {
+      "java_rule_name": "超限定频次",
+      "javert_rule_ids": [
+        "R099",
+        "R100",
+        "R108",
+        "R109",
+        "R129",
+        "R130",
+        "R131",
+        "R132",
+        "R141",
+        "R143",
+        "R146",
+        "R151",
+        "R153",
+        "R154",
+        "R155",
+        "R156",
+        "R160",
+        "R161",
+        "R162",
+        "R218",
+        "R219",
+        "R220",
+        "R221",
+        "R222",
+        "R225",
+        "R278",
+        "R279",
+        "R310",
+        "R311",
+        "R312",
+        "R313"
+      ],
+      "javert_count": 31,
+      "routing": "deterministic — javert rules execute ONLY if this java rule triggers"
+    },
+    "RULE19": {
+      "java_rule_name": "重复收费",
+      "javert_rule_ids": [
+        "R018",
+        "R023",
+        "R045",
+        "R047",
+        "R069",
+        "R077",
+        "R112",
+        "R115",
+        "R116",
+        "R117",
+        "R118",
+        "R119",
+        "R185",
+        "R191",
+        "R208",
+        "R226",
+        "R228",
+        "R260",
+        "R300",
+        "R303",
+        "R304",
+        "R305"
+      ],
+      "javert_count": 22,
+      "routing": "deterministic — javert rules execute ONLY if this java rule triggers"
+    },
+    "RULE35": {
+      "java_rule_name": "超限定支付疗程",
+      "javert_rule_ids": [
+        "R099",
+        "R100",
+        "R218",
+        "R221",
+        "R222",
+        "R225",
+        "R310",
+        "R311",
+        "R312"
+      ],
+      "javert_count": 9,
+      "routing": "deterministic — javert rules execute ONLY if this java rule triggers"
+    },
+    "RULE36": {
+      "java_rule_name": "非基本医疗保险目录",
+      "javert_rule_ids": [
+        "R015",
+        "R037",
+        "R080",
+        "R103",
+        "R105",
+        "R134",
+        "R203",
+        "R224"
+      ],
+      "javert_count": 8,
+      "routing": "deterministic — javert rules execute ONLY if this java rule triggers"
+    }
+  },
+  "case_B_javert_only": {
+    "comment": "These yaml rules have no Java engine counterpart. They run via high-level context pruning (domain/diagnosis/dept), NOT the deterministic 14372-dict lookup.",
+    "rules": [
+      "R003",
+      "R004",
+      "R007",
+      "R010",
+      "R012",
+      "R014",
+      "R019",
+      "R024",
+      "R026",
+      "R034",
+      "R038",
+      "R039",
+      "R040",
+      "R041",
+      "R054",
+      "R076",
+      "R079",
+      "R083",
+      "R135",
+      "R201",
+      "R223",
+      "R231",
+      "R232",
+      "R233",
+      "R234",
+      "R235",
+      "R236",
+      "R237",
+      "R238",
+      "R239",
+      "R240",
+      "R241",
+      "R242",
+      "R243",
+      "R244",
+      "R245",
+      "R246",
+      "R247",
+      "R248",
+      "R249",
+      "R275",
+      "R280",
+      "R281",
+      "R282",
+      "R283",
+      "R284",
+      "R285",
+      "R286",
+      "R307",
+      "R308",
+      "R309",
+      "RD01",
+      "RD02",
+      "RD03",
+      "RD10",
+      "RD11",
+      "RD12",
+      "RD13",
+      "RD14",
+      "RD15",
+      "RD16",
+      "RD17",
+      "RD18",
+      "RD19",
+      "RD20",
+      "RD21",
+      "RD22",
+      "RD23",
+      "RD24",
+      "RD25",
+      "RD26",
+      "RD27",
+      "RD28",
+      "RD29",
+      "RD30",
+      "RD31",
+      "RD32",
+      "RD33",
+      "RD34",
+      "RD35",
+      "RD36",
+      "RD37"
+    ],
+    "count": 82
+  },
+  "reverse_index_javert_to_java": {
+    "R003": [],
+    "R004": [],
+    "R007": [],
+    "R010": [],
+    "R012": [],
+    "R014": [],
+    "R015": [
+      "RULE36",
+      "RULE2"
+    ],
+    "R018": [
+      "RULE19"
+    ],
+    "R019": [],
+    "R020": [
+      "RULE5",
+      "RULE3",
+      "RULE4"
+    ],
+    "R023": [
+      "RULE19"
+    ],
+    "R024": [],
+    "R026": [],
+    "R034": [],
+    "R037": [
+      "RULE36",
+      "RULE2"
+    ],
+    "R038": [],
+    "R039": [],
+    "R040": [],
+    "R041": [],
+    "R045": [
+      "RULE19"
+    ],
+    "R047": [
+      "RULE19"
+    ],
+    "R054": [],
+    "R063": [
+      "RULE5",
+      "RULE3",
+      "RULE4"
+    ],
+    "R069": [
+      "RULE19"
+    ],
+    "R074": [
+      "RULE5",
+      "RULE3",
+      "RULE4"
+    ],
+    "R076": [],
+    "R077": [
+      "RULE19"
+    ],
+    "R079": [],
+    "R080": [
+      "RULE36",
+      "RULE2"
+    ],
+    "R083": [],
+    "R099": [
+      "RULE35",
+      "RULE17",
+      "RULE7"
+    ],
+    "R100": [
+      "RULE35",
+      "RULE17",
+      "RULE7"
+    ],
+    "R103": [
+      "RULE36",
+      "RULE2"
+    ],
+    "R105": [
+      "RULE36",
+      "RULE2"
+    ],
+    "R108": [
+      "RULE17",
+      "RULE7"
+    ],
+    "R109": [
+      "RULE17",
+      "RULE7"
+    ],
+    "R112": [
+      "RULE19"
+    ],
+    "R115": [
+      "RULE19"
+    ],
+    "R116": [
+      "RULE19"
+    ],
+    "R117": [
+      "RULE19"
+    ],
+    "R118": [
+      "RULE19"
+    ],
+    "R119": [
+      "RULE19"
+    ],
+    "R129": [
+      "RULE17",
+      "RULE7"
+    ],
+    "R130": [
+      "RULE17",
+      "RULE7"
+    ],
+    "R131": [
+      "RULE17",
+      "RULE7"
+    ],
+    "R132": [
+      "RULE17",
+      "RULE7"
+    ],
+    "R134": [
+      "RULE36",
+      "RULE2"
+    ],
+    "R135": [],
+    "R141": [
+      "RULE17",
+      "RULE7"
+    ],
+    "R143": [
+      "RULE17",
+      "RULE7"
+    ],
+    "R146": [
+      "RULE17",
+      "RULE7"
+    ],
+    "R151": [
+      "RULE17",
+      "RULE7"
+    ],
+    "R153": [
+      "RULE17",
+      "RULE7"
+    ],
+    "R154": [
+      "RULE17",
+      "RULE7"
+    ],
+    "R155": [
+      "RULE17",
+      "RULE7"
+    ],
+    "R156": [
+      "RULE17",
+      "RULE7"
+    ],
+    "R160": [
+      "RULE17",
+      "RULE7"
+    ],
+    "R161": [
+      "RULE17",
+      "RULE7"
+    ],
+    "R162": [
+      "RULE17",
+      "RULE7"
+    ],
+    "R165": [
+      "RULE5",
+      "RULE3",
+      "RULE4"
+    ],
+    "R185": [
+      "RULE19"
+    ],
+    "R191": [
+      "RULE19"
+    ],
+    "R193": [
+      "RULE5",
+      "RULE3",
+      "RULE4"
+    ],
+    "R196": [
+      "RULE5",
+      "RULE3",
+      "RULE4"
+    ],
+    "R200": [
+      "RULE5",
+      "RULE3",
+      "RULE4"
+    ],
+    "R201": [],
+    "R203": [
+      "RULE36",
+      "RULE2"
+    ],
+    "R205": [
+      "RULE5",
+      "RULE3",
+      "RULE4"
+    ],
+    "R208": [
+      "RULE19"
+    ],
+    "R212": [
+      "RULE5",
+      "RULE3",
+      "RULE4"
+    ],
+    "R218": [
+      "RULE35",
+      "RULE17",
+      "RULE7"
+    ],
+    "R219": [
+      "RULE17",
+      "RULE7"
+    ],
+    "R220": [
+      "RULE17",
+      "RULE7"
+    ],
+    "R221": [
+      "RULE35",
+      "RULE17",
+      "RULE7"
+    ],
+    "R222": [
+      "RULE35",
+      "RULE17",
+      "RULE7"
+    ],
+    "R223": [],
+    "R224": [
+      "RULE36",
+      "RULE2"
+    ],
+    "R225": [
+      "RULE35",
+      "RULE17",
+      "RULE7"
+    ],
+    "R226": [
+      "RULE19"
+    ],
+    "R228": [
+      "RULE19"
+    ],
+    "R231": [],
+    "R232": [],
+    "R233": [],
+    "R234": [],
+    "R235": [],
+    "R236": [],
+    "R237": [],
+    "R238": [],
+    "R239": [],
+    "R240": [],
+    "R241": [],
+    "R242": [],
+    "R243": [],
+    "R244": [],
+    "R245": [],
+    "R246": [],
+    "R247": [],
+    "R248": [],
+    "R249": [],
+    "R250": [
+      "RULE5",
+      "RULE3",
+      "RULE4"
+    ],
+    "R260": [
+      "RULE19"
+    ],
+    "R275": [],
+    "R278": [
+      "RULE17",
+      "RULE7"
+    ],
+    "R279": [
+      "RULE17",
+      "RULE7"
+    ],
+    "R280": [],
+    "R281": [],
+    "R282": [],
+    "R283": [],
+    "R284": [],
+    "R285": [],
+    "R286": [],
+    "R291": [
+      "RULE5",
+      "RULE3",
+      "RULE4"
+    ],
+    "R292": [
+      "RULE5",
+      "RULE3",
+      "RULE4"
+    ],
+    "R293": [
+      "RULE5",
+      "RULE3",
+      "RULE4"
+    ],
+    "R300": [
+      "RULE19"
+    ],
+    "R303": [
+      "RULE19"
+    ],
+    "R304": [
+      "RULE19"
+    ],
+    "R305": [
+      "RULE19"
+    ],
+    "R307": [],
+    "R308": [],
+    "R309": [],
+    "R310": [
+      "RULE35",
+      "RULE17",
+      "RULE7"
+    ],
+    "R311": [
+      "RULE35",
+      "RULE17",
+      "RULE7"
+    ],
+    "R312": [
+      "RULE35",
+      "RULE17",
+      "RULE7"
+    ],
+    "R313": [
+      "RULE17",
+      "RULE7"
+    ],
+    "RD01": [],
+    "RD02": [],
+    "RD03": [],
+    "RD10": [],
+    "RD11": [],
+    "RD12": [],
+    "RD13": [],
+    "RD14": [],
+    "RD15": [],
+    "RD16": [],
+    "RD17": [],
+    "RD18": [],
+    "RD19": [],
+    "RD20": [],
+    "RD21": [],
+    "RD22": [],
+    "RD23": [],
+    "RD24": [],
+    "RD25": [],
+    "RD26": [],
+    "RD27": [],
+    "RD28": [],
+    "RD29": [],
+    "RD30": [],
+    "RD31": [],
+    "RD32": [],
+    "RD33": [],
+    "RD34": [],
+    "RD35": [],
+    "RD36": [],
+    "RD37": []
+  }
+}

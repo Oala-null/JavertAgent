@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title or 'Javert · 审核工作台' }}</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="stylesheet" href="/static/style.css?v={{ asset_v }}">
+{% block head_extra %}{% endblock %}
+</head>
+<body class="theme-blue">
+
+<header class="top-nav">
+  <a class="brand" href="/workbench">
+    <span class="brand-mark">J</span>
+    <span class="brand-text">Javert 审核工作台</span>
+  </a>
+
+  <nav class="top-links">
+    {% if current_user %}
+    <a href="/workbench">工作台</a>
+    <a href="/dashboard">仪表盘</a>
+    <a href="/export?format=xlsx&scope=v_and_i">导出</a>
+    {% endif %}
+  </nav>
+
+  <div class="top-user">
+    {% if current_user %}
+      <span class="user-name">{{ current_user.display_name or current_user.username }}</span>
+      <a href="/account/password" class="btn-link" title="修改密码">改密</a>
+      <form method="post" action="/logout" class="logout-form">
+        <button type="submit" class="btn-link">退出</button>
+      </form>
+    {% else %}
+      <a href="/login" class="btn-link">登录</a>
+    {% endif %}
+  </div>
+</header>
+
+{% if current_user %}
+<script>
+  window.JAVERT_USER = {{ current_user.username|tojson }};
+  {% if active_patient %}window.JAVERT_PATIENT = {{ active_patient|tojson }};{% endif %}
+</script>
+{% endif %}
+
+<main class="page">
+{% block content %}{% endblock %}
+</main>
+
+<footer class="page-foot">
+  <span>Javert · 医保自查自纠规则审计 · {{ now().strftime('%Y') }}</span>
+</footer>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

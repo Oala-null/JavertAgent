@@ -1,0 +1,50 @@
+{
+  "treatment_desc": "康复治疗 (早期康复 / ICU 康复 / 床旁康复)",
+  "treatment_kw_list": [
+    "康复治疗",
+    "早期康复",
+    "ICU 康复",
+    "床旁康复"
+  ],
+  "catalog_basis": "按医保政策, ICU/重症康复治疗应针对可康复的神经/运动功能障碍患者 (脑卒中/脑外伤/脊髓损伤/截瘫等). 短暂术后 ICU 无神经/运动障碍患者收康复属过度诊疗.",
+  "indication_dx_list": [
+    "脑卒中",
+    "脑梗",
+    "脑出血",
+    "脑外伤",
+    "脊髓损伤",
+    "偏瘫",
+    "截瘫",
+    "周围神经损伤",
+    "长期卧床",
+    "制动后",
+    "重症监护后综合征",
+    "ICU 获得性虚弱"
+  ],
+  "exclusion_dx_list": [],
+  "notes_evidence_section": "康复评定记录",
+  "notes_evidence_kw_list": [
+    "评定量表",
+    "Barthel",
+    "FIM",
+    "康复计划"
+  ],
+  "special_notes": [
+    "术后短暂 ICU 无神经/运动障碍 + 收康复治疗多次, 强支持 V."
+  ],
+  "pilot_caveat": "甲状腺手术患者通常无 ICU 康复需求, 命中即关注.",
+  "aux_keywords": [
+    "康复治疗",
+    "早期康复",
+    "ICU 康复",
+    "床旁康复",
+    "脑卒中",
+    "脊髓损伤"
+  ],
+  "aux_tools": [
+    "search_fees",
+    "note_diagnosis",
+    "search_notes"
+  ],
+  "aux_signal": "典型违规: 患者只是术后短暂 ICU, 无神经/运动障碍诊断, 收康复治疗.\n典型 CLEAN: 脑梗后偏瘫患者早期康复有评定量表 + 计划.\n典型 INCONCLUSIVE: 康复记录简略."
+}

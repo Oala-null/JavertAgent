@@ -1,0 +1,33 @@
+{
+  "exam_concept_desc": "甲胎蛋白 (AFP, 甲胎蛋白测定, 甲胎蛋白异质体)",
+  "catalog_basis": "按诊疗规范, AFP 用于肝癌 / 睾丸生殖细胞肿瘤筛查 + 孕妇产前筛查, 不应作为普通入院常规.",
+  "exam_kw_primary_list": ["甲胎蛋白", "AFP", "AFP 异质体"],
+  "indication_dx_list": [
+    "肝癌 / 肝细胞癌 / 原发性肝癌",
+    "肝硬化 / 慢性肝病高危人群",
+    "肝炎 / 病毒性肝炎",
+    "睾丸癌 / 卵黄囊瘤 / 生殖细胞肿瘤",
+    "孕妇 / 妊娠",
+    "产前筛查 / 唐氏筛查 / 神经管缺陷筛查",
+    "肿瘤标志物随访",
+    "肝移植后随访",
+    "胰腺癌 / 胃癌 (部分 AFP 阳性肿瘤随访)"
+  ],
+  "min_count": 1,
+  "inconclusive_addendum": "",
+  "drug_check": false,
+  "drug_kw_list": [],
+  "drug_concept_desc": "",
+  "special_notes": [],
+  "pilot_caveat": "甲状腺癌患者通常无 AFP 指征, 应判 VIOLATION; 但若同时合并肝癌/肝硬化随访则 CLEAN.",
+  "aux_keywords": [
+    "甲胎蛋白",
+    "AFP",
+    "甲胎蛋白测定",
+    "甲胎蛋白异质体",
+    "肝癌标志物",
+    "孕妇唐筛"
+  ],
+  "aux_tools": ["note_diagnosis", "search_fees"],
+  "aux_signal": "典型违规: 甲状腺癌患者收 AFP, 诊断列表无肝/睾丸/孕妇相关.\n典型 CLEAN: 肝硬化高危人群定期 AFP 筛查肝癌.\n典型 INCONCLUSIVE: 诊断 \"肝功能异常待查\" 等中间状态."
+}

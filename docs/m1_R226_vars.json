@@ -1,0 +1,41 @@
+{
+  "a_concept": "静脉高营养治疗",
+  "b_concept": "静脉用药集中配置 (PIVAS)",
+  "catalog_basis": "按各省《医疗服务诊疗目录》, 静脉高营养治疗项目内涵已含静脉营养配置, 单独再收静脉用药集中配置费 = 重复收费.",
+  "fee_category": "其他类",
+  "a_class_label": "高营养",
+  "b_class_label": "集中配置",
+  "a_class_items": [
+    "静脉高营养治疗",
+    "全胃肠外营养",
+    "TPN",
+    "PN",
+    "肠外营养"
+  ],
+  "b_class_items": [
+    "静脉用药集中配置",
+    "PIVAS 配置",
+    "配液费",
+    "配置费"
+  ],
+  "scan_action_term": "静脉高营养",
+  "aux_short_label": "配置费",
+  "notes_sections": ["医嘱", "药学服务", "护理记录"],
+  "third_party_clause": "高危药物 (例如化疗药) 由独立配液中心提供且文书有专门记录",
+  "violation_evidence": "营养治疗笔数 + 配置费笔数 + 价格 + 同日日期",
+  "inconclusive_example": "医嘱里只写 '全胃肠外营养', 但费用同时含配置费, 文书未指明是 PIVAS 还是病区配",
+  "basic_diagnosis_subject": "营养不良 / 不能进食 / 重症需要 TPN",
+  "basic_diagnosis_keywords": ["营养不良", "重症", "术后", "不能进食", "肠功能衰竭"],
+  "aux_keywords": [
+    "静脉高营养",
+    "全胃肠外营养",
+    "TPN",
+    "PN",
+    "静脉用药集中配置",
+    "PIVAS",
+    "配液费",
+    "配置费"
+  ],
+  "aux_tools": ["note_diagnosis", "search_fees", "search_notes"],
+  "aux_signal": "典型违规: 同日存在 \"静脉高营养 ¥120/天\" 与 \"静脉用药集中配置 ¥30/次\" 两笔, 药学服务记录无独立 PIVAS 说明.\n典型 CLEAN: 仅有高营养单笔; 或文书明确化疗等高危药物由独立配液中心配制单独计费."
+}

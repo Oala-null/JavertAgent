@@ -1,0 +1,51 @@
+rule_id: R160
+domain: 临床检验
+violation_type: 过度检查
+question: 将降钙素原检测（PCT）作为入院患者的常规检查，对大量无相关疾病指征的患者开展检验并收费。
+example: 示例：降钙素原（PCT）主要用于细菌感染性疾病的鉴别诊断、病情评估及指导抗生素使用。某医院违反诊疗规范，将“降钙素原检测（PCT）”作为入院常规检查，向大量无感染相关症状及指征的患者普遍开展检测并收费，属于过度检查。
+status: ready
+priority: P0
+prompt_addon: |+
+  本规则关注: 患者本次住院里, 是否被无指征收取了「降钙素原 (PCT, Procalcitonin)」检查/检验.
+  按诊疗规范, PCT 用于细菌感染严重程度评估 / 脓毒症诊断和抗菌治疗决策, 不应作为普通入院常规.
+
+  审计步骤:
+  1. 用 note_diagnosis 列出该患者全部诊断 (入院/出院/术前/术后/病理).
+  2. 用 search_fees(category="检查类") 或 search_fees(keyword=...) 查该检查是否做过, 记录出现次数 count.
+     检索关键词: "降钙素原" / "PCT" / "Procalcitonin"
+  3. 若 count == 0 → CLEAN (规则不适用, 患者根本没做该检查).
+  4. 检查 note_diagnosis 中是否含以下指征任一:
+     - 脓毒症 / 败血症 / 严重感染
+     - 感染性休克
+     - 重症肺炎 / 重症感染
+     - 全身炎症反应综合征 / SIRS
+     - 中性粒细胞减少伴发热 / 粒缺伴发热
+     - 外科术后感染 / 腹腔感染
+     - 免疫抑制患者发热
+     - ICU 入院 / 危重患者监测
+     
+  5. 若有任一指征命中 → CLEAN (有指征).
+  6. 【判「无指征」前 MUST 执行】用 scan_progress_indications(patient_id, symptom_kw_list=["胸闷", "气短", "喘", "憋", "胸痛", "下肢水肿", "发热", "咳嗽", "心悸"]) 扫病程/查房 section 族的症状指征.
+     - 若命中**阳性**症状 (无 [否认段]/[选项框] 标注) → CLEAN (病程记录有指征, 不只看诊断).
+     - 仅当诊断无指征 **且** 病程症状 0 阳性命中时, 才可继续向 VIOLATION 推进.
+  7. 若无任一诊断指征命中 且病程症状 0 阳性命中, 且 count >= 1 → VIOLATION,
+     evidence: 引诊断完整列表 + 该检查项目名 × count.
+  8. 诊断为「待查」「疑似」「排除」等中间状态 → INCONCLUSIVE.
+
+trigger_keywords:
+  - 降钙素原
+  - PCT
+  - Procalcitonin
+  - 脓毒症
+  - 严重感染
+  - 感染性休克
+  - SIRS
+suggested_tools:
+  - note_diagnosis
+  - search_fees
+expected_signal: |
+  典型违规: 择期甲状腺手术患者无感染征象, 收 PCT.
+  典型 CLEAN: 脓毒症患者多次 PCT 监测疗效.
+  典型 INCONCLUSIVE: 诊断 "发热待查" / "感染待排" 等中间状态.
+notes: ''
+derived_from_template: M2

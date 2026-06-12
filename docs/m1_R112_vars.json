@@ -1,0 +1,42 @@
+{
+  "a_concept": "CT / MRI 增强扫描类",
+  "b_concept": "同部位平扫",
+  "catalog_basis": "按各地《医疗服务诊疗目录》, CT/MRI 增强扫描项目本身已含一次平扫, 单独再收平扫费 = 重复收费.",
+  "fee_category": "检查类",
+  "a_class_label": "增强",
+  "b_class_label": "平扫",
+  "a_class_items": [
+    "CT 增强扫描",
+    "MRI 增强扫描",
+    "增强 CT",
+    "增强 MRI",
+    "磁共振增强",
+    "X 线计算机体层增强扫描"
+  ],
+  "b_class_items": [
+    "CT 平扫",
+    "MRI 平扫",
+    "平扫",
+    "X 线计算机体层平扫",
+    "磁共振平扫"
+  ],
+  "scan_action_term": "增强扫描",
+  "aux_short_label": "平扫费",
+  "notes_sections": ["影像报告", "辅助检查"],
+  "third_party_clause": "不同部位增强 / 不同时相分别采集 (文书明确部位或时相差异)",
+  "violation_evidence": "增强笔数 + 平扫笔数 + 价格 + 影像报告中部位 / 时相说明",
+  "inconclusive_example": "费用项目只标 'CT 扫描 ¥500' 而不区分增强 / 平扫",
+  "basic_diagnosis_subject": "需要影像检查的临床指征",
+  "basic_diagnosis_keywords": ["肿瘤", "占位", "炎症", "外伤", "梗死", "结节"],
+  "aux_keywords": [
+    "CT 增强扫描",
+    "MRI 增强扫描",
+    "增强 CT",
+    "增强 MRI",
+    "CT 平扫",
+    "MRI 平扫",
+    "平扫"
+  ],
+  "aux_tools": ["note_diagnosis", "search_fees", "search_notes"],
+  "aux_signal": "典型违规: 同一日 \"腹部 CT 增强扫描 ¥600\" + \"腹部 CT 平扫 ¥200\" 同部位, 影像报告未说明分次时相采集.\n典型 CLEAN: 仅有增强单笔; 或影像报告明确不同部位 / 不同时相独立采集."
+}

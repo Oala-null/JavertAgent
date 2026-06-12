@@ -1,0 +1,39 @@
+{
+  "a_concept": "基础麻醉",
+  "b_concept": "强化麻醉",
+  "catalog_basis": "按各省《医疗服务诊疗目录》, 基础麻醉项目本身已含强化镇静药物费用, 单独再收强化麻醉费 = 重复收费.",
+  "fee_category": "其他类",
+  "a_class_label": "基础",
+  "b_class_label": "强化",
+  "a_class_items": [
+    "基础麻醉",
+    "小儿基础麻醉",
+    "不能配合基础麻醉",
+    "镇静镇痛麻醉"
+  ],
+  "b_class_items": [
+    "强化麻醉",
+    "MAC 麻醉",
+    "监护麻醉",
+    "强化镇静"
+  ],
+  "scan_action_term": "基础麻醉",
+  "aux_short_label": "强化麻醉费",
+  "notes_sections": ["麻醉记录", "手术记录"],
+  "third_party_clause": "两次麻醉间隔超过 24 小时分次实施",
+  "violation_evidence": "两笔麻醉费用项目名 + 价格 + 麻醉记录时间窗",
+  "inconclusive_example": "麻醉记录中仅一笔麻醉名称模糊, 无法判断属基础还是强化",
+  "basic_diagnosis_subject": "需要麻醉的临床场景",
+  "basic_diagnosis_keywords": ["手术", "小儿", "不能配合", "焦虑"],
+  "aux_keywords": [
+    "基础麻醉",
+    "小儿基础麻醉",
+    "强化麻醉",
+    "MAC 麻醉",
+    "监护麻醉",
+    "强化镇静",
+    "麻醉记录"
+  ],
+  "aux_tools": ["note_diagnosis", "search_fees", "search_notes"],
+  "aux_signal": "典型违规: 同次手术周期同时存在 \"基础麻醉 ¥200\" 与 \"强化麻醉 ¥150\" 两笔费用, 麻醉记录无分次执行说明.\n典型 CLEAN: 仅有基础麻醉单笔; 或麻醉记录明确两次麻醉间隔 >24h 独立实施."
+}

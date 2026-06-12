@@ -1,0 +1,48 @@
+{
+  "service_desc": "多项康复评定打包 (日常生活能力 / 肢体功能 / 关节活动度 / 肌力 / 步态 / 平衡)",
+  "service_kw_list": [
+    "日常生活能力评定",
+    "肢体功能评定",
+    "关节活动度检查",
+    "肌力检查",
+    "步态检查",
+    "平衡检查"
+  ],
+  "catalog_basis": "按医保政策, 各项康复评定应有评定记录 + 量表分数 + 评定人. 对所有患者打包收 6 项评定但文书无对应记录 = 虚构.",
+  "execution_evidence_kw_list": [
+    "评定量表",
+    "评定人",
+    "Barthel",
+    "FIM",
+    "评定日期"
+  ],
+  "notes_section_hints": [
+    "康复评定记录",
+    "康复治疗记录"
+  ],
+  "supporting_dx_kw_list": [
+    "偏瘫",
+    "截瘫",
+    "脑梗后遗症",
+    "脑外伤后遗症",
+    "关节置换术后"
+  ],
+  "dept_check": "康复医学科",
+  "special_notes": [],
+  "pilot_caveat": "甲状腺手术患者一般无康复评定指征, 命中即关注.",
+  "aux_keywords": [
+    "日常生活能力评定",
+    "肢体功能评定",
+    "肌力检查",
+    "步态检查",
+    "平衡检查",
+    "Barthel",
+    "FIM"
+  ],
+  "aux_tools": [
+    "search_fees",
+    "search_notes",
+    "note_diagnosis"
+  ],
+  "aux_signal": "典型违规: 单侧膝置换患者收 6 项康复评定打包, 康复记录无评定量表分数.\n典型 CLEAN: 脑梗后偏瘫患者康复评定详述 Barthel/FIM 分数.\n典型 INCONCLUSIVE: 文书有康复记录但缺评定量表分数."
+}

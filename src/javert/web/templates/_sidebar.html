@@ -1,0 +1,93 @@
+{# partial: patient sidebar; expects vars: patients, active_patient, filter, filter_label #}
+{% set tags = patients | selectattr('batch_tag') | map(attribute='batch_tag') | unique | list %}
+<aside class="sidebar-panel" id="sidebar">
+  <div class="sidebar-head">
+    <h2>病人 (<span id="patient-count">{{ patients|length }}</span>)</h2>
+    <form class="filter-form" method="get" action="{% if active_patient %}/workbench/{{ active_patient }}{% else %}/workbench{% endif %}">
+      <select name="filter" onchange="this.form.submit()">
+        <option value="v_and_i" {% if filter == 'v_and_i' %}selected{% endif %}>违规 + 不明</option>
+        <option value="v_only"  {% if filter == 'v_only'  %}selected{% endif %}>仅违规</option>
+        <option value="i_only"  {% if filter == 'i_only'  %}selected{% endif %}>仅不明</option>
+        <option value="all"     {% if filter == 'all'     %}selected{% endif %}>全部 (含干净)</option>
+      </select>
+    </form>
+  </div>
+
+  {# facet 栏 — 纯前端, 与服务端 verdict filter 叠加 (只在已渲染集内筛, 无 reload) #}
+  <div class="facet-bar" id="facet-bar">
+    <input type="text" id="facet-pid" class="facet-input" placeholder="住院号 (如 J66252)…" oninput="applyFacets()" autocomplete="off" spellcheck="false">
+    <input type="text" id="facet-dx" class="facet-input" placeholder="主诊关键词 (如 甲状腺)…" oninput="applyFacets()">
+    <div class="facet-row">
+      <select id="facet-fee" class="facet-select" onchange="applyFacets()" title="费用区间">
+        <option value="all">费用 · 全部</option>
+        <option value="lt1">&lt; 1 万</option>
+        <option value="1to5">1 – 5 万</option>
+        <option value="gt5">&gt; 5 万</option>
+      </select>
+      <select id="facet-time" class="facet-select" onchange="applyFacets()" title="审计更新时间">
+        <option value="all">时间 · 全部</option>
+        <option value="today">今天</option>
+        <option value="week">本周</option>
+        <option value="month">本月</option>
+      </select>
+    </div>
+    {# 排序 — 纯前端重排卡片 (金额 / 生成时间, 顺/逆序), 与筛选叠加 #}
+    <div class="facet-row">
+      <select id="facet-sort" class="facet-select" onchange="applyFacets()" title="按金额或生成时间排序">
+        <option value="default">排序 · 默认</option>
+        <option value="fee_desc">金额 ↓ (高→低)</option>
+        <option value="fee_asc">金额 ↑ (低→高)</option>
+        <option value="time_desc">生成时间 ↓ (新→旧)</option>
+        <option value="time_asc">生成时间 ↑ (旧→新)</option>
+      </select>
+    </div>
+    {% if tags %}
+    <div class="facet-tags" id="facet-tags">
+      {% for t in tags %}
+      <button type="button" class="facet-chip" data-tag="{{ t }}" onclick="toggleTagChip(this)">{{ t }}</button>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <button type="button" class="facet-clear" id="facet-clear" onclick="clearFacets()" hidden>✕ 清空筛选</button>
+  </div>
+
+  <div class="patient-list" id="patient-list">
+  {% for p in patients %}
+    <a class="patient-card {% if p.patient_id == active_patient %}active{% endif %} {% if p.fully_reviewed %}fully-reviewed{% endif %}"
+       data-patient-id="{{ p.patient_id }}"
+       data-v-count="{{ p.v_count }}"
+       data-i-count="{{ p.i_count }}"
+       data-c-count="{{ p.c_count }}"
+       data-reviewed="{{ p.reviewed_count }}"
+       data-relevant="{{ p.relevant_count }}"
+       data-fees="{{ "%.0f"|format(p.fees_sum or 0) }}"
+       data-dx="{{ p.primary_dx }}"
+       data-tag="{{ p.batch_tag or '' }}"
+       data-updated="{{ p.updated_at.isoformat() if p.updated_at else '' }}"
+       href="/workbench/{{ p.patient_id }}?filter={{ filter }}">
+      <div class="row1">
+        <span>{% if p.fully_reviewed %}<span class="check-icon"></span>{% endif %}{{ p.patient_id }}</span>
+        {% if p.batch_tag %}<span class="batch-badge batch-{{ p.batch_tag }}">{{ p.batch_tag }}</span>{% endif %}
+      </div>
+      {% if p.primary_dx %}
+      <div class="row-dx" title="{{ p.primary_dx }}">{{ p.primary_dx }}</div>
+      {% endif %}
+      <div class="row2">
+        {% if p.v_count > 0 %}<span class="badge badge-v">{{ p.v_count }}V</span>{% endif %}
+        {% if p.i_count > 0 %}<span class="badge badge-i">{{ p.i_count }}I</span>{% endif %}
+        {% if filter == 'all' and p.c_count > 0 %}<span class="badge badge-c">{{ p.c_count }}C</span>{% endif %}
+        <span class="progress-text {% if p.fully_reviewed %}progress-full{% endif %}">
+          已审 {{ p.reviewed_count }}/{{ p.relevant_count }}
+        </span>
+      </div>
+      <div class="row-meta">
+        {% if p.fees_sum %}<span class="fee-chip">¥{{ "{:,.0f}".format(p.fees_sum) }}</span>{% endif %}
+        {% if p.updated_at %}<span class="updated-chip" title="最近审计时间">{{ p.updated_at | humanize_since }}</span>{% endif %}
+      </div>
+    </a>
+  {% else %}
+    <p class="muted" style="padding:14px; text-align:center;">当前 filter 下无病人</p>
+  {% endfor %}
+  </div>
+  <p class="facet-empty muted" id="facet-empty" hidden style="padding:14px; text-align:center;">facet 筛选后无匹配病人 — <a href="#" onclick="clearFacets();return false;">清空</a></p>
+</aside>

@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Javert · 自查自纠规则审计</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.10/dist/cdn.min.js"></script>
+<style>
+  body {
+    font-family: -apple-system, ui-sans-serif, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  .trace-line {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
+  }
+  details > summary { list-style: none; }
+  details > summary::-webkit-details-marker { display: none; }
+  /* 简单滚动条美化 */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  ::-webkit-scrollbar-track { background: transparent; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-900">
+<div x-data="javertApp()" x-init="init()" class="min-h-screen" x-cloak>
+
+  <!-- Header -->
+  <header class="sticky top-0 z-30 bg-white border-b border-slate-200 px-6 py-3 flex items-center gap-4">
+    <h1 class="text-xl font-bold tracking-tight flex items-center gap-2">
+      <span class="text-slate-900">Javert</span>
+      <span class="text-slate-400 text-sm font-normal">·</span>
+      <span class="text-slate-500 text-sm font-normal">医保自查自纠规则审计</span>
+    </h1>
+    <div class="flex-1"></div>
+
+    <!-- 池切换 -->
+    <div class="flex items-center gap-2 text-sm">
+      <span class="text-slate-500">患者池:</span>
+      <div class="inline-flex border border-slate-300 rounded-lg overflow-hidden">
+        <button @click="pool = 'pilot'"
+                :class="pool === 'pilot' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'"
+                class="px-3 py-1 text-sm font-medium transition-colors">
+          pilot<span class="ml-1 text-xs opacity-75" x-text="`(${pools.pilot ?? '?'})`"></span>
+        </button>
+        <button @click="pool = 'full'"
+                :class="pool === 'full' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'"
+                class="px-3 py-1 text-sm font-medium border-l border-slate-300 transition-colors">
+          full<span class="ml-1 text-xs opacity-75" x-text="pools.full !== null ? `(${pools.full})` : ''"></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 系统状态 + 同步 -->
+    <div class="flex items-center gap-3 text-xs">
+      <!-- 142 灯 -->
+      <span class="flex items-center gap-1.5"
+            :title="health.sql_server_142?.error ? `142 不可达: ${health.sql_server_142.error}` : '142 已连通'">
+        <span class="w-2 h-2 rounded-full transition-colors"
+              :class="{
+                'bg-emerald-500': health.sql_server_142?.sql_server,
+                'bg-rose-500 animate-pulse': health.sql_server_142 && !health.sql_server_142.sql_server,
+                'bg-slate-300': !health.sql_server_142,
+              }"></span>
+        <span class="font-medium"
+              :class="health.sql_server_142?.sql_server ? 'text-emerald-600' : 'text-rose-600'">142</span>
+      </span>
+
+      <!-- 已同步 / 待同步 -->
+      <span class="text-slate-500" x-show="sync_state.local">
+        <span class="text-emerald-700 font-mono font-semibold" x-text="sync_state.local?.synced ?? 0"></span>
+        <span class="mx-0.5 text-slate-400">/</span>
+        <span class="font-mono font-semibold"
+              :class="(sync_state.local?.unsynced ?? 0) > 0 ? 'text-amber-700' : 'text-slate-400'"
+              x-text="sync_state.local?.unsynced ?? 0"></span>
+        <span class="text-slate-400 ml-0.5">同步</span>
+      </span>
+
+      <!-- 立即同步按钮 -->
+      <button @click="syncNow()"
+              :disabled="syncing_now"
+              class="px-2 py-0.5 rounded text-xs bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+              :title="`手动触发心跳 + 回灌. 上次心跳: ${formatTime(sync_state.worker?.last_run_at) || '尚未'} · 间隔 ${sync_state.worker?.interval_s ?? '?'}s`">
+        <span x-show="!syncing_now" class="inline-block">⟳</span>
+        <svg x-show="syncing_now" class="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+        </svg>
+        <span x-show="!syncing_now">同步</span>
+      </button>
+
+      <!-- 模型名 -->
+      <span class="font-mono text-[10px] text-slate-400 hidden md:inline" x-text="(health.model || '').split('/').pop()"></span>
+    </div>
+  </header>
+
+  <!-- Main 2-col -->
+  <main class="grid grid-cols-12 max-w-screen-2xl mx-auto">
+
+    <!-- 左侧: 规则列表 -->
+    <aside class="col-span-4 lg:col-span-3 border-r border-slate-200 bg-white"
+           style="max-height: calc(100vh - 60px); overflow-y: auto;">
+      <div class="sticky top-0 bg-white border-b border-slate-200 p-3 z-10">
+        <input type="search" placeholder="搜索 rule_id / 问题..."
+               x-model="search"
+               class="w-full rounded-lg border-slate-300 text-sm px-3 py-2 focus:border-blue-500 focus:ring-blue-500" />
+        <div class="text-xs text-slate-500 mt-1">
+          <span x-text="filtered_rules.length"></span> / <span x-text="rules.length"></span> 条规则
+        </div>
+      </div>
+
+      <template x-for="status in ['ready','validated','drafting','abandoned']" :key="status">
+        <div x-show="(grouped[status] || []).length > 0">
+          <div class="bg-slate-50 px-3 py-1.5 border-b border-slate-200 flex items-center gap-2 text-xs sticky top-[71px] z-[5]">
+            <span class="px-2 py-0.5 rounded font-medium uppercase"
+                  :class="{
+                    'bg-blue-100 text-blue-700': status === 'ready',
+                    'bg-emerald-100 text-emerald-700': status === 'validated',
+                    'bg-slate-200 text-slate-700': status === 'drafting',
+                    'bg-rose-100 text-rose-600': status === 'abandoned',
+                  }" x-text="status"></span>
+            <span class="text-slate-400" x-text="(grouped[status] || []).length"></span>
+          </div>
+          <template x-for="rule in (grouped[status] || [])" :key="rule.rule_id">
+            <button @click="selectRule(rule.rule_id)"
+                    class="w-full text-left px-3 py-2.5 border-b border-slate-100 hover:bg-blue-50 transition-colors block"
+                    :class="selected_rule_id === rule.rule_id ? 'bg-blue-50' : ''"
+                    :style="selected_rule_id === rule.rule_id ? 'box-shadow: inset 4px 0 0 #3b82f6;' : ''">
+              <div class="flex items-baseline gap-2">
+                <span class="font-mono text-sm font-semibold text-slate-900" x-text="rule.rule_id"></span>
+                <span class="text-xs text-slate-500 truncate" x-text="rule.domain"></span>
+              </div>
+              <div class="text-xs text-slate-700 mt-0.5 leading-snug" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;" x-text="rule.question"></div>
+              <div x-show="rule.history && rule.history.total > 0" class="flex gap-1 mt-1.5 text-[10px]">
+                <span class="bg-rose-100 text-rose-700 px-1.5 rounded font-mono" x-show="rule.history?.V > 0">
+                  V<span x-text="rule.history.V"></span>
+                </span>
+                <span class="bg-emerald-100 text-emerald-700 px-1.5 rounded font-mono" x-show="rule.history?.C > 0">
+                  C<span x-text="rule.history.C"></span>
+                </span>
+                <span class="bg-amber-100 text-amber-700 px-1.5 rounded font-mono" x-show="rule.history?.I > 0">
+                  I<span x-text="rule.history.I"></span>
+                </span>
+              </div>
+            </button>
+          </template>
+        </div>
+      </template>
+
+      <div x-show="rules.length === 0 && !loading_rules" class="p-6 text-center text-slate-400 text-sm">
+        没有规则. 请先 <code class="bg-slate-100 px-1 rounded">javert init</code>
+      </div>
+      <div x-show="loading_rules" class="p-6 text-center text-slate-400 text-sm">加载中...</div>
+    </aside>
+
+    <!-- 右侧: 详情 + 运行 -->
+    <section class="col-span-8 lg:col-span-9 p-6"
+             style="min-height: calc(100vh - 60px);">
+
+      <!-- 未选中: 空提示 -->
+      <div x-show="!selected_rule" class="flex items-center justify-center py-32 text-slate-400">
+        <div class="text-center">
+          <div class="text-5xl mb-3">←</div>
+          <div class="text-lg">从左侧选择一条规则</div>
+          <div class="text-xs mt-2 text-slate-300">随机抽 1 患者跑审计 · 实时 trace · 双写本地 SQLite + 142</div>
+        </div>
+      </div>
+
+      <!-- 选中: 详情 -->
+      <div x-show="selected_rule" class="space-y-5 max-w-5xl">
+
+        <!-- 规则头 -->
+        <div class="flex items-start gap-4">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-3 flex-wrap">
+              <h2 class="font-mono text-2xl font-bold" x-text="selected_rule?.rule_id"></h2>
+              <span class="px-2.5 py-0.5 rounded text-xs font-medium uppercase"
+                    :class="{
+                      'bg-blue-100 text-blue-700': selected_rule?.status === 'ready',
+                      'bg-emerald-100 text-emerald-700': selected_rule?.status === 'validated',
+                      'bg-slate-200 text-slate-700': selected_rule?.status === 'drafting',
+                      'bg-rose-100 text-rose-600': selected_rule?.status === 'abandoned',
+                    }" x-text="selected_rule?.status"></span>
+              <span class="text-sm text-slate-500" x-text="selected_rule?.domain"></span>
+              <span x-show="selected_rule?.has_prompt_addon"
+                    class="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded uppercase">addon</span>
+            </div>
+            <h3 class="text-base text-slate-700 mt-1.5 font-medium" x-text="selected_rule?.violation_type"></h3>
+            <p class="text-sm text-slate-600 mt-2 leading-relaxed" x-text="selected_rule?.question"></p>
+          </div>
+        </div>
+
+        <!-- Action -->
+        <div class="bg-white border border-slate-200 rounded-lg p-4 flex items-center gap-4 flex-wrap">
+          <button @click="sampleAndRun()"
+                  :disabled="run_state.status === 'running'"
+                  class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium rounded-lg flex items-center gap-2 transition-colors">
+            <span x-show="run_state.status !== 'running'">🎲 随机抽 1 患者并跑</span>
+            <span x-show="run_state.status === 'running'" class="flex items-center gap-2">
+              <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+              </svg>
+              跑中…
+            </span>
+          </button>
+          <span class="text-sm" x-show="run_state.patient_id">
+            <span class="text-slate-500">患者:</span>
+            <span class="font-mono font-semibold text-slate-900 ml-1" x-text="run_state.patient_id"></span>
+          </span>
+          <div class="flex-1"></div>
+          <span class="text-xs text-slate-400">
+            从 <span class="font-medium text-slate-600" x-text="pool"></span> 池抽
+          </span>
+        </div>
+
+        <!-- 错误 -->
+        <div x-show="run_state.error" class="bg-rose-50 border border-rose-200 rounded-lg p-4">
+          <div class="font-medium text-rose-700">✗ <span x-text="run_state.error?.type"></span></div>
+          <div class="text-sm text-rose-600 mt-1" x-text="run_state.error?.message"></div>
+        </div>
+
+        <!-- Trace -->
+        <div x-show="run_state.traces.length > 0" class="bg-slate-900 rounded-lg p-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-xs font-medium text-slate-400">TRACE</span>
+            <span class="text-xs text-slate-500" x-text="`(${run_state.traces.length} 行)`"></span>
+            <div class="flex-1"></div>
+            <span x-show="run_state.status === 'running'" class="flex items-center gap-1 text-xs text-emerald-400">
+              <span class="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></span> 实时
+            </span>
+          </div>
+          <div class="space-y-0.5 overflow-y-auto" style="max-height: 24rem;" x-ref="traceBox">
+            <template x-for="(line, i) in run_state.traces" :key="i">
+              <div class="trace-line text-xs"
+                   :class="{
+                     'text-blue-300': line.startsWith('[LLM'),
+                     'text-purple-300': line.startsWith('[Tool'),
+                     'text-amber-300': line.startsWith('[Runner'),
+                     'text-emerald-300': line.startsWith('[Verdict') || line.startsWith('[Start'),
+                     'text-slate-300': !line.match(/^\[(LLM|Tool|Runner|Verdict|Start)/),
+                   }"
+                   x-text="line"></div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Verdict -->
+        <div x-show="run_state.result" class="border-2 rounded-lg p-5"
+             :class="{
+               'border-rose-300 bg-rose-50': run_state.result?.verdict === 'VIOLATION',
+               'border-emerald-300 bg-emerald-50': run_state.result?.verdict === 'CLEAN',
+               'border-amber-300 bg-amber-50': run_state.result?.verdict === 'INCONCLUSIVE',
+             }">
+          <div class="flex items-start gap-4 flex-wrap">
+            <div class="text-4xl">
+              <span x-show="run_state.result?.verdict === 'VIOLATION'">🔴</span>
+              <span x-show="run_state.result?.verdict === 'CLEAN'">🟢</span>
+              <span x-show="run_state.result?.verdict === 'INCONCLUSIVE'">🟡</span>
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="text-2xl font-bold tracking-tight"
+                   :class="{
+                     'text-rose-700': run_state.result?.verdict === 'VIOLATION',
+                     'text-emerald-700': run_state.result?.verdict === 'CLEAN',
+                     'text-amber-700': run_state.result?.verdict === 'INCONCLUSIVE',
+                   }" x-text="run_state.result?.verdict"></div>
+              <div class="text-sm text-slate-600 mt-0.5">
+                conf=<span class="font-mono font-semibold" x-text="(run_state.result?.confidence ?? 0).toFixed(2)"></span>
+                <span class="mx-1">·</span>
+                <span x-text="`${run_state.result?.duration_ms}ms`"></span>
+                <span class="mx-1">·</span>
+                run_id=<span class="font-mono text-xs" x-text="run_state.result?.run_id"></span>
+              </div>
+            </div>
+            <div class="text-xs text-slate-500 text-right">
+              <div>SQLite: <span :class="run_state.result?.persisted?.sqlite ? 'text-emerald-600 font-medium' : 'text-slate-400'" x-text="run_state.result?.persisted?.sqlite ? '✓' : '✗'"></span></div>
+              <div>142: <span :class="run_state.result?.persisted?.sqlserver_142 ? 'text-emerald-600 font-medium' : 'text-slate-400'" x-text="run_state.result?.persisted?.sqlserver_142 ? '✓' : '✗ (skip)'"></span></div>
+            </div>
+          </div>
+
+          <!-- reasoning -->
+          <div class="mt-4">
+            <div class="text-xs font-medium text-slate-600 uppercase mb-1">Reasoning</div>
+            <div class="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed" x-text="run_state.result?.reasoning"></div>
+          </div>
+
+          <!-- evidence -->
+          <div x-show="run_state.result?.evidence?.length > 0" class="mt-4">
+            <div class="text-xs font-medium text-slate-600 uppercase mb-1">
+              Evidence (<span x-text="run_state.result?.evidence?.length"></span>)
+            </div>
+            <div class="space-y-1.5">
+              <template x-for="(ev, i) in run_state.result?.evidence" :key="i">
+                <div class="bg-white rounded border border-slate-200 p-2.5 text-xs">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="font-mono font-medium text-blue-700" x-text="ev.source"></span>
+                    <span class="text-slate-400" x-show="ev.locator">@<span x-text="ev.locator"></span></span>
+                  </div>
+                  <div class="text-slate-700 mt-1 whitespace-pre-wrap leading-snug" x-text="ev.text"></div>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- tool calls -->
+          <div x-show="run_state.result?.tool_calls?.length > 0" class="mt-4">
+            <details>
+              <summary class="text-xs font-medium text-slate-600 uppercase cursor-pointer hover:text-slate-800 select-none">
+                ▸ Tool calls (<span x-text="run_state.result?.tool_calls?.length"></span>)
+              </summary>
+              <div class="space-y-1.5 mt-2">
+                <template x-for="(tc, i) in run_state.result?.tool_calls" :key="i">
+                  <div class="bg-white rounded border border-slate-200 p-2.5 text-xs">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="font-mono font-medium text-purple-700" x-text="tc.tool_name"></span>
+                      <span class="text-slate-400" x-text="`${tc.duration_ms}ms`"></span>
+                      <span x-show="tc.cached" class="text-amber-600 text-[10px] uppercase">cached</span>
+                    </div>
+                    <div class="font-mono text-[10px] text-slate-500 mt-0.5" x-text="JSON.stringify(tc.arguments)"></div>
+                    <div class="text-slate-700 mt-1.5 whitespace-pre-wrap font-mono text-[11px] leading-snug" x-text="tc.result"></div>
+                  </div>
+                </template>
+              </div>
+            </details>
+          </div>
+        </div>
+
+        <!-- 规则详情 (折叠) -->
+        <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+          <details class="group">
+            <summary class="cursor-pointer px-4 py-2.5 bg-slate-50 hover:bg-slate-100 text-sm font-medium border-b border-slate-200 flex items-center gap-2 select-none">
+              <span class="text-slate-400 group-open:rotate-90 transition-transform inline-block">▸</span>
+              <span>规则详情 / Prompt addon</span>
+              <span class="flex-1"></span>
+              <span x-show="selected_rule?.has_prompt_addon" class="text-xs text-purple-600 font-normal">含 addon</span>
+            </summary>
+            <div class="p-4 space-y-3 text-sm">
+              <div>
+                <div class="text-[11px] font-medium text-slate-500 uppercase">violation_type</div>
+                <div x-text="selected_rule?.violation_type"></div>
+              </div>
+              <div x-show="selected_rule?.example">
+                <div class="text-[11px] font-medium text-slate-500 uppercase">example (0325)</div>
+                <div class="whitespace-pre-wrap text-slate-700" x-text="selected_rule?.example"></div>
+              </div>
+              <div x-show="selected_rule?.prompt_addon">
+                <div class="text-[11px] font-medium text-slate-500 uppercase">prompt_addon</div>
+                <pre class="text-xs bg-slate-50 p-3 rounded mt-1 whitespace-pre-wrap font-mono leading-relaxed" x-text="selected_rule?.prompt_addon"></pre>
+              </div>
+              <div x-show="selected_rule?.trigger_keywords?.length > 0">
+                <div class="text-[11px] font-medium text-slate-500 uppercase">trigger_keywords</div>
+                <div class="flex flex-wrap gap-1 mt-1">
+                  <template x-for="kw in selected_rule?.trigger_keywords" :key="kw">
+                    <span class="text-xs bg-slate-100 px-2 py-0.5 rounded font-mono" x-text="kw"></span>
+                  </template>
+                </div>
+              </div>
+              <div x-show="selected_rule?.suggested_tools?.length > 0">
+                <div class="text-[11px] font-medium text-slate-500 uppercase">suggested_tools</div>
+                <div class="flex flex-wrap gap-1 mt-1">
+                  <template x-for="t in selected_rule?.suggested_tools" :key="t">
+                    <span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-mono" x-text="t"></span>
+                  </template>
+                </div>
+              </div>
+              <div x-show="selected_rule?.expected_signal">
+                <div class="text-[11px] font-medium text-slate-500 uppercase">expected_signal</div>
+                <div class="whitespace-pre-wrap text-slate-700" x-text="selected_rule?.expected_signal"></div>
+              </div>
+              <div x-show="selected_rule?.notes">
+                <div class="text-[11px] font-medium text-slate-500 uppercase">notes</div>
+                <div class="whitespace-pre-wrap text-slate-700" x-text="selected_rule?.notes"></div>
+              </div>
+              <div class="pt-2 border-t border-slate-100">
+                <a :href="`/api/rules/${selected_rule?.rule_id}/yaml`" target="_blank"
+                   class="text-xs text-blue-600 hover:underline">📄 查看原始 yaml</a>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <!-- 历史 -->
+        <div x-show="(selected_rule?.recent_runs ?? []).length > 0" class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+          <details>
+            <summary class="cursor-pointer px-4 py-2.5 bg-slate-50 hover:bg-slate-100 text-sm font-medium border-b border-slate-200 flex items-center gap-2 select-none">
+              <span class="text-slate-400">📜</span>
+              <span>最近 <span x-text="(selected_rule?.recent_runs ?? []).length"></span> 条审计历史</span>
+              <span class="flex-1"></span>
+              <span x-show="selected_rule?.history" class="flex gap-1 text-[10px]">
+                <span class="bg-rose-100 text-rose-700 px-1.5 rounded font-mono" x-show="selected_rule?.history?.V > 0">V<span x-text="selected_rule.history.V"></span></span>
+                <span class="bg-emerald-100 text-emerald-700 px-1.5 rounded font-mono" x-show="selected_rule?.history?.C > 0">C<span x-text="selected_rule.history.C"></span></span>
+                <span class="bg-amber-100 text-amber-700 px-1.5 rounded font-mono" x-show="selected_rule?.history?.I > 0">I<span x-text="selected_rule.history.I"></span></span>
+              </span>
+            </summary>
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs">
+                <thead class="bg-slate-50 text-slate-500">
+                  <tr>
+                    <th class="px-3 py-1.5 text-left font-medium uppercase">run_id</th>
+                    <th class="px-3 py-1.5 text-left font-medium uppercase">patient</th>
+                    <th class="px-3 py-1.5 text-left font-medium uppercase">verdict</th>
+                    <th class="px-3 py-1.5 text-left font-medium uppercase">conf</th>
+                    <th class="px-3 py-1.5 text-left font-medium uppercase">耗时</th>
+                    <th class="px-3 py-1.5 text-left font-medium uppercase">at</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="run in (selected_rule?.recent_runs ?? [])" :key="run.run_id">
+                    <tr class="border-t border-slate-100 hover:bg-slate-50">
+                      <td class="px-3 py-1 font-mono text-[10px] text-slate-500" x-text="run.run_id"></td>
+                      <td class="px-3 py-1 font-mono" x-text="run.patient_id"></td>
+                      <td class="px-3 py-1">
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-medium font-mono uppercase"
+                              :class="{
+                                'bg-rose-100 text-rose-700': run.verdict === 'VIOLATION',
+                                'bg-emerald-100 text-emerald-700': run.verdict === 'CLEAN',
+                                'bg-amber-100 text-amber-700': run.verdict === 'INCONCLUSIVE',
+                              }" x-text="run.verdict"></span>
+                      </td>
+                      <td class="px-3 py-1 font-mono" x-text="run.confidence.toFixed(2)"></td>
+                      <td class="px-3 py-1 text-slate-500" x-text="`${run.duration_ms}ms`"></td>
+                      <td class="px-3 py-1 text-slate-400 text-[10px]" x-text="formatTime(run.started_at)"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+function javertApp() {
+  return {
+    rules: [],
+    loading_rules: true,
+    selected_rule_id: null,
+    selected_rule: null,
+    search: '',
+    pool: 'pilot',
+    pools: { pilot: null, full: null },
+    health: {},
+    sync_state: { local: null, worker: null, sql_enabled: null },
+    syncing_now: false,
+    run_state: {
+      status: 'idle',
+      patient_id: null,
+      traces: [],
+      result: null,
+      error: null,
+    },
+    _es: null,
+    _poll_timer: null,
+
+    get filtered_rules() {
+      if (!this.search) return this.rules;
+      const q = this.search.toLowerCase();
+      return this.rules.filter(r =>
+        r.rule_id.toLowerCase().includes(q) ||
+        (r.question || '').toLowerCase().includes(q) ||
+        (r.domain || '').toLowerCase().includes(q) ||
+        (r.violation_type || '').toLowerCase().includes(q)
+      );
+    },
+
+    get grouped() {
+      const out = { ready: [], validated: [], drafting: [], abandoned: [] };
+      for (const r of this.filtered_rules) {
+        if (!out[r.status]) out[r.status] = [];
+        out[r.status].push(r);
+      }
+      return out;
+    },
+
+    formatTime(iso) {
+      try {
+        const d = new Date(iso);
+        const now = new Date();
+        const diff = (now - d) / 1000;
+        if (diff < 60) return `${Math.floor(diff)}s前`;
+        if (diff < 3600) return `${Math.floor(diff / 60)}m前`;
+        if (diff < 86400) return `${Math.floor(diff / 3600)}h前`;
+        return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+      } catch { return iso; }
+    },
+
+    async init() {
+      await Promise.all([
+        this.loadHealth(), this.loadPools(), this.loadRules(), this.loadSyncStatus(),
+      ]);
+      // 启动 10s polling 心跳与同步状态
+      this._poll_timer = setInterval(() => {
+        this.loadHealth();
+        this.loadSyncStatus();
+      }, 10000);
+    },
+
+    async loadHealth() {
+      try {
+        const r = await fetch('/api/health');
+        this.health = await r.json();
+      } catch (e) { console.error('health', e); }
+    },
+
+    async loadSyncStatus() {
+      try {
+        const r = await fetch('/api/sync/status');
+        if (r.ok) this.sync_state = await r.json();
+      } catch (e) { console.error('sync_status', e); }
+    },
+
+    async syncNow() {
+      if (this.syncing_now) return;
+      this.syncing_now = true;
+      try {
+        const r = await fetch('/api/sync/now', { method: 'POST' });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          console.warn('sync_now failed', err);
+        }
+      } catch (e) {
+        console.error('sync_now', e);
+      }
+      // 立刻刷新状态
+      await Promise.all([this.loadHealth(), this.loadSyncStatus()]);
+      this.syncing_now = false;
+    },
+
+    async loadPools() {
+      try {
+        const r = await fetch('/api/patients/pools');
+        this.pools = await r.json();
+      } catch (e) { console.error('pools', e); }
+    },
+
+    async loadRules() {
+      this.loading_rules = true;
+      try {
+        const r = await fetch('/api/rules');
+        this.rules = await r.json();
+      } catch (e) {
+        console.error('rules', e);
+        this.rules = [];
+      } finally {
+        this.loading_rules = false;
+      }
+    },
+
+    async selectRule(rule_id) {
+      this.selected_rule_id = rule_id;
+      // 不清空 run_state, 让用户可以看到上次的结果, 直到点击新的"跑"
+      try {
+        const r = await fetch(`/api/rules/${rule_id}`);
+        if (!r.ok) {
+          this.selected_rule = null;
+          return;
+        }
+        this.selected_rule = await r.json();
+      } catch (e) {
+        console.error('select', e);
+        this.selected_rule = null;
+      }
+    },
+
+    async sampleAndRun() {
+      if (!this.selected_rule_id) return;
+      if (this._es) {
+        try { this._es.close(); } catch {}
+        this._es = null;
+      }
+      this.run_state = { status: 'running', patient_id: null, traces: [], result: null, error: null };
+
+      // 1. 抽
+      try {
+        const sampleResp = await fetch(`/api/patients/sample?n=1&pool=${this.pool}`);
+        if (!sampleResp.ok) {
+          let err = {};
+          try { err = await sampleResp.json(); } catch {}
+          this.run_state.error = { type: 'SampleError', message: err.detail || `HTTP ${sampleResp.status}` };
+          this.run_state.status = 'error';
+          return;
+        }
+        const sample = await sampleResp.json();
+        this.run_state.patient_id = sample.patient_ids[0];
+      } catch (e) {
+        this.run_state.error = { type: 'NetworkError', message: e.message };
+        this.run_state.status = 'error';
+        return;
+      }
+
+      // 2. SSE
+      const url = `/api/audit/run?rule_id=${encodeURIComponent(this.selected_rule_id)}&patient_id=${encodeURIComponent(this.run_state.patient_id)}`;
+      const es = new EventSource(url);
+      this._es = es;
+
+      es.addEventListener('start', (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          this.run_state.traces.push(`[Start] rule=${data.rule_id} patient=${data.patient_id} model=${(data.model || '').split('/').pop()}`);
+        } catch {}
+      });
+
+      es.addEventListener('trace', (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          this.run_state.traces.push(data.msg);
+          this.$nextTick(() => {
+            if (this.$refs.traceBox) this.$refs.traceBox.scrollTop = this.$refs.traceBox.scrollHeight;
+          });
+        } catch {}
+      });
+
+      es.addEventListener('result', (ev) => {
+        try {
+          this.run_state.result = JSON.parse(ev.data);
+          this.run_state.status = 'done';
+        } catch (e) {
+          this.run_state.error = { type: 'ParseError', message: 'result event 解析失败' };
+          this.run_state.status = 'error';
+        }
+        es.close();
+        this._es = null;
+        // 异步刷新规则历史 + 同步状态 (新条目应该立刻反映在已同步/待同步计数)
+        this.selectRule(this.selected_rule_id);
+        this.loadSyncStatus();
+      });
+
+      es.addEventListener('fail', (ev) => {
+        try {
+          this.run_state.error = JSON.parse(ev.data);
+        } catch {
+          this.run_state.error = { type: 'UnknownFail', message: ev.data || '未知错误' };
+        }
+        this.run_state.status = 'error';
+        es.close();
+        this._es = null;
+      });
+
+      es.onerror = () => {
+        // EventSource 连接错误 (服务器重启 / 网络断). result 后主动 close 也会触发, 忽略已结束的状态.
+        if (es.readyState === EventSource.CLOSED) return;
+        if (this.run_state.status === 'done' || this.run_state.status === 'error') return;
+        this.run_state.error = { type: 'SSEError', message: 'SSE 连接中断' };
+        this.run_state.status = 'error';
+        es.close();
+        this._es = null;
+      };
+    },
+  };
+}
+</script>
+</body>
+</html>

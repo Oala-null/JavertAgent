@@ -1,0 +1,41 @@
+{
+  "service_desc": "CT 三维重建 (含冠矢状面重建)",
+  "service_kw_list": [
+    "三维重建",
+    "冠状面重建",
+    "矢状面重建",
+    "立体显示",
+    "MIP"
+  ],
+  "catalog_basis": "按医保政策, CT 三维重建应有重建图像编号 + 阅片记录 + 与平扫不同的立体诊断结果. 仅 CT 平扫但加收三维重建费 = 虚构.",
+  "execution_evidence_kw_list": [
+    "重建图像",
+    "三维图",
+    "立体显示",
+    "MIP 图",
+    "重建说明"
+  ],
+  "notes_section_hints": [
+    "影像报告"
+  ],
+  "supporting_dx_kw_list": [],
+  "dept_check": "",
+  "special_notes": [
+    "若诊断与重建结果无关联 (如简单胸部 CT 平扫诊断肺结节, 不需 3D), 强支持 VIOLATION."
+  ],
+  "pilot_caveat": "患者诊断与重建结果应有医学关联; 平扫已足够时不需重建.",
+  "aux_keywords": [
+    "三维重建",
+    "冠状面重建",
+    "矢状面重建",
+    "立体显示",
+    "MIP",
+    "CT 重建"
+  ],
+  "aux_tools": [
+    "search_fees",
+    "search_notes",
+    "note_diagnosis"
+  ],
+  "aux_signal": "典型违规: 费用列'三维重建 × 5' 但影像报告仅含平扫描述, 无立体图像.\n典型 CLEAN: 复杂骨折患者 CT 三维重建图详述空间关系.\n典型 INCONCLUSIVE: 报告含'图见附件'但无图像号."
+}

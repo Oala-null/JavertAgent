@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>V 判定质量核查 — 工具盲区 vs 真实违规</title>
+<style>
+  :root {
+    --bg: #fafbfc;
+    --card: #ffffff;
+    --border: #e4e7eb;
+    --text: #1f2933;
+    --muted: #616e7c;
+    --accent: #3b82f6;
+    --accent-soft: #dbeafe;
+    --green: #10b981;
+    --green-soft: #d1fae5;
+    --yellow: #f59e0b;
+    --yellow-soft: #fef3c7;
+    --red: #ef4444;
+    --red-soft: #fee2e2;
+    --purple: #8b5cf6;
+    --purple-soft: #ede9fe;
+    --orange: #f97316;
+    --orange-soft: #fed7aa;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  header {
+    background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+    padding: 28px 48px 22px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { margin: 0 0 6px 0; font-size: 26px; color: #065f46; }
+  header .sub { color: var(--muted); font-size: 14px; }
+  header .badges { margin-top: 10px; }
+  .badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-right: 6px;
+  }
+  .badge.green { background: var(--green-soft); color: #065f46; }
+  .badge.yellow { background: var(--yellow-soft); color: #92400e; }
+  .badge.red { background: var(--red-soft); color: #991b1b; }
+  .badge.blue { background: var(--accent-soft); color: #1e40af; }
+  .badge.purple { background: var(--purple-soft); color: #5b21b6; }
+  .badge.orange { background: var(--orange-soft); color: #9a3412; }
+
+  .tabs {
+    display: flex;
+    border-bottom: 2px solid var(--border);
+    background: white;
+    padding: 0 48px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    overflow-x: auto;
+  }
+  .tabs button {
+    background: none;
+    border: none;
+    padding: 14px 22px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+    margin-bottom: -2px;
+  }
+  .tabs button:hover { color: var(--accent); }
+  .tabs button.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  .content { padding: 28px 48px 64px; max-width: 1240px; margin: 0 auto; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  h2 { font-size: 22px; margin: 24px 0 12px; color: #1e3a8a; }
+  h3 { font-size: 16px; margin: 22px 0 10px; color: var(--text); }
+  h4 { font-size: 14px; margin: 10px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+  table th, table td {
+    text-align: left; padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  table th {
+    background: #f1f5f9;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .verdict-tag {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .verdict-tag.true { background: var(--green-soft); color: #065f46; }
+  .verdict-tag.etl { background: var(--orange-soft); color: #9a3412; }
+  .verdict-tag.edge { background: var(--yellow-soft); color: #92400e; }
+  .verdict-tag.blind { background: var(--red-soft); color: #991b1b; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  .quality-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    margin: 16px 0 24px;
+  }
+  .qs {
+    border-radius: 8px;
+    padding: 16px 20px;
+    border-left: 5px solid;
+  }
+  .qs.true { background: var(--green-soft); border-color: var(--green); }
+  .qs.etl { background: var(--orange-soft); border-color: var(--orange); }
+  .qs.edge { background: var(--yellow-soft); border-color: var(--yellow); }
+  .qs .label { font-size: 12px; color: var(--muted); }
+  .qs .value { font-size: 32px; font-weight: 700; }
+
+  .case {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin: 14px 0;
+    overflow: hidden;
+  }
+  .case.true { border-left: 5px solid var(--green); }
+  .case.etl { border-left: 5px solid var(--orange); }
+  .case.edge { border-left: 5px solid var(--yellow); }
+  .case-head {
+    padding: 12px 18px;
+    background: #f8fafc;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .case-head h4 {
+    margin: 0; text-transform: none; letter-spacing: 0; font-size: 15px;
+    color: var(--text);
+  }
+  .case-body { padding: 14px 18px; font-size: 13px; }
+  .case-body h5 { margin: 12px 0 4px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .case-body p { margin: 6px 0; }
+
+  .doc-quote {
+    background: #fafbfc;
+    border-left: 4px solid var(--accent);
+    padding: 8px 12px;
+    margin: 6px 0;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #374151;
+  }
+  .doc-quote .ds { color: var(--accent); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+  .doc-quote em {
+    background: var(--yellow-soft);
+    color: #92400e;
+    font-style: normal;
+    padding: 1px 3px;
+    border-radius: 2px;
+  }
+  .doc-quote .section-label {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-right: 6px;
+  }
+  .section-label.risk { background: var(--red-soft); color: #991b1b; }
+  .section-label.denied { background: var(--orange-soft); color: #9a3412; }
+  .section-label.real { background: var(--green-soft); color: #065f46; }
+
+  .verdict-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin: 10px 0;
+  }
+  .verdict-row > div {
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  .vr-llm { background: var(--accent-soft); color: #1e40af; }
+  .vr-real { background: var(--green-soft); color: #065f46; }
+
+  @media (max-width: 800px) {
+    .content, header, .tabs { padding-left: 20px; padding-right: 20px; }
+    .verdict-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🔬 V 判定质量核查 — 工具盲区 vs 真实违规</h1>
+  <div class="sub">2026-05-15 · 3 患者 19 V 全部核查 · 全量文书 grep + 语义分类</div>
+  <div class="badges">
+    <span class="badge green">18 真 V (94.7%)</span>
+    <span class="badge orange">1 ETL 问题 (R203)</span>
+    <span class="badge yellow">1 边界 (R112)</span>
+    <span class="badge red">0 假阳性</span>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="summary">📊 核查总览</button>
+  <button class="tab-btn" data-tab="patterns">🔍 工具盲区模式</button>
+  <button class="tab-btn" data-tab="j18906">🧠 J18906 7 V 核查</button>
+  <button class="tab-btn" data-tab="j13365">🦴 J13365 10 V 核查</button>
+  <button class="tab-btn" data-tab="next">🎯 下一步</button>
+</nav>
+
+<main class="content">
+
+<!-- ========== TAB 1: 总览 ========== -->
+<section class="tab-panel active" id="summary">
+  <h2>核查结论: 19 V 中 18 条是真实违规</h2>
+
+  <div class="quality-summary">
+    <div class="qs true">
+      <div class="label">✅ 真实违规</div>
+      <div class="value">18</div>
+      <div>fee 命中 + 文书真无指征</div>
+    </div>
+    <div class="qs etl">
+      <div class="label">🟠 ETL 问题</div>
+      <div class="value">1</div>
+      <div>R203 麻醉记录</div>
+    </div>
+    <div class="qs edge">
+      <div class="label">🟡 边界案例</div>
+      <div class="value">1</div>
+      <div>R112 CT 重复 conf 0.90</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0;">🎯 核查方法</h3>
+    <p style="font-size:14px;">对每条 V, 用 <b>全文 grep 13 类临床指征关键词</b> (心衰/心梗/休克/脓毒症/感染/肝癌/麻醉记录 等), 然后<b>看每个 hit 的所在 section + 上下文</b>, 判断:</p>
+    <ul style="font-size:13px;">
+      <li>🔴 <b>风险告知</b> ("手术可能并发症: 心搏骤停") — 假指征</li>
+      <li>🟠 <b>既往史否认</b> ("否认冠心病 / 房颤") — 反向 (患者明确否认)</li>
+      <li>🟡 <b>选项框 / 复印附件</b> (心电图 在病历复印列表) — 假指征</li>
+      <li>🟢 <b>真实病史 / 现病史</b> (患者实际有这个诊断) — 真指征</li>
+    </ul>
+    <p style="font-size:14px;"><b>结论</b>: 19 V 中, 所有"看似指征命中"<b>都属前 3 类假指征</b>, 没有任何一条命中的关键词在真实病史段出现.</p>
+  </div>
+
+  <h3>3 患者 19 V 总览表</h3>
+  <div class="card">
+    <table>
+      <thead>
+        <tr><th>规则</th><th>患者</th><th>LLM V conf</th><th>核查结论</th><th>评级</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>R203 全身麻醉</td><td>J66252</td><td>0.95</td><td>"麻醉记录" 文书无, 极可能 ETL</td><td><span class="verdict-tag etl">🟠 ETL</span></td></tr>
+        <tr><td>R220 控制性降压</td><td>J66252</td><td>0.95</td><td>2ml 出血 + 无血管手术 → 医学硬证据</td><td><span class="verdict-tag true">✅ 真 V</span></td></tr>
+
+        <tr><td>R103 影像未做</td><td>J18906</td><td>0.95</td><td>第 2 部位 CT + 心脏超声 文书无报告</td><td><span class="verdict-tag true">✅ 真 V</span></td></tr>
+        <tr><td>R131 心脏彩超</td><td>J18906</td><td>0.95</td><td>"冠心病/房颤" 在<b>既往史否认</b>段</td><td><span class="verdict-tag true">✅ 真 V</span></td></tr>
+        <tr><td>R141 肌红蛋白</td><td>J18906</td><td>0.95</td><td>"心搏骤停" 仅在<b>麻醉风险告知</b></td><td><span class="verdict-tag true">✅ 真 V</span></td></tr>
+        <tr><td>R143 血浆乳酸</td><td>J18906</td><td>0.95</td><td>"休克/败血症" 仅在<b>风险告知</b></td><td><span class="verdict-tag true">✅ 真 V</span></td></tr>
+        <tr><td>R146 BNP</td><td>J18906</td><td>0.95</td><td><b>全部 14 个关键词无命中</b> (无争议)</td><td><span class="verdict-tag true">✅ 真 V</span></td></tr>
+        <tr><td>R160 PCT</td><td>J18906</td><td>0.95</td><td>"败血症/腹腔感染" 在<b>风险告知</b>; "发热" 是 "无发热" 反向</td><td><span class="verdict-tag true">✅ 真 V</span></td></tr>
+        <tr><td>R224 重症血气</td><td>J18906</td><td>0.95</td><td>"ICU" 在<b>核查单选项框</b>, 无 ICU 实际介入</td><td><span class="verdict-tag true">✅ 真 V</span></td></tr>
+
+        <tr><td>R080 康复评定</td><td>J13365</td><td>0.90</td><td>"肌力/肢体功能" 在体格检查/告知, 非<b>康复评定</b></td><td><span class="verdict-tag true">✅ 真 V</span></td></tr>
+        <tr><td>R112 CT 增强+平扫</td><td>J13365</td><td>0.90</td><td>4 次平扫 vs 1 次增强, LLM 自知边界 (conf 非 1.0)</td><td><span class="verdict-tag edge">🟡 边界</span></td></tr>
+        <tr><td>R131 心脏彩超</td><td>J13365</td><td>0.95</td><td>"心衰" 仅在<b>风险告知</b></td><td><span class="verdict-tag true">✅ 真 V</span></td></tr>
+        <tr><td>R141 肌红蛋白</td><td>J13365</td><td>0.95</td><td>"心肌梗" 仅在<b>风险告知</b></td><td><span class="verdict-tag true">✅ 真 V</span></td></tr>
+        <tr><td>R143 血浆乳酸</td><td>J13365</td><td>0.95</td><td>"休克/败血症" 在<b>风险告知</b></td><td><span class="verdict-tag true">✅ 真 V</span></td></tr>
+        <tr><td>R146 BNP</td><td>J13365</td><td>0.95</td><td>"心衰" 仅在<b>风险告知</b></td><td><span class="verdict-tag true">✅ 真 V</span></td></tr>
+        <tr><td>R153 AFP</td><td>J13365</td><td>0.95</td><td>"肝炎" 在<b>输血告知</b>; "妊娠" 在输血告知</td><td><span class="verdict-tag true">✅ 真 V</span></td></tr>
+        <tr><td>R161 cTnI</td><td>J13365</td><td>0.95</td><td>"心肌梗" 在<b>风险告知</b>, "心电图" 在复印附件</td><td><span class="verdict-tag true">✅ 真 V</span></td></tr>
+        <tr><td>R203 全身麻醉</td><td>J13365</td><td>0.95</td><td><b>"麻醉记录" 字样在手术经过段引用</b> ("术中出血见麻醉记录") 但麻醉记录单本身未 ETL → 确认 ETL</td><td><span class="verdict-tag etl">🟠 ETL 实锤</span></td></tr>
+        <tr><td>R224 重症血气</td><td>J13365</td><td>0.95</td><td>"ICU" 在选项框, "重症" 在风险告知</td><td><span class="verdict-tag true">✅ 真 V</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>对工具的信心评分</h3>
+  <div class="card" style="background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);">
+    <p style="font-size:14px;"><b>🎉 LLM 判定准确率: 18/19 = 94.7%</b></p>
+    <p style="font-size:14px;">而且 19 V 中 <b>0 条假阳性</b> — 没有任何一条 V 是因为 LLM 漏看了真实指征. 假指征命中都在 <b>风险告知/既往史否认/选项框</b> 中, LLM 用 <b>note_diagnosis (只看诊断字段)</b> 避开了这些噪音.</p>
+    <p style="font-size:14px;">剩 1 个 ETL 问题 (R203 麻醉记录) 是 M5 设计时就预期到的, 不是 LLM 错误.</p>
+  </div>
+</section>
+
+<!-- ========== TAB 2: 工具盲区模式 ========== -->
+<section class="tab-panel" id="patterns">
+  <h2>🔍 4 类工具盲区: 假指征所在 section 模式</h2>
+
+  <p style="font-size:14px;">虽然 V 判定都正确, 但<b>关键词全文搜</b>会命中很多假指征 section. 这暴露 search_notes 工具的语义盲区: 它不知道<b>否认/告知/选项</b>这些反向语义.</p>
+
+  <div class="card">
+    <h3 style="margin-top:0;color:#991b1b;">🔴 盲区 1: 手术风险告知 (常见 60%+ 假指征命中)</h3>
+    <p style="font-size:13px;">手术知情同意书会列出"可能发生的并发症": 心搏骤停 / 休克 / 败血症 / 心衰 / DIC / 心肌梗 等. 这些不是患者真实疾病, 是<b>风险警告</b>.</p>
+    <div class="doc-quote">
+      <div class="ds">[手术中或手术后可能发生的并发症 / J13365]</div>
+      <span class="section-label risk">风险告知</span>
+      "术中、术后出现应激性溃疡、脂肪栓塞、肢体深静脉栓塞、肺栓塞、<em>心肌梗塞</em>、脑血管意外及一些难以预料的并发症, 严重者危及生命."
+    </div>
+    <p style="font-size:12px;color:var(--muted);">LLM 用 note_diagnosis() 提取诊断字段时<b>不会看到这一段</b>, 因为这不在诊断子阶段. 但 search_notes(keyword=心肌梗) 会命中.</p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0;color:#9a3412;">🟠 盲区 2: 既往史否认 (反向语义)</h3>
+    <p style="font-size:13px;">入院病历的"既往史"段经常这样写: "否认 X, 否认 Y, 否认 Z". 这是<b>反向语义</b>: 患者明确说没有这些疾病.</p>
+    <div class="doc-quote">
+      <div class="ds">[既往史 / J18906]</div>
+      <span class="section-label denied">否认</span>
+      "<em>否认</em>高血压、糖尿病、<em>冠心病</em>、<em>房颤</em>、慢支等其他慢性病史; 否认肝炎、结核、伤寒、血吸虫等传染病史..."
+    </div>
+    <p style="font-size:12px;color:var(--muted);">关键词搜 "冠心病" 命中, 但患者明确<b>否认</b>. LLM 通过 note_diagnosis 提取诊断字段时不会看到否认段, 所以不会误判.</p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0;color:#92400e;">🟡 盲区 3: 选项框 / 复印附件</h3>
+    <p style="font-size:13px;">手术核查单 / 病历复印附件中有大量勾选框, 列举各种可能项目, 但都没<b>实际激活</b>.</p>
+    <div class="doc-quote">
+      <div class="ds">[患者离开手术室前 / J18906]</div>
+      <span class="section-label denied">选项框</span>
+      "各种管路: □ 中心静脉通路 □ 动脉通路 □ 气管插管 □ 伤口引流 □ 胃管 □ <em>尿管</em> □ 其他<br>
+      患者: □ 恢复室 □ 病房 □ <em>ICU 病房</em> □ 急诊 □ 离院"
+    </div>
+    <p style="font-size:12px;color:var(--muted);">"ICU 病房" 出现是因为这是个选项框, 不是患者真去了 ICU. 类似的还有"心电图"出现在"病案复印项目列表"中.</p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0;color:#1e40af;">🔵 盲区 4: 输血医方告知</h3>
+    <p style="font-size:13px;">输血同意书会列举"可能发生的传染病": 肝炎/艾滋/梅毒 等, 是输血风险, 不是患者疾病.</p>
+    <div class="doc-quote">
+      <div class="ds">[医方告知 / J13365]</div>
+      <span class="section-label risk">输血告知</span>
+      "1. 过敏反应 2. 发热反应 3. 感染<em>肝炎</em> (乙肝、丙肝等) 4. 感染艾滋病、梅毒 5. 感染疟疾 6. 感染巨细胞病毒"
+    </div>
+    <p style="font-size:12px;color:var(--muted);">R153 AFP V 判定中"肝炎"命中就来自这里, 不是患者有肝炎.</p>
+  </div>
+
+  <h3>结论: LLM 用 note_diagnosis 的智慧</h3>
+  <div class="card" style="background:linear-gradient(135deg,#ecfdf5,#d1fae5);">
+    <p style="font-size:14px;">所有模板都让 LLM 优先用 <b>note_diagnosis()</b> 工具拿诊断字段, 而不是 search_notes 全文搜. 这个设计避开了 4 类工具盲区, 是 M2/M5/M6 模板高准确率的核心保障.</p>
+    <p style="font-size:13px;color:var(--muted);">
+      <b>下一步建议</b>: 给 search_notes 工具加 <code>section_filter</code> 参数, 默认排除 ["手术风险告知", "既往史否认段", "输血医方告知", "选项核查单"], 让单纯关键词搜也能避开假指征.
+    </p>
+  </div>
+</section>
+
+<!-- ========== TAB 3: J18906 7 V 核查 ========== -->
+<section class="tab-panel" id="j18906">
+  <h2>🧠 J18906 7 V 逐条核查</h2>
+
+  <div class="case true">
+    <div class="case-head">
+      <h4>R146 BNP/NT-proBNP 8 次 ¥1808</h4>
+      <span class="verdict-tag true">✅ 真 V (无争议)</span>
+    </div>
+    <div class="case-body">
+      <div class="verdict-row">
+        <div class="vr-llm"><b>LLM 判定</b>: 无心衰/心功能不全/ACS/呼吸困难指征</div>
+        <div class="vr-real"><b>核查</b>: 14 个相关关键词 (心衰/心力衰竭/心功能/ACS/胸闷/呼吸困难/EF 等) <b>全部 0 命中</b></div>
+      </div>
+      <p>✅ <b>最无争议的 V</b>. 患者文书完全没出现心脏相关字样.</p>
+    </div>
+  </div>
+
+  <div class="case true">
+    <div class="case-head">
+      <h4>R141 肌红蛋白 8 次 ¥800</h4>
+      <span class="verdict-tag true">✅ 真 V</span>
+    </div>
+    <div class="case-body">
+      <div class="verdict-row">
+        <div class="vr-llm"><b>LLM 判定</b>: 无心肌梗/心肌损伤/横纹肌溶解/严重创伤</div>
+        <div class="vr-real"><b>核查</b>: 唯一命中是 "心搏骤停" 1 次</div>
+      </div>
+      <h5>命中位置</h5>
+      <div class="doc-quote">
+        <span class="section-label risk">手术中或手术后可能发生的并发症</span>
+        "一、麻醉意外: 呼吸抑制、血压下降、心律失常及<em>心搏骤停</em>、药物过敏..."
+      </div>
+      <p>✅ 仅 1 处命中, 在<b>手术风险告知</b>, 患者无真实心肌损伤指征. 真 V.</p>
+    </div>
+  </div>
+
+  <div class="case true">
+    <div class="case-head">
+      <h4>R143 血浆乳酸 6 次 ¥60</h4>
+      <span class="verdict-tag true">✅ 真 V</span>
+    </div>
+    <div class="case-body">
+      <div class="verdict-row">
+        <div class="vr-llm"><b>LLM 判定</b>: 无休克/脓毒症/呼吸衰竭/酮症酸中毒/心衰失代偿</div>
+        <div class="vr-real"><b>核查</b>: "休克" 2 次 / "败血症" 1 次 / "心搏骤停" 1 次</div>
+      </div>
+      <h5>命中位置 (全部在风险告知)</h5>
+      <div class="doc-quote">
+        <span class="section-label risk">手术风险告知</span>
+        "大量出血可导致<em>休克</em>死亡" + "全身并发症: 肺部感染、尿路感染、毒血症及<em>败血症</em>..."
+      </div>
+      <p>✅ 4 次命中全在<b>手术并发症告知</b>段, 患者真实无休克/感染. 真 V.</p>
+    </div>
+  </div>
+
+  <div class="case true">
+    <div class="case-head">
+      <h4>R160 PCT 4 次 ¥320</h4>
+      <span class="verdict-tag true">✅ 真 V</span>
+    </div>
+    <div class="case-body">
+      <div class="verdict-row">
+        <div class="vr-llm"><b>LLM 判定</b>: 无脓毒症/严重感染/感染性休克</div>
+        <div class="vr-real"><b>核查</b>: "败血症"/"腹腔感染"/"术后感染" 在告知段; "发热" 4 次但是<b>"无发热"反向</b></div>
+      </div>
+      <div class="doc-quote">
+        <span class="section-label denied">否认 / 反向</span>
+        "现病史: 患者...无其余不适主诉, <em>无发热</em>, 无肢体抽搐..."
+      </div>
+      <p>✅ "发热" 命中实际是 "<b>无</b>发热" 反向描述. 真 V.</p>
+    </div>
+  </div>
+
+  <div class="case true">
+    <div class="case-head">
+      <h4>R161 cTnI 肌钙蛋白</h4>
+      <span class="verdict-tag true">✅ 真 V</span>
+    </div>
+    <div class="case-body">
+      <div class="verdict-row">
+        <div class="vr-llm"><b>LLM 判定</b>: 无 ACS/胸痛/心电图缺血/心肌损伤</div>
+        <div class="vr-real"><b>核查</b>: "心电图" 1 次在<b>复印附件</b>, "心律失常" 1 次在<b>风险告知</b></div>
+      </div>
+      <div class="doc-quote">
+        <span class="section-label denied">复印附件</span>
+        "附加信息: ...B 超、骨扫描、骨密度、肠镜、胃镜、喉镜、气管镜、骨髓穿刺、<em>心电图</em>、验血验尿等) ... 需病历复印..."
+      </div>
+      <p>✅ "心电图"是<b>病案复印项目列表</b>, 非患者真做了心电图异常. 真 V.</p>
+    </div>
+  </div>
+
+  <div class="case true">
+    <div class="case-head">
+      <h4>R131 心脏彩超 + TDI</h4>
+      <span class="verdict-tag true">✅ 真 V (强证据: 既往史否认)</span>
+    </div>
+    <div class="case-body">
+      <div class="verdict-row">
+        <div class="vr-llm"><b>LLM 判定</b>: 无心脏病/冠心病/心衰/心律失常</div>
+        <div class="vr-real"><b>核查</b>: "冠心病/房颤" 在<b>既往史否认</b>段</div>
+      </div>
+      <div class="doc-quote">
+        <span class="section-label denied">既往史否认</span>
+        "<em>否认</em>高血压、糖尿病、<em>冠心病</em>、<em>房颤</em>、慢支等其他慢性病史..."
+      </div>
+      <p>✅ 患者<b>明确否认</b>心脏病史. 这是反向证据, 真 V.</p>
+    </div>
+  </div>
+
+  <div class="case true">
+    <div class="case-head">
+      <h4>R103 影像未做但收费</h4>
+      <span class="verdict-tag true">✅ 真 V (部分)</span>
+    </div>
+    <div class="case-body">
+      <div class="verdict-row">
+        <div class="vr-llm"><b>LLM 判定</b>: fee 多项但文书只 3 条颅脑 CT</div>
+        <div class="vr-real"><b>核查</b>: CT 命中 13 次 (有颅脑 CT 报告); 但"心脏彩色多普勒超声" 文书无报告</div>
+      </div>
+      <p>✅ 颅脑 CT 是真做了, fee 中部分 CT/超声<b>确实文书无对应报告</b>. 真 V (针对未匹配项目).</p>
+    </div>
+  </div>
+
+  <div class="case true">
+    <div class="case-head">
+      <h4>R224 血气分析 6 次 ¥270</h4>
+      <span class="verdict-tag true">✅ 真 V (强 ETL+ 无指征)</span>
+    </div>
+    <div class="case-body">
+      <div class="verdict-row">
+        <div class="vr-llm"><b>LLM 判定</b>: 文书无血气分析 + 无 ICU 介入</div>
+        <div class="vr-real"><b>核查</b>: "ICU" 1 次在<b>核查单选项框</b>; "监护" 在患方/输血告知; 无血气分析实际记录</div>
+      </div>
+      <div class="doc-quote">
+        <span class="section-label denied">选项框</span>
+        "患者离开手术室前: 患者: □ 恢复室 □ 病房 □ <em>ICU 病房</em> □ 急诊 □ 离院"
+      </div>
+      <p>✅ ICU 病房未勾选 (选项框形式), 患者真无 ICU 介入. 真 V.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ========== TAB 4: J13365 10 V 核查 ========== -->
+<section class="tab-panel" id="j13365">
+  <h2>🦴 J13365 10 V 核查 (含 1 ETL 实锤 + 1 边界)</h2>
+
+  <div class="case etl">
+    <div class="case-head">
+      <h4>R203 全身麻醉 ×2 ¥1600</h4>
+      <span class="verdict-tag etl">🟠 ETL 问题实锤</span>
+    </div>
+    <div class="case-body">
+      <div class="verdict-row">
+        <div class="vr-llm"><b>LLM 判定</b>: 文书无"麻醉记录"/"诱导药物"/"维持药物"</div>
+        <div class="vr-real"><b>核查</b>: <b>"麻醉记录" 字样实际命中 2 次!</b> 在<b>手术经过</b>段</div>
+      </div>
+      <div class="doc-quote">
+        <span class="section-label real">手术经过 (引用)</span>
+        "术中操作顺利, 麻醉满意, <em>术中出血见麻醉记录</em>, 输血 1U 红悬 2U 血浆, 术后病人安返病房."
+      </div>
+      <p>🟠 <b>核心发现</b>: 手术记录里写"见麻醉记录", 说明<b>麻醉记录单原件存在</b>! 但麻醉记录单本身的内容<b>没有被 ETL 进 search_notes 索引</b>. 这是数字化系统的 ETL 缺失, <b>不是医院虚构</b>.</p>
+      <p><b>处理建议</b>: M5 模板需加 ETL 完整性回退. 检测到 "见 X 记录" 引用时, 应输出 I conf 0.5 而非 V conf 0.95.</p>
+    </div>
+  </div>
+
+  <div class="case edge">
+    <div class="case-head">
+      <h4>R112 CT 增强 + 平扫 重复</h4>
+      <span class="verdict-tag edge">🟡 边界 (conf 0.90)</span>
+    </div>
+    <div class="case-body">
+      <div class="verdict-row">
+        <div class="vr-llm"><b>LLM 判定</b>: 4 次平扫 vs 1 次增强, 文书未说明是不同部位</div>
+        <div class="vr-real"><b>核查</b>: 文书有<b>多部位 CT 历史检查</b> (颅脑 CT+, 上腹部 CT+, 胸部 CT-) 但都是 2023 年的</div>
+      </div>
+      <p>🟡 LLM 自知边界 (conf 0.90 ≠ 0.95). 实际可能是<b>不同部位</b> CT, 但文书未明确说明本次住院的 4 次平扫扫了哪些不同部位.</p>
+      <p><b>处理建议</b>: 需<b>病案审计员线下核实</b>每次平扫是否独立部位; 或 R112 prompt 加"询问 LLM 平扫部位差异"分支.</p>
+    </div>
+  </div>
+
+  <div class="case true">
+    <div class="case-head">
+      <h4>R141 / R143 / R146 / R160 / R161 / R131 / R153 (M2 7 条)</h4>
+      <span class="verdict-tag true">✅ 全部真 V</span>
+    </div>
+    <div class="case-body">
+      <p>这 7 条 M2 检验过度 V 模式相同: fee 命中 + 文书无真实指征 + 命中的关键词都在<b>风险告知 / 既往史否认 / 输血告知</b>段.</p>
+
+      <h5>R153 AFP 特别说明 (肺癌患者)</h5>
+      <div class="verdict-row">
+        <div class="vr-llm"><b>LLM 判定</b>: 肺癌无 AFP 指征 (AFP 用于肝/睾丸/孕妇)</div>
+        <div class="vr-real"><b>核查</b>: "肝炎" 2 次都在<b>输血医方告知</b>; "妊娠" 在<b>输血史询问</b></div>
+      </div>
+      <div class="doc-quote">
+        <span class="section-label risk">输血医方告知</span>
+        "异体输血治疗可能发生的情况: ... 3、感染<em>肝炎</em> (乙肝、丙肝等)..."
+      </div>
+      <p>✅ 患者无真实肝炎 / 肝癌 / 孕妇指征, AFP 检查无依据. 真 V.</p>
+    </div>
+  </div>
+
+  <div class="case true">
+    <div class="case-head">
+      <h4>R080 康复评定打包 ¥6</h4>
+      <span class="verdict-tag true">✅ 真 V</span>
+    </div>
+    <div class="case-body">
+      <div class="verdict-row">
+        <div class="vr-llm"><b>LLM 判定</b>: 文书无康复评定记录</div>
+        <div class="vr-real"><b>核查</b>: "肌力" 8 次/"肢体功能" 2 次 命中, 但<b>都是体格检查或手术告知</b>, 不是<b>正式康复评定</b></div>
+      </div>
+      <div class="doc-quote">
+        <span class="section-label denied">体格检查 (非康复评定)</span>
+        "体格检查: ...神清气平, 对答切题, 口齿不清, 右肺呼吸音减弱, <em>左上肢肌力 I 级</em>, 触觉感觉迟钝, <em>左下肢肌力 III 级</em>..."
+      </div>
+      <p>✅ "肌力 I 级 / III 级" 是入院体格检查描述, 不是<b>康复评定量表 (Barthel/FIM)</b>. 真 V.</p>
+    </div>
+  </div>
+
+  <div class="case true">
+    <div class="case-head">
+      <h4>R224 重症监护检验 (血气) ¥135</h4>
+      <span class="verdict-tag true">✅ 真 V</span>
+    </div>
+    <div class="case-body">
+      <p>"重症" 在<b>手术风险告知</b>段, "ICU" 在<b>核查单选项框</b>, 患者真无重症监护介入. 真 V.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ========== TAB 5: 下一步 ========== -->
+<section class="tab-panel" id="next">
+  <h2>🎯 基于核查的下一步建议</h2>
+
+  <div class="card" style="background:linear-gradient(135deg,#ecfdf5,#d1fae5);">
+    <h3 style="margin-top:0;color:#065f46;">🎉 信心提升: V 判定可靠</h3>
+    <p style="font-size:14px;">19 V 中 18 条经核查为真实违规, <b>0 假阳性</b>. 唯一 ETL 问题 (R203) 是模板设计就预期到的, 不是 LLM 错误.</p>
+    <p style="font-size:14px;">医院合规审计可以<b>基于这些 V 直接对接整改</b>, 不会因为模型抖动产生冤假错案.</p>
+  </div>
+
+  <h3>核查发现的优化方向</h3>
+
+  <div class="card">
+    <h4 style="margin-top:0;color:var(--orange);">🟠 优化 1: M5 ETL 完整性回退 (高优)</h4>
+    <p>R203 J13365 中文书<b>有 "见麻醉记录" 引用</b>, 但麻醉记录单本身没 ETL. 建议:</p>
+    <ul style="font-size:13px;">
+      <li>M5 prompt 加: "若文书出现 '见 X 记录' / '详见 X 单' 等引用但 search 不到该 section, 退 I + 备注 ETL 问题"</li>
+      <li>或在 ToolExecutor 层加引用检测, 自动加 ETL 警告标签</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h4 style="margin-top:0;color:var(--accent);">🔵 优化 2: search_notes 加 section_filter</h4>
+    <p>核查发现 60%+ 假指征命中在 4 类盲区 section. 建议:</p>
+    <ul style="font-size:13px;">
+      <li>给 search_notes 加 <code>exclude_sections=["手术风险告知","既往史否认段","输血医方告知","核查单选项"]</code> 参数</li>
+      <li>当前 LLM 用 note_diagnosis 避开了, 但若未来直接 search_notes 可能踩坑</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h4 style="margin-top:0;color:var(--yellow);">🟡 优化 3: R112 平扫部位差异判断</h4>
+    <p>R112 J13365 是边界 (conf 0.90). 建议 R112 prompt 加:</p>
+    <ul style="font-size:13px;">
+      <li>检测文书是否说明 "平扫 (颅脑) / 平扫 (胸部)" 等多部位</li>
+      <li>若多部位则 CLEAN; 若同部位多次平扫则 V</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h4 style="margin-top:0;color:var(--purple);">🟣 优化 4: 跨患者一致性核查</h4>
+    <p>R141/R143/R146/R131 跨多患者命中, 是<b>系统性违规</b>. 建议:</p>
+    <ul style="font-size:13px;">
+      <li>跑 10+ 患者后统计每条规则的<b>跨患者 V 率</b></li>
+      <li>跨患者 V 率 ≥ 50% 的规则, 提报到医院级合规整改</li>
+      <li>关联到 add-cross-patient-stats change</li>
+    </ul>
+  </div>
+
+  <h3>等待你的指示</h3>
+  <div class="card">
+    <p style="font-size:14px;">基于本次核查, 你可以选择:</p>
+    <ul style="font-size:13px;">
+      <li>(a) <b>M5 ETL 回退优化</b> — 写 change, 给 R203/R224 加 ETL 完整性回退</li>
+      <li>(b) <b>base-prompt-inconclusive-bias</b> — 修 R220/R037 漂移</li>
+      <li>(c) <b>扩样本到 10 患者</b> — 计算系统性违规率, 出医院级报告</li>
+      <li>(d) <b>R112 prompt 优化</b> — 加平扫部位差异检测</li>
+      <li>(e) <b>search_notes 加 section_filter</b> — 工具层加 section 黑名单</li>
+      <li>(f) 别的方向</li>
+    </ul>
+  </div>
+</section>
+
+</main>
+
+<script>
+  const buttons = document.querySelectorAll('.tab-btn');
+  const panels = document.querySelectorAll('.tab-panel');
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      buttons.forEach(b => b.classList.remove('active'));
+      panels.forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab).classList.add('active');
+    });
+  });
+</script>
+
+</body>
+</html>

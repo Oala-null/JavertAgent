@@ -1,0 +1,43 @@
+{
+  "treatment_desc": "脑电双频指数监测 (BIS, Bispectral Index)",
+  "treatment_kw_list": [
+    "脑电双频指数",
+    "BIS",
+    "Bispectral Index",
+    "脑电双频"
+  ],
+  "catalog_basis": "按医保政策, BIS 监测仅用于全身麻醉 / 儿童 ICU 镇静 / 深度镇静 / ICU 镇静等场景. 一般病房非镇静患者收 BIS 监测费属过度诊疗.",
+  "indication_dx_list": [
+    "全身麻醉",
+    "儿童 ICU 镇静",
+    "深度镇静",
+    "ICU 镇静",
+    "睡眠监测"
+  ],
+  "exclusion_dx_list": [
+    "局麻手术 (单独)",
+    "一般病房 (非镇静)"
+  ],
+  "notes_evidence_section": "麻醉记录",
+  "notes_evidence_kw_list": [
+    "BIS 值",
+    "麻醉深度",
+    "镇静评分"
+  ],
+  "special_notes": [],
+  "pilot_caveat": "甲状腺手术全麻 + BIS 是合理配置, 应 CLEAN.",
+  "aux_keywords": [
+    "脑电双频指数",
+    "BIS",
+    "Bispectral Index",
+    "脑电双频",
+    "全麻",
+    "儿童 ICU"
+  ],
+  "aux_tools": [
+    "search_fees",
+    "note_diagnosis",
+    "search_notes"
+  ],
+  "aux_signal": "典型违规: 局麻手术患者收 BIS 监测.\n典型 CLEAN: 全麻患者 BIS 监测确保麻醉深度.\n典型 INCONCLUSIVE: 麻醉记录段缺失."
+}

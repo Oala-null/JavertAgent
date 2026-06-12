@@ -1,0 +1,14 @@
+rule_id: R285
+domain: 精神医学
+violation_type: 虚构诊疗
+question: 对未实施或仅部分实施的心理治疗、精神监护、工娱治疗、暗示疗法、森田疗法等诊疗项目进行计费。
+example: 示例：某医院对所有住院患者每周统一收取“暴露疗法”“暗示疗法”费用，但视频监控显示治疗室无人进出，医生承认未实施。
+status: drafting
+priority: P2
+prompt_addon: ''
+trigger_keywords: []
+suggested_tools: []
+expected_signal: ''
+notes: 虚构诊疗 (心理治疗/工娱治疗 未做或部分做) search_notes 部分可审, 但 '部分实施' 难判. 留 add-frequency-stats
+  change.
+derived_from_template: null

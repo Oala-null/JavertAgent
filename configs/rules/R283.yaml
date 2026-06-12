@@ -1,0 +1,13 @@
+rule_id: R283
+domain: 精神医学
+violation_type: 虚构病情
+question: 将健康人员、轻症患者诊断编造、篡改为重性精神疾病诊断；虚构自伤、自杀、木僵等风险以夸大病情、延长住院；虚增并发症导致ICD编码与临床实际不符。
+example: 示例：某医院为延长住院时间，在病历中虚构患者有自杀倾向，实际患者病情稳定，无相关风险。
+status: drafting
+priority: P2
+prompt_addon: ''
+trigger_keywords: []
+suggested_tools: []
+expected_signal: ''
+notes: 虚构病情 (编造重性精神病) + ICD 篡改, 跨数据源. 留 enhanced-diagnostic-check change.
+derived_from_template: null

@@ -1,0 +1,42 @@
+rule_id: R191
+domain: 肿瘤
+violation_type: 重复收费
+question: 开展肿瘤全身断层显像，重复收取人工报告费用。
+example: 示例：某省《诊疗目录》规定，肿瘤全身断层显像含人工报告。某医院开展肿瘤全身断层显像并对应收费，同时收取"图文报告"费用，属于重复收费。
+status: ready
+priority: P0
+prompt_addon: |
+  本规则关注: 患者本次住院里, 是否同时被收取了「肿瘤全身断层显像类」项目 + 独立的「人工/图文报告」费用.
+  按各省《医疗服务诊疗目录》, 全身断层显像项目本身已包含报告费, 单独再收报告费 = 重复收费.
+
+  审计步骤:
+  1. 用 search_fees(category="检查类") 取检查类全部明细; 关注是否同时存在以下两类:
+     A 类 (扫描): "PET-CT 全身显像" / "SPECT 全身骨显像" / "全身断层" / "肿瘤全身断层显像"
+     B 类 (报告): "图文报告" / "人工报告" / "PET-CT 报告" / "SPECT 报告费"
+  2. 若 A 类无命中 → CLEAN (该患者根本没做断层显像, 规则不适用).
+  3. 若 A 类有命中且 B 类无命中 → CLEAN (扫描费用单一, 未重复收报告费).
+  4. 若 A 类与 B 类都命中, 且文书 (search_notes section="辅助检查"/"PET-CT") 没有提到该报告由
+     第三方人工出具 → VIOLATION, evidence 引两笔费用项目名 + 价格.
+  5. 信息明确不足 (例如检查类只 1 项, 名字模糊无法判断是 A 还是 B) → INCONCLUSIVE.
+
+  注意: 患者基础诊断必须含肿瘤 (note_diagnosis 命中"癌"/"瘤"); 否则该规则不适用, 应判 CLEAN.
+trigger_keywords:
+  - PET-CT
+  - SPECT
+  - 全身断层
+  - 肿瘤全身断层显像
+  - 全身骨显像
+  - 图文报告
+  - 人工报告
+  - 报告费
+suggested_tools:
+  - note_diagnosis
+  - search_fees
+  - search_notes
+expected_signal: |
+  典型违规: 同次住院里同时存在 "PET-CT 全身断层显像" 与 "PET-CT 图文报告费" 两笔费用项, 且文书中无第三方报告说明.
+  典型 CLEAN: 全身骨显像无报告费独立计价, 或患者根本未做断层显像.
+notes: |
+  - v0.1: 由 javert init 生成时只有源字段; v0.2 由 operator 编写本 prompt_addon.
+  - 待 dry-run 5 患者后回写 dry_run_report 到 docs/sample_run_R191.md.
+derived_from_template: M1

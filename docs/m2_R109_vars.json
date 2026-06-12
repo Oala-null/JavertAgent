@@ -1,0 +1,32 @@
+{
+  "exam_concept_desc": "CT 心电门控 / 呼吸门控加收",
+  "catalog_basis": "按诊疗规范, CT 心电/呼吸门控加收用于心律失常 / 不能屏气患者 / 儿童不配合时, 不应作为成人扫描常规加收.",
+  "exam_kw_primary_list": ["心电门控", "呼吸门控", "门控加收"],
+  "indication_dx_list": [
+    "心律失常 / 房颤 / 房扑 / 频发早搏",
+    "不能屏气 / 呼吸不能配合",
+    "儿童不配合 / 镇静下扫描",
+    "冠脉 CTA / 冠状动脉 CT 成像 (需心电门控)",
+    "急诊重症 / 意识不清",
+    "肺动脉栓塞急性发作 / 不能配合屏气"
+  ],
+  "min_count": 1,
+  "inconclusive_addendum": "",
+  "drug_check": false,
+  "drug_kw_list": [],
+  "drug_concept_desc": "",
+  "special_notes": [
+    "冠脉 CTA 必带心电门控, 若 search_fees 同时命中 \"冠脉 CTA\" / \"冠状动脉 CT\" 则 CLEAN."
+  ],
+  "pilot_caveat": "",
+  "aux_keywords": [
+    "心电门控加收",
+    "呼吸门控加收",
+    "门控加收",
+    "心律失常",
+    "屏气",
+    "冠脉 CTA"
+  ],
+  "aux_tools": ["note_diagnosis", "search_fees"],
+  "aux_signal": "典型违规: 普通成人胸 CT 无心律失常诊断, 费用列心电门控加收.\n典型 CLEAN: 房颤患者冠脉 CTA, 心电门控为必要技术.\n典型 INCONCLUSIVE: 文书未明示心电图节律状态, 仅看 CT 报告无法确认."
+}

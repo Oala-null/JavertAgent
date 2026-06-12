@@ -1,0 +1,100 @@
+template_id: M4
+name: 超标准收费
+description: fee 命中 + 实际计价方式 ≠ 诊疗目录规定 (计价单位错 / 加成漏算 / 时长拆分)
+master_prompt: |
+  本规则关注: 患者本次住院里, 是否未按诊疗目录规定的计价标准收取「{{service_name}}」费用.
+
+  📖 诊疗目录条款 (来源: 截至 2026-04-01 全量诊疗项目库):
+    项目名: {{service_name}}
+    {% if catalog_price %}基础价: ¥{{catalog_price}} / {{catalog_unit}}{% else %}计价单位: {{catalog_unit}}{% endif %}
+    加成规则: {{addon_rule_text}}
+
+  ⚠️ 典型违规模式: {{violation_pattern}}
+
+  审计步骤:
+  1. 用 search_fees(keyword=...) 查 fee 是否命中, 记录出现次数 count + 实收金额合计. 检索关键词: {% for kw in service_kw_list %}"{{kw}}"{% if not loop.last %} / {% endif %}{% endfor %}
+  2. 若 fee 无命中 → CLEAN (规则不适用, 患者未做该项目).
+  3. 用 {% if notes_section %}search_notes(section="{{notes_section}}") 或 {% endif %}search_notes(keyword=...) 提取实际事件量化值 N.
+     量化关键词: {% for kw in actual_event_kw_list %}"{{kw}}"{% if not loop.last %} / {% endif %}{% endfor %}
+  4. 按目录规则计算应收次数 expected:
+     {{expected_calc_hint}}
+  5. 比对 count vs expected:
+     - count 显著大于 expected → VIOLATION (超标准多收),
+       evidence: 引 fee 项目名 × count + 实际事件 N + 目录单位 "{{catalog_unit}}" + 应收 expected + 多收金额.
+     - count 等于 expected → CLEAN (按目录正确收).
+     - count 小于 expected → CLEAN (未足量收, 不属本规则).
+  6. 文书未提供量化信息 (切口数/治疗时长/牙数/血管数/疗程数 等) → INCONCLUSIVE.
+  {% if special_notes %}
+  特殊注意:
+  {% for note in special_notes %}- {{note}}
+  {% endfor %}{% endif %}{% if pilot_caveat %}
+  注意: {{pilot_caveat}}{% endif %}
+keywords_template: |
+  {% for kw in aux_keywords %}- {{kw}}
+  {% endfor %}
+tools_template: |
+  {% for t in aux_tools %}- {{t}}
+  {% endfor %}
+signal_template: |
+  {{aux_signal}}
+fields:
+  - name: service_name
+    type: str
+    desc: "项目名 (与诊疗目录精确匹配)"
+    required: true
+  - name: service_kw_list
+    type: list[str]
+    desc: "search_fees 检索关键词 (主词 + 变体, 2-5 个)"
+    required: true
+  - name: catalog_unit
+    type: str
+    desc: "目录计价单位 (次 / 疗程 / 例 / 小时 / 半小时 / 牙 / 根管 / 洞 / 支血管 等)"
+    required: true
+  - name: catalog_price
+    type: str
+    desc: "目录基础价 (空字符串表示多档/不适用; 字符串便于'2000 (小)/10000 (大)'多档表达)"
+    required: false
+    default: ""
+  - name: addon_rule_text
+    type: str
+    desc: "目录加成 / 加收规则原文 (例: 每增加 1 支血管加收 20%; 同切口多手术第 2 项 50%)"
+    required: true
+  - name: violation_pattern
+    type: str
+    desc: "典型违规模式 (例: 按全价 × N; 按时长拆分; 按蜡块计费; 按肿物个数)"
+    required: true
+  - name: actual_event_kw_list
+    type: list[str]
+    desc: "文书提取实际事件量化关键词 (例: 血管数/切口数/治疗时长/疗程/牙数)"
+    required: true
+  - name: notes_section
+    type: str
+    desc: "文书 section (手术记录 / 治疗记录 / 麻醉记录; 空表示不限)"
+    required: false
+    default: ""
+  - name: expected_calc_hint
+    type: str
+    desc: "应收次数计算提示 (例: '设第一根全价, 第二+ 按全价 20% 收; 3 支血管应收 1 + 2×0.2 = 1.4 次价格')"
+    required: true
+  - name: pilot_caveat
+    type: str
+    desc: "pilot 适用性说明"
+    required: false
+    default: ""
+  - name: special_notes
+    type: list[str]
+    desc: "特殊注意条款"
+    required: false
+    default: []
+  - name: aux_keywords
+    type: list[str]
+    desc: "trigger_keywords"
+    required: true
+  - name: aux_tools
+    type: list[str]
+    desc: "suggested_tools"
+    required: true
+  - name: aux_signal
+    type: str
+    desc: "expected_signal"
+    required: true

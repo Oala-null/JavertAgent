@@ -1,0 +1,29 @@
+rule_id: R105
+domain: 医学影像
+violation_type: 虚构医药服务项目
+question: 开展X线计算机体层(CT)平扫时，未进行三维重建操作，但收取三维重建费用。
+example: 示例：某医院以CT机带三维重建功能为由，对所有CT检查的患者均收取三维重建、冠矢状面重建费用，实际有些没有做，且大部分患者的诊断均未使用重建影像，属于虚构医药服务项目。
+status: ready
+priority: P0
+prompt_addon: "\U0001F525 v1.6 STEP 0 (修 v1.5 关键词太严):\n**search_fees 多别名搜**, 任一命中即继续:\n- \"三维重建\"  \"三维\"  \"3D\"  \"MIP\"  \"MPR\"  \"VR\"  \"立体\"  \"重建\"  \"X线计算机体层(三维)\"  \"CT 三维\"  \"冠状面重建\"\n\n若任一命中 → **必须**调 search_examinations(check_type=\"放射\") 拉所有放射报告.\n- 若任一报告含 \"三维\"/\"重建\"/\"MIP\"/\"MPR\"/\"VR\" → CLEAN\n- 若所有报告都不含 + 文书也不含 → **INCONCLUSIVE conf 0.50** (wangxin: \"需结合 PACS 影像图像判定\", 不能凭关键词搜不到就 V)\n\n唯一 CLEAN 路径: search_fees 全部别名 0 命中.\n\n\U0001F6A8 v1.5 INCONCLUSIVE 硬规则 (wangxin I 优先):\n- fee 命中具体影像项目 (如\"三维重建\") + search_examinations 拉到 N 条放射报告但 keyword 搜不到具体执行描述 → **INCONCLUSIVE conf 0.50 + etl_warning**\n- wangxin 明确: \"未见检查报告单, 且需要结合 PACS 系统影像图像进行判定\" — 不能凭 keyword 搜不到就 V\n- 要 V 必须 search_examinations 完全 0 命中 + search_notes 完全 0 提及该项目 + 多次反复收费 + 完全无相关手术/检查痕迹\n\n本规则关注: 患者本次住院里, 费用中有「CT 三维重建 (含冠矢状面重建)」, 但文书中没有对应的\n执行记录, 即 \"虚构 CT 三维重建 (含冠矢状面重建) 项目骗取医保基金\".\n按医保政策, CT 三维重建应有重建图像编号 + 阅片记录 + 与平扫不同的立体诊断结果. 仅 CT 平扫但加收三维重建费 = 虚构.\n\n审计步骤:\n1. 用 search_fees 查 fee 是否命中. 检索关键词: \"三维重建\"\
+  \ / \"冠状面重建\" / \"矢状面重建\" / \"立体显示\" / \"MIP\"\n2. 若 fee 无命中 → CLEAN (规则不适用, 患者未被收取该费用).\n3. 用 search_notes 检查文书是否有该服务的执行记录:\n   - 重点检查 section: \"影像报告\"\n   - 执行证据关键词: \"重建图像\" / \"三维图\" / \"立体显示\" / \"MIP 图\" / \"重建说明\"\n4. 若文书有任一执行证据命中 → CLEAN (服务实际开展).\n5. 若 fee 有 + 文书无执行证据 → VIOLATION,\n   evidence: 引 fee 项目名 + 价格 + \"在 影像报告 等 section 中未检索到 重建图像 等执行描述\".\n6. 文书 section 不完整 (例如手术记录缺失) / 描述模糊 → INCONCLUSIVE.\n\n特殊注意:\n- 若诊断与重建结果无关联 (如简单胸部 CT 平扫诊断肺结节, 不需 3D), 强支持 VIOLATION.\n\n注意: 患者诊断与重建结果应有医学关联; 平扫已足够时不需重建.\n\n\U0001F4CC 专家共识触发器 (v0.7, wangxin I 优先):\n\nINCONCLUSIVE 触发器:\n- 同 R103 — fee 命中 + 部分报告缺失 → INCONCLUSIVE 不 V\n  → wangxin: \"未见检查报告单, 且需要结合PACS系统影像图像进行判定\"\n\n要 V 必须 search_examinations 完全 0 + search_notes 影像段 0 + 多次反复收费.\n"
+trigger_keywords:
+- 三维重建
+- 冠状面重建
+- 矢状面重建
+- 立体显示
+- MIP
+- CT 重建
+suggested_tools:
+- search_fees
+- search_notes
+- note_diagnosis
+expected_signal: '典型违规: 费用列''三维重建 × 5'' 但影像报告仅含平扫描述, 无立体图像.
+
+  典型 CLEAN: 复杂骨折患者 CT 三维重建图详述空间关系.
+
+  典型 INCONCLUSIVE: 报告含''图见附件''但无图像号.
+
+  '
+notes: ''
+derived_from_template: M5

@@ -1,0 +1,33 @@
+{
+  "exam_concept_desc": "血浆乳酸测定 (Lactate, 动脉血乳酸)",
+  "catalog_basis": "按诊疗规范, 血浆乳酸用于休克 / 严重感染 / 缺氧评估或危重患者酸碱平衡监测, 不应作为普通入院常规.",
+  "exam_kw_primary_list": ["血浆乳酸", "乳酸测定", "Lactate", "动脉血乳酸"],
+  "indication_dx_list": [
+    "休克 / 感染性休克 / 心源性休克 / 失血性休克",
+    "脓毒症 / 败血症 / 严重感染",
+    "严重缺氧 / 呼吸衰竭",
+    "糖尿病酮症酸中毒 / 严重代谢性酸中毒",
+    "心衰失代偿",
+    "严重创伤",
+    "心搏骤停后 / 心肺复苏后",
+    "肝衰竭"
+  ],
+  "min_count": 1,
+  "inconclusive_addendum": "",
+  "drug_check": false,
+  "drug_kw_list": [],
+  "drug_concept_desc": "",
+  "special_notes": [],
+  "pilot_caveat": "",
+  "aux_keywords": [
+    "血浆乳酸",
+    "乳酸测定",
+    "动脉血乳酸",
+    "Lactate",
+    "休克",
+    "脓毒症",
+    "酸碱平衡"
+  ],
+  "aux_tools": ["note_diagnosis", "search_fees"],
+  "aux_signal": "典型违规: 普通择期手术患者无休克/感染诊断, 收乳酸测定.\n典型 CLEAN: 重症监护期间脓毒症患者多次乳酸测定监测组织灌注.\n典型 INCONCLUSIVE: 诊断 \"低氧待查\" / \"代谢紊乱\" 等中间状态."
+}

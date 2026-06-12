@@ -1,0 +1,112 @@
+# ============================================================
+# Javert 外部数据列名映射
+# ============================================================
+# 使用方法:
+#   1. 拿到外部医院的 CSV/Excel 文件
+#   2. 打开文件, 看每张表的列名
+#   3. 把下面右侧的值改成外部文件的实际列名
+#   4. 运行: uv run python scripts/etl_import.py --mapping configs/column_mapping.yaml
+#
+# 左侧是 Javert 语义 (不要改), 右侧是外部文件的列名 (改成实际的)
+# 标 [必填] 的字段必须有, 标 [可选] 的字段可删掉或留空
+#
+# 字段必填集合 + 列序由 configs/schema_manifest.yaml 决定 (本文件只配映射).
+#
+# 每张表可选 key_mode (患者键归一策略, 默认 synth):
+#   synth  源 patient_id 是裸号 → 合成复合键 {hospital_code}-裸号 (HIS 原始导出, 如 szx)
+#   asis   源键已是落盘形态原样存 (如医保结算清单 bah 已含裸号)
+#   bridge 经桥表把源键归一到 canonical 裸号 (各表患者键不在同一命名空间时)
+#     bridge: {file: <桥表>, source_col: <桥表里与本表键同名空间的列>, canonical_col: <桥表里 canonical 裸号列>}
+# 顶层 normalize_dates: true → 逐列把异构日期格式归一为 ISO (默认 false).
+# ============================================================
+
+# 医院代码 — 用于合成内部复合键, 随便填一个标识即可
+hospital_code: "szx"
+# normalize_dates: true   # 取消注释开启逐列日期 ISO 归一
+
+# ────────────── 表 1: 费用明细 ──────────────
+fees:
+  file: "/Users/shane/26er/javert/data/szx/random_5pts_fee.csv"       # 外部文件路径 (相对项目根目录)
+  columns:
+    patient_id: "Patient_ID"              # [必填] 患者唯一标识
+    item_name: "medins_list_name"             # [必填] 收费项目/药品/耗材名称
+    amount: "det_item_fee_sumamt"                    # [必填] 该行总金额 (退费为负数)
+    date: "fee_ocur_time"                      # [必填] 收费日期
+    category: "med_chrgitm_type"              # [必填] 西药/中成药/检查/治疗/手术/护理/材料/其他
+    quantity: "cnt"                  # [可选]
+    unit_price: "pric"                # [可选]
+    spec: "spec"                      # [可选] 药品规格/耗材型号
+    item_code: "medins_list_codg"             # [可选] 医保或院内编码
+    dept_order: "acord_dept_name"            # [可选]
+    doctor_order: "orders_dr_name"          # [可选]
+    dept_billing: "bilg_dept_name"          # [可选]
+    doctor_billing: "bilg_dr_name"        # [可选]
+    product_name: "prodname"        # [可选] 药品通用名 (区别于收费项目名)
+
+# ────────────── 表 2: 病历文书 ──────────────
+notes:
+  file: "/Users/shane/26er/javert/data/szx/random_5pts_doc.csv"
+  columns:
+    patient_id: "Patient_ID"              # [必填]
+    section: "record_name"               # [必填] 如: 主诉/入院诊断/手术记录 等
+    content: "replace"                   # [必填] 文书正文
+    doc_name: ""              # [可选] 所属文书标题 (如 入院记录)
+    time: "record_date"                      # [可选] 文书时间
+
+# ────────────── 表 3: 病案首页-诊断 ──────────────
+diagnoses:
+  file: "/Users/shane/26er/javert/data/szx/random_5pts_zd.csv"
+  columns:
+    patient_id: "Patient_ID"              # [必填]
+    diag_name: "diag_name"             # [必填] ICD-10 中文名称
+    diag_code: "diag_code"             # [必填] ICD-10 编码
+    main_flag: "maindiag_flag"             # [必填] 1=主诊断, 0=其他
+    diag_type: ""             # [可选] 入院诊断/出院诊断
+
+# ────────────── 表 4: 病案首页-手术 ──────────────
+surgeries:
+  file: "/Users/shane/26er/javert/data/szx/random_5pts_oprn.csv"
+  columns:
+    patient_id: "Patient_ID"              # [必填]
+    surgery_name: "opr_name"          # [必填]
+    main_flag: "main_oprn_flag"           # [必填] 1=主手术, 0=其他
+    surgery_code: "opr_code"          # [可选] ICD-9-CM3
+    surgery_date: "oprn_oprt_endtime"          # [可选]
+    level: "oprn_lv_code"                 # [可选] 一/二/三/四级
+    anesthesia: "anst_way"            # [可选]
+    surgeon: "oper_dr_name"               # [可选]
+    anesthesiologist: "anst_dr_name"      # [可选]
+
+# ────────────── 表 5: 化验/检验 (可选, 接 search_lab_results) ──────────────
+# 缺省可整节删除; 提供则 ETL 产出 lab_results.csv 供 LabLoader 消费.
+# 用时 export JAVERT_LABS_FILE=lab_results.csv (并把 JAVERT_DATA_DIR 指向 data_import)
+# labs:
+#   file: ""                              # 化验源文件路径
+#   key_mode: synth                       # synth/asis/bridge
+#   columns:
+#     patient_id: ""                      # [必填] 住院号 (zyh)
+#     item_name: ""                       # [必填] 检验项名 (rpt_itemname)
+#     result: ""                          # [必填] 结果值
+#     item_code: ""                       # [可选] 英文缩写 (AFP/TSH)
+#     result_unit: ""                     # [可选]
+#     result_ref: ""                      # [可选] 参考范围
+#     result_flag: ""                     # [可选] 异常标志
+#     report_dt: ""                       # [可选] 报告时间
+#     specimen: ""                        # [可选] 样本 (病理视图工具读 specimen=病理)
+#     inspection: ""                      # [可选] 检验类别
+#     department: ""                      # [可选]
+
+# ────────────── 表 6: 检查报告 (可选, 接 search_examinations) ──────────────
+# examinations:
+#   file: ""
+#   key_mode: synth
+#   columns:
+#     patient_id: ""                      # [必填] 住院号 (zyh)
+#     item_name: ""                       # [必填] 检查项名 (checkItemName)
+#     check_type: ""                      # [可选] 检查类型 (CT/MRI/超声)
+#     conclusion: ""                      # [可选] 检查结论
+#     describe: ""                        # [可选] 检查所见
+#     position: ""                        # [可选] 检查部位
+#     department: ""                      # [可选]
+#     check_date: ""                      # [可选]
+#     report_date: ""                     # [可选]

@@ -1,0 +1,33 @@
+{
+  "exam_concept_desc": "降钙素原 (PCT, Procalcitonin)",
+  "catalog_basis": "按诊疗规范, PCT 用于细菌感染严重程度评估 / 脓毒症诊断和抗菌治疗决策, 不应作为普通入院常规.",
+  "exam_kw_primary_list": ["降钙素原", "PCT", "Procalcitonin"],
+  "indication_dx_list": [
+    "脓毒症 / 败血症 / 严重感染",
+    "感染性休克",
+    "重症肺炎 / 重症感染",
+    "全身炎症反应综合征 / SIRS",
+    "中性粒细胞减少伴发热 / 粒缺伴发热",
+    "外科术后感染 / 腹腔感染",
+    "免疫抑制患者发热",
+    "ICU 入院 / 危重患者监测"
+  ],
+  "min_count": 1,
+  "inconclusive_addendum": "",
+  "drug_check": false,
+  "drug_kw_list": [],
+  "drug_concept_desc": "",
+  "special_notes": [],
+  "pilot_caveat": "",
+  "aux_keywords": [
+    "降钙素原",
+    "PCT",
+    "Procalcitonin",
+    "脓毒症",
+    "严重感染",
+    "感染性休克",
+    "SIRS"
+  ],
+  "aux_tools": ["note_diagnosis", "search_fees"],
+  "aux_signal": "典型违规: 择期甲状腺手术患者无感染征象, 收 PCT.\n典型 CLEAN: 脓毒症患者多次 PCT 监测疗效.\n典型 INCONCLUSIVE: 诊断 \"发热待查\" / \"感染待排\" 等中间状态."
+}

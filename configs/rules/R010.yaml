@@ -1,0 +1,12 @@
+rule_id: R010
+domain: 各科室通用类
+violation_type: 串换项目
+question: 为患者提供的级别护理与医保结算的级别护理等级不符。
+example: 示例：某省《诊疗目录》中，“Ⅰ级护理”适用于重症、病情不稳定、需严格卧床等患者。需每小时巡视患者。某医院实际为患者提供II级护理，按Ⅰ级护理收费，属于串换项目。
+status: drafting
+priority: P2
+prompt_addon: ''
+trigger_keywords: []
+suggested_tools: []
+expected_signal: ''
+notes: ''

@@ -1,0 +1,45 @@
+{
+  "a_concept": "临床操作的 CT 引导",
+  "b_concept": "X 线计算机体层 (CT) 扫描 / 平扫 / 增强 / 成象",
+  "catalog_basis": "按各省《医疗服务诊疗目录》, CT 引导是治疗 / 手术过程的辅助操作, CT 引导费已含术中扫描, 单独再收 CT 扫描 / 平扫 / 增强 / 胶片 = 重复收费.",
+  "fee_category": "检查类",
+  "a_class_label": "CT 引导",
+  "b_class_label": "CT 检查",
+  "a_class_items": [
+    "CT 引导",
+    "X 线计算机体层引导",
+    "CT 引导穿刺",
+    "CT 引导消融",
+    "临床操作的 CT 引导"
+  ],
+  "b_class_items": [
+    "CT 扫描",
+    "CT 平扫",
+    "CT 增强",
+    "CT 成象",
+    "X 线计算机体层扫描",
+    "X 线计算机体层平扫",
+    "X 线计算机体层增强扫描",
+    "胶片"
+  ],
+  "scan_action_term": "CT 引导",
+  "aux_short_label": "CT 检查费",
+  "notes_sections": ["手术记录", "操作记录", "影像报告"],
+  "third_party_clause": "术前评估独立时间窗的扫描 (有独立报告与时间戳)",
+  "violation_evidence": "引导笔数 + 扫描 / 胶片笔数 + 价格 + 操作记录时间戳",
+  "inconclusive_example": "费用项目命名只写 'CT 操作 ¥1000', 无法判断属于引导还是检查",
+  "basic_diagnosis_subject": "需要 CT 引导操作的临床指征",
+  "basic_diagnosis_keywords": ["肿瘤", "占位", "肺结节", "肝癌", "穿刺活检"],
+  "aux_keywords": [
+    "CT 引导",
+    "X 线计算机体层引导",
+    "CT 引导穿刺",
+    "CT 引导消融",
+    "CT 扫描",
+    "CT 平扫",
+    "CT 增强",
+    "胶片"
+  ],
+  "aux_tools": ["note_diagnosis", "search_fees", "search_notes"],
+  "aux_signal": "典型违规: 同次治疗 \"CT 引导穿刺活检 ¥600\" + \"X 线计算机体层扫描 ¥400\" + \"胶片 ¥30\" 同时段, 操作记录未说明独立时段扫描.\n典型 CLEAN: 仅有引导单笔; 或影像报告明确术前 / 术后独立扫描各自记录."
+}

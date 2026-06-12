@@ -1,0 +1,33 @@
+[Unit]
+Description=Javert Web — 自查自纠规则审计 + 专家审核工作台
+Documentation=https://github.com/your-org/javert/blob/main/docs/deployment_192_62.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=admin2
+Group=admin2
+WorkingDirectory=/home/admin2/javert
+EnvironmentFile=/etc/default/javert-web
+# uv 在 ~/.local/bin (curl install) 或 /usr/local/bin; 改成实际路径
+ExecStart=/home/admin2/.local/bin/uv run javert web --with-mssql --host 0.0.0.0 --port 8090
+Restart=on-failure
+RestartSec=5
+# 给 uvicorn 优雅退出留时间, SyncWorker / AuditWatcher 收尾
+TimeoutStopSec=15
+KillSignal=SIGINT
+
+# 收紧权限
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/admin2/javert/data /home/admin2/javert/output
+
+# 资源 (内网 pilot, 不强制)
+# CPUQuota=200%
+# MemoryMax=2G
+
+[Install]
+WantedBy=multi-user.target

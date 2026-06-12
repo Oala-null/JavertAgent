@@ -1,0 +1,96 @@
+template_id: M5
+name: 虚构医药服务 (含复合"虚构或串换")
+description: fee 见某项但文书无对应执行记录 / 诊断不匹配
+master_prompt: |
+  本规则关注: 患者本次住院里, 费用中有「{{service_desc}}」, 但文书中没有对应的
+  执行记录, 即 "虚构 {{service_desc}} 项目骗取医保基金".
+  {{catalog_basis}}
+
+  审计步骤:
+  1. 用 search_fees 查 fee 是否命中. 检索关键词: {% for kw in service_kw_list %}"{{kw}}"{% if not loop.last %} / {% endif %}{% endfor %}
+  2. 若 fee 无命中 → CLEAN (规则不适用, 患者未被收取该费用).
+  3. 用 search_notes 检查文书是否有该服务的执行记录:
+     - 重点检查 section: {% for s in notes_section_hints %}"{{s}}"{% if not loop.last %} / {% endif %}{% endfor %}
+     - 执行证据关键词: {% for kw in execution_evidence_kw_list %}"{{kw}}"{% if not loop.last %} / {% endif %}{% endfor %}
+  4. 若文书有任一执行证据命中 → CLEAN (服务实际开展).{% if supporting_dx_kw_list %}
+  4a. 用 note_diagnosis 检查是否有支持该服务开展的诊断:
+     {% for dx in supporting_dx_kw_list %}- {{dx}}
+     {% endfor %}
+     若诊断有支持但文书无执行证据 → INCONCLUSIVE (有指征但记录可能缺失).{% endif %}
+  5. 若 fee 有 + 文书无执行证据{% if supporting_dx_kw_list %} + 诊断无支持{% endif %} → VIOLATION,
+     evidence: 引 fee 项目名 + 价格 + "在 {{notes_section_hints[0]}} 等 section 中未检索到 {{execution_evidence_kw_list[0]}} 等执行描述".
+  6. 文书 section 不完整 (例如手术记录缺失) / 描述模糊 → INCONCLUSIVE.{% if inconclusive_addendum %}
+  {{inconclusive_addendum}}{% endif %}
+  {% if dept_check %}
+  特殊条件: 若文书无 {{dept_check}} 科室介入痕迹 (例: 该科记录段为空 / 该科入院记录未生成), 强支持 VIOLATION.
+  {% endif %}{% if special_notes %}
+  特殊注意:
+  {% for note in special_notes %}- {{note}}
+  {% endfor %}{% endif %}{% if pilot_caveat %}
+  注意: {{pilot_caveat}}{% endif %}
+keywords_template: |
+  {% for kw in aux_keywords %}- {{kw}}
+  {% endfor %}
+tools_template: |
+  {% for t in aux_tools %}- {{t}}
+  {% endfor %}
+signal_template: |
+  {{aux_signal}}
+fields:
+  - name: service_desc
+    type: str
+    desc: "被虚构的服务/项目描述 (例: 全身麻醉)"
+    required: true
+  - name: service_kw_list
+    type: list[str]
+    desc: "search_fees 检索关键词 (3-5 个)"
+    required: true
+  - name: catalog_basis
+    type: str
+    desc: "服务执行的合理性背景 + 文书要求 (1-3 句)"
+    required: true
+  - name: execution_evidence_kw_list
+    type: list[str]
+    desc: "文书中应有的执行证据关键词 (4-5 个; 例: 麻醉记录 / 诱导药物 / 维持药物 / 苏醒过程)"
+    required: true
+  - name: notes_section_hints
+    type: list[str]
+    desc: "重点检查的文书 section (例: 手术记录 / 麻醉记录 / 影像报告 / 检验报告)"
+    required: true
+  - name: supporting_dx_kw_list
+    type: list[str]
+    desc: "支持开展该服务的诊断 (可选; 若有 + 文书无执行 = INCONCLUSIVE, 不是直接 V)"
+    required: false
+    default: []
+  - name: dept_check
+    type: str
+    desc: "要求科室 (例: 麻醉科 / 重症医学科 / 影像科; 空字符串表不限)"
+    required: false
+    default: ""
+  - name: inconclusive_addendum
+    type: str
+    desc: "额外 INCONCLUSIVE 条款"
+    required: false
+    default: ""
+  - name: special_notes
+    type: list[str]
+    desc: "特殊注意条款 (0+ 条)"
+    required: false
+    default: []
+  - name: pilot_caveat
+    type: str
+    desc: "pilot 适用性说明"
+    required: false
+    default: ""
+  - name: aux_keywords
+    type: list[str]
+    desc: "trigger_keywords 列表 (5-10 项)"
+    required: true
+  - name: aux_tools
+    type: list[str]
+    desc: "suggested_tools 列表 (推荐 [search_fees, search_notes, note_diagnosis])"
+    required: true
+  - name: aux_signal
+    type: str
+    desc: "expected_signal 整段文本"
+    required: true

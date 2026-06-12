@@ -1,0 +1,13 @@
+rule_id: R284
+domain: 精神医学
+violation_type: 虚假住院
+question: 患者实际未在院（挂床住院）、冒用他人信息虚构住院。
+example: 示例：某医院将门诊患者登记为住院，实际患者未在院，仍收取住院费用。
+status: drafting
+priority: P2
+prompt_addon: ''
+trigger_keywords: []
+suggested_tools: []
+expected_signal: ''
+notes: 虚假住院 (挂床/冒名) 需身份核验, 工具不可见. 留 add-identity-verification change.
+derived_from_template: null

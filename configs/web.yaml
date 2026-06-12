@@ -1,0 +1,17 @@
+# Javert Web 工作台配置
+# 优先级: JAVERT_* env > 此文件 > JavertConfig 字段默认值
+# session_secret 真生产从 /etc/default/javert-web 或 .env 注入, 不进 git
+
+# 鉴权 session
+session_max_age: 2592000        # 30 天 (秒)
+session_cookie_name: javert_session
+session_https_only: false       # 内网 http 测试期 false, 上 nginx TLS 后切 true
+session_same_site: lax
+
+# 速率限制 (slowapi)
+# /login: 1 分钟 5 次/IP
+# /register: 1 分钟 3 次/IP
+# /review: 1 分钟 20 次/IP
+
+# SSE 心跳
+sse_heartbeat_s: 30

@@ -1,0 +1,113 @@
+template_id: M7
+name: 项目身份串换收费
+description: 实际开展 X (低价/普通) 但 fee 收 Y (高价/特殊), 项目身份替换
+master_prompt: |
+  本规则关注: 患者本次住院里, 是否被收取的「{{billed_project_desc}}」实际开展的是
+  「{{actual_project_desc}}」, 即项目身份串换骗保模式.
+
+  按各省《诊疗目录》:
+  {{catalog_basis}}
+
+  审计步骤:
+  1. 用 search_fees(category="{{fee_category}}") 或 search_fees(keyword=...) 查 fee 是否命中.
+     检索关键词: {% for kw in billed_project_kw_list %}"{{kw}}"{% if not loop.last %} / {% endif %}{% endfor %}
+  2. 若 fee 无命中 → CLEAN (规则不适用, 患者未做该项目).
+  3. 用 search_notes(section={% for s in notes_sections %}"{{s}}"{% if not loop.last %} / {% endif %}{% endfor %}) 或 search_notes(keyword=...) 提取实际操作过程描述.
+  4. 检查文书是否含「{{billed_project_desc}}」独有特征:
+     {% for kw in billed_distinct_features %}- {{kw}}
+     {% endfor %}
+     若多数特征命中 → CLEAN (项目身份核对一致, Y 真做了).
+  5. 检查文书操作描述是否吻合「{{actual_project_desc}}」:
+     {% for kw in actual_project_kw_list %}- {{kw}}
+     {% endfor %}
+     若文书命中 actual 特征 + 不含 Y 独有特征 → VIOLATION (串换硬证据),
+     evidence: 引 fee Y 项目名 + 价格 + 文书实际操作原文摘录 + 目录差异说明.
+  6. 检查排除指征 (Y 真做了, 不构成本规则违规):
+     {% for kw in exclude_indicators_kw_list %}- {{kw}}
+     {% endfor %}
+     若命中任一 → CLEAN.
+  7. 文书操作描述模糊 / section 缺失 → INCONCLUSIVE.
+     {{inconclusive_example}}{% if special_notes %}
+
+  特殊注意:
+  {% for note in special_notes %}- {{note}}
+  {% endfor %}{% endif %}
+
+  关键判定逻辑: fee 命中 Y + 文书无 Y 独有特征 + 文书描述与 X 吻合 = 串换 V.
+  ETL 缺失 (操作记录 section 未数字化但有交叉引用) → INCONCLUSIVE conf 0.5 + etl_warning.{% if pilot_caveat %}
+
+  注意: {{pilot_caveat}}{% endif %}
+keywords_template: |
+  {% for kw in aux_keywords %}- {{kw}}
+  {% endfor %}
+tools_template: |
+  {% for t in aux_tools %}- {{t}}
+  {% endfor %}
+signal_template: |
+  {{aux_signal}}
+fields:
+  - name: actual_project_desc
+    type: str
+    desc: "实际开展的项目描述 (低价/普通; 例: 冰袋降温)"
+    required: true
+  - name: actual_project_kw_list
+    type: list[str]
+    desc: "文书识别实际项目的关键词 (操作过程/设备特征, 3-8 个; 例: ['冰袋','腋下冰敷','物理降温'])"
+    required: true
+  - name: billed_project_desc
+    type: str
+    desc: "被冒充的收费项目描述 (高价/特殊; 例: 冷疗治疗)"
+    required: true
+  - name: billed_project_kw_list
+    type: list[str]
+    desc: "search_fees 检索关键词 (项目名 + 简称变体, 2-5 个; 例: ['冷疗治疗','亚低温治疗','冷疗'])"
+    required: true
+  - name: billed_distinct_features
+    type: list[str]
+    desc: "收费项目独有特征 (设备名/参数/特殊操作; 3-8 个; 用于'若多数命中 → CLEAN'判定)"
+    required: true
+  - name: catalog_basis
+    type: str
+    desc: "项目身份差异的诊疗目录条款 + 关键区别说明 (1-3 句)"
+    required: true
+  - name: fee_category
+    type: enum
+    options: [手术类, 药品类, 耗材类, 检查类, 其他类]
+    default: 其他类
+    desc: "search_fees(category=...) 取值"
+    required: false
+  - name: notes_sections
+    type: list[str]
+    desc: "search_notes section 候选 (推荐 ['手术记录','操作记录','治疗记录','病程记录','护理记录'])"
+    required: true
+  - name: exclude_indicators_kw_list
+    type: list[str]
+    desc: "排除指征列表 (命中任一 → CLEAN, 表示 Y 真有合理适应症, 1-5 个; 可空列表)"
+    required: false
+    default: []
+  - name: inconclusive_example
+    type: str
+    desc: "信息不足的典型示例 (1 句; 例: '护理记录无任何降温措施描述, 无法核对项目身份')"
+    required: true
+  - name: special_notes
+    type: list[str]
+    desc: "特殊注意条款 (0+ 条)"
+    required: false
+    default: []
+  - name: pilot_caveat
+    type: str
+    desc: "pilot 适用性说明 (例: '甲状腺患者罕见, 多见于重症/急诊场景')"
+    required: false
+    default: ""
+  - name: aux_keywords
+    type: list[str]
+    desc: "trigger_keywords 列表 (5-12 项, 包含 billed/actual 项目名 + 关键设备词)"
+    required: true
+  - name: aux_tools
+    type: list[str]
+    desc: "suggested_tools 列表 (推荐 [search_fees, search_notes, note_diagnosis])"
+    required: true
+  - name: aux_signal
+    type: str
+    desc: "expected_signal 整段文本 (典型违规 / 典型 CLEAN / 典型 INCONCLUSIVE 描述)"
+    required: true

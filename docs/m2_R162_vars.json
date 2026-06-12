@@ -1,0 +1,32 @@
+{
+  "exam_concept_desc": "细菌抗体测定 (肺炎支原体抗体 / 衣原体抗体 / 军团菌抗体 / 结核抗体 / 立克次体抗体)",
+  "catalog_basis": "按诊疗规范, 细菌抗体测定用于特定不典型病原感染的诊断, 不应作为普通入院常规.",
+  "exam_kw_primary_list": ["细菌抗体", "肺炎支原体抗体", "衣原体抗体", "军团菌抗体", "结核抗体"],
+  "indication_dx_list": [
+    "肺炎 / 不典型肺炎 / 社区获得性肺炎 CAP",
+    "结核 / 肺结核 / 结核感染",
+    "长期发热待查 / 不明原因发热 / FUO",
+    "呼吸道感染",
+    "胸部影像异常待查 / 肺部阴影待查",
+    "持续咳嗽 / 慢性咳嗽",
+    "免疫抑制患者感染评估"
+  ],
+  "min_count": 1,
+  "inconclusive_addendum": "",
+  "drug_check": false,
+  "drug_kw_list": [],
+  "drug_concept_desc": "",
+  "special_notes": [],
+  "pilot_caveat": "",
+  "aux_keywords": [
+    "细菌抗体测定",
+    "肺炎支原体抗体",
+    "衣原体抗体",
+    "军团菌抗体",
+    "嗜肺军团菌抗体",
+    "结核抗体",
+    "立克次体抗体"
+  ],
+  "aux_tools": ["note_diagnosis", "search_fees"],
+  "aux_signal": "典型违规: 患者诊断为甲状腺结节, 收肺炎支原体抗体, 无呼吸/感染相关诊断.\n典型 CLEAN: 不典型肺炎或长期发热待查患者测肺炎支原体/衣原体抗体.\n典型 INCONCLUSIVE: 诊断 \"咳嗽待查\" 等中间状态."
+}

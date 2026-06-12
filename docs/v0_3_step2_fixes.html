@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>v0.3 第二步: 工具边界 + ETL 缺失 + conf 漂移 + 科室配置 四处修复</title>
+<style>
+  :root {
+    --bg: #fafbfc;
+    --card: #ffffff;
+    --border: #e4e7eb;
+    --text: #1f2933;
+    --muted: #616e7c;
+    --accent: #3b82f6;
+    --accent-soft: #dbeafe;
+    --green: #10b981;
+    --green-soft: #d1fae5;
+    --yellow: #f59e0b;
+    --yellow-soft: #fef3c7;
+    --red: #ef4444;
+    --red-soft: #fee2e2;
+    --purple: #8b5cf6;
+    --purple-soft: #ede9fe;
+    --orange: #f97316;
+    --orange-soft: #fed7aa;
+    --teal: #14b8a6;
+    --teal-soft: #ccfbf1;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  header {
+    background: linear-gradient(135deg, #eef2ff 0%, #dbeafe 100%);
+    padding: 28px 48px 22px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { margin: 0 0 6px 0; font-size: 26px; color: #1e3a8a; }
+  header .sub { color: var(--muted); font-size: 14px; }
+  header .badges { margin-top: 10px; }
+  .badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-right: 6px;
+  }
+  .badge.green { background: var(--green-soft); color: #065f46; }
+  .badge.yellow { background: var(--yellow-soft); color: #92400e; }
+  .badge.red { background: var(--red-soft); color: #991b1b; }
+  .badge.blue { background: var(--accent-soft); color: #1e40af; }
+  .badge.purple { background: var(--purple-soft); color: #5b21b6; }
+  .badge.orange { background: var(--orange-soft); color: #9a3412; }
+  .badge.teal { background: var(--teal-soft); color: #115e59; }
+
+  .tabs {
+    display: flex;
+    border-bottom: 2px solid var(--border);
+    background: white;
+    padding: 0 48px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    overflow-x: auto;
+  }
+  .tabs button {
+    background: none;
+    border: none;
+    padding: 14px 22px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+    margin-bottom: -2px;
+  }
+  .tabs button:hover { color: var(--accent); }
+  .tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .content { padding: 28px 48px 64px; max-width: 1240px; margin: 0 auto; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  h2 { font-size: 22px; margin: 24px 0 12px; color: #1e3a8a; }
+  h3 { font-size: 16px; margin: 22px 0 10px; color: var(--text); }
+  h4 { font-size: 14px; margin: 10px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+  table th, table td {
+    text-align: left; padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  table th {
+    background: #f1f5f9;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .verdict-tag {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .verdict-tag.v { background: var(--red-soft); color: #991b1b; }
+  .verdict-tag.c { background: var(--green-soft); color: #065f46; }
+  .verdict-tag.i { background: var(--yellow-soft); color: #92400e; }
+  .verdict-tag.drift { background: #f3f4f6; color: #6b7280; text-decoration: line-through; }
+  .arrow { color: var(--muted); font-weight: 700; margin: 0 4px; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+    margin: 16px 0 24px;
+  }
+  .sg {
+    border-radius: 8px;
+    padding: 16px 20px;
+    border-left: 5px solid;
+  }
+  .sg.boundary { background: var(--accent-soft); border-color: var(--accent); }
+  .sg.etl { background: var(--orange-soft); border-color: var(--orange); }
+  .sg.conf { background: var(--purple-soft); border-color: var(--purple); }
+  .sg.hospital { background: var(--teal-soft); border-color: var(--teal); }
+  .sg .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .sg .value { font-size: 22px; font-weight: 700; margin: 4px 0; }
+  .sg .desc { font-size: 12px; color: #334155; }
+
+  .case {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin: 14px 0;
+    overflow: hidden;
+  }
+  .case.flip { border-left: 5px solid var(--accent); }
+  .case-head {
+    padding: 12px 18px;
+    background: #f8fafc;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .case-head h4 {
+    margin: 0; text-transform: none; letter-spacing: 0; font-size: 15px;
+    color: var(--text);
+  }
+  .case-body { padding: 14px 18px; font-size: 13px; }
+  .case-body h5 { margin: 12px 0 4px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .case-body p { margin: 6px 0; }
+
+  pre, code {
+    font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+  }
+  pre {
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 12px 16px;
+    border-radius: 6px;
+    overflow-x: auto;
+    line-height: 1.55;
+    margin: 8px 0;
+  }
+  code { background: #f1f5f9; padding: 1px 5px; border-radius: 3px; color: #1e40af; }
+  pre code { background: transparent; padding: 0; color: inherit; }
+
+  .diff-add { background: rgba(16, 185, 129, 0.18); color: #d1fae5; display: block; }
+  .diff-del { background: rgba(239, 68, 68, 0.22); color: #fee2e2; display: block; text-decoration: line-through; }
+  .diff-hl { color: #fde68a; font-weight: 600; }
+
+  .flip-table th, .flip-table td {
+    font-size: 13px; padding: 10px 14px;
+  }
+  .flip-table .old { color: var(--muted); text-decoration: line-through; }
+  .flip-table .new { color: #065f46; font-weight: 700; }
+
+  .file-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: #f1f5f9;
+    color: #1e40af;
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    margin-right: 4px;
+  }
+
+  .changelog li { font-size: 13px; margin: 4px 0; }
+  .changelog code { font-size: 11px; }
+
+  @media (max-width: 800px) {
+    .content, header, .tabs { padding-left: 20px; padding-right: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🛠️ v0.3 第二步 · 工具边界 + ETL + conf 漂移 + 科室配置 四处修复</h1>
+  <div class="sub">2026-05-15 · 在 v0.3 第一步 (audit-non-pilot-patient) 之后, 完成 4 处底层修复. 测试 181/181 通过, R220/R212/R291 J66252 三条规则全部翻好.</div>
+  <div class="badges">
+    <span class="badge blue">🔧 4 个修复 capability</span>
+    <span class="badge green">181 / 181 测试通过</span>
+    <span class="badge green">+24 新单测</span>
+    <span class="badge purple">3 条 J66252 规则翻 (R220/R212/R291)</span>
+    <span class="badge orange">R203 J13365 ETL flip V→I (第一步遗留验证)</span>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="overview">📊 总览</button>
+  <button class="tab-btn" data-tab="batch1">🔍 批次 1: 工具边界 + ETL</button>
+  <button class="tab-btn" data-tab="batch2">🎯 批次 2: conf 漂移 + 科室配置</button>
+  <button class="tab-btn" data-tab="files">📝 代码 / 测试</button>
+  <button class="tab-btn" data-tab="next">🚀 下一步</button>
+</nav>
+
+<main class="content">
+
+<!-- ========== TAB 1: 总览 ========== -->
+<section class="tab-panel active" id="overview">
+  <h2>四处底层修复</h2>
+
+  <div class="summary-grid">
+    <div class="sg boundary">
+      <div class="label">🔵 批次 1.1 工具边界</div>
+      <div class="value">9 段噪音过滤</div>
+      <div class="desc">search_notes(keyword) 默认排除告知/风险/输血告知噪音段, 命中标注 <code>[否认段]</code> / <code>[选项框]</code>.</div>
+    </div>
+    <div class="sg etl">
+      <div class="label">🟠 批次 1.2 ETL 缺失</div>
+      <div class="value">见 X / 详见 X 探测</div>
+      <div class="desc">search_notes(section) 空命中 + 全文有交叉引用 → ⚠️ ETL 警告 + 引导 LLM 出 INCONCLUSIVE.</div>
+    </div>
+    <div class="sg conf">
+      <div class="label">🟣 批次 2.1 conf 漂移</div>
+      <div class="value">0.0 → 0.4-0.7</div>
+      <div class="desc">base.txt 收紧 conf 区间: V/C 0.70-0.95, I 0.40-0.70, 0.0 限"极端".</div>
+    </div>
+    <div class="sg hospital">
+      <div class="label">🟢 批次 2.2 科室配置</div>
+      <div class="value">25 科室开关</div>
+      <div class="desc">hospital_config.yaml + prompt_assembler 注入, PACU / 封闭式精神病专科病区 等可硬判.</div>
+    </div>
+  </div>
+
+  <h3>关键验证结果</h3>
+
+  <div class="card">
+    <h4 style="margin-top: 0;">4 条规则修复前后对照</h4>
+    <table class="flip-table">
+      <thead>
+        <tr>
+          <th>规则</th>
+          <th>患者</th>
+          <th>旧 verdict</th>
+          <th>新 verdict</th>
+          <th>触发的修复</th>
+          <th>核心证据</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>R203</b> 全身麻醉</td>
+          <td>J13365</td>
+          <td><span class="verdict-tag drift">V conf=0.95</span></td>
+          <td><span class="verdict-tag i">I conf=0.60</span></td>
+          <td>批次 1.2 ETL 缺失探测</td>
+          <td>section <code>麻醉记录</code> 空 + 手术经过段引用 "见麻醉记录" × 2 → ETL warning</td>
+        </tr>
+        <tr>
+          <td><b>R220</b> 控制性降压</td>
+          <td>J66252</td>
+          <td><span class="verdict-tag drift">I conf=0.00 + 18 tc</span></td>
+          <td><span class="verdict-tag v">V conf=0.90 + 9 tc</span></td>
+          <td>批次 2.1 conf 区间 + 1.1 噪音过滤</td>
+          <td>fee ¥80 + 手术经过段 "出血量 2ml" + 无 "巨大甲状腺肿/丰富血供" 描述</td>
+        </tr>
+        <tr>
+          <td><b>R212</b> PACU 监护</td>
+          <td>J66252</td>
+          <td><span class="verdict-tag drift">I conf=0.60</span></td>
+          <td><span class="verdict-tag c">C conf=0.90</span></td>
+          <td>批次 2.2 科室配置注入</td>
+          <td>hospital_config.PACU=true → evidence 直接引用配置硬判 CLEAN</td>
+        </tr>
+        <tr>
+          <td><b>R291</b> 精神科监护</td>
+          <td>J66252</td>
+          <td><span class="verdict-tag drift">conf=0.00 漂移</span></td>
+          <td><span class="verdict-tag c">C conf=0.95 + 3 tc</span></td>
+          <td>批次 2.1 conf 区间</td>
+          <td>fee 双查 (精神科监护/精神病人护理) 双空 + 诊断无精神科 → 干净 CLEAN</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card" style="background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);">
+    <h4 style="margin-top: 0; color: #065f46;">🎉 一句话总结</h4>
+    <p style="font-size: 14px; margin-bottom: 0;">v0.3 第一步发现 19 V 中 1 例 ETL 误判 + 2 例 conf=0.00 漂移 + R212 PACU 卡 INCONCLUSIVE. <b>第二步在工具层 + prompt 层各做了两处修复, 4 个问题全部修好, 测试全绿</b>. 后续 audit-non-pilot-patient 复跑这些修复都默认生效.</p>
+  </div>
+</section>
+
+<!-- ========== TAB 2: 批次 1 ========== -->
+<section class="tab-panel" id="batch1">
+  <h2>批次 1: search_notes 工具边界 + ETL 缺失打标</h2>
+  <p style="font-size: 14px;">v0.3 第一步发现 LLM 在 search_notes 全文搜时, 60%+ 假指征命中落在 4 类噪音段 (手术风险告知 / 既往史否认 / 选项框 / 输血告知), 以及 1 例 ETL 数据未数字化但被误判 V. 本批次在工具层做两处修复.</p>
+
+  <h3>1.1 噪音段默认过滤 (9 类)</h3>
+  <div class="card">
+    <h4 style="margin-top: 0;">DEFAULT_NOISE_PATTERNS</h4>
+    <p>keyword 模式 hit 落在以下段 (substring 包含匹配, 容纳带标点变体) 视为假指征:</p>
+    <table>
+      <thead>
+        <tr><th>模式</th><th>覆盖段</th><th>典型噪音命中</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>可能发生的并发症</code></td><td>手术中或手术后可能发生的并发症： (2293)</td><td>"心搏骤停 / 心肌梗 / DIC"</td></tr>
+        <tr><td><code>可能出现的意外</code></td><td>可能出现的意外及防范措施 (2628)</td><td>"休克 / 败血症"</td></tr>
+        <tr><td><code>特此告知</code></td><td>特此告知 (2680)</td><td>各类告知段内容</td></tr>
+        <tr><td><code>告知内容</code></td><td>告知内容 (1997)</td><td>—</td></tr>
+        <tr><td><code>医方告知</code></td><td>医方告知 / 输血医方告知 (195)</td><td>"感染肝炎 (乙肝、丙肝)"</td></tr>
+        <tr><td><code>告知同意</code></td><td>告知同意 (55)</td><td>—</td></tr>
+        <tr><td><code>潜在风险和对策</code></td><td>(6)</td><td>—</td></tr>
+        <tr><td><code>特殊风险</code></td><td>特殊风险和主要高位因素 (5)</td><td>—</td></tr>
+        <tr><td><code>风险及并发症</code></td><td>风险及并发症 / 手术风险及并发症 (6)</td><td>—</td></tr>
+      </tbody>
+    </table>
+    <p>全部 hit 落在噪音段时, 直接返回 <b>"仅在告知/风险噪音段命中"</b> 提示, 避免假指征; <code>include_noise=true</code> 兜底.</p>
+  </div>
+
+  <h3>1.2 否认 / 选项框上下文标注</h3>
+  <div class="card">
+    <h4 style="margin-top: 0;">真段 hit 逐条扫上下文窗口</h4>
+    <ul>
+      <li><b>[否认段]</b>: keyword 前 40 字符内出现 <code>否认 / 未见 / 排除 / 未发现 / 无明显</code> → 反向语义. (排除 "无" 因太歧义)</li>
+      <li><b>[选项框]</b>: keyword 附近 30 字符内出现 <code>□ / ☐ / [ ]</code> → 未必激活.</li>
+      <li>双标可叠加: <code>[否认段/选项框]</code></li>
+    </ul>
+
+    <h5>示例: J18906 既往史否认</h5>
+    <pre>关键词 '冠心病' 命中:
+[1] 子阶段: 既往史 <span class="diff-hl">[否认段]</span>
+    ...否认高血压、糖尿病、<span class="diff-hl">冠心病</span>、房颤等慢性病史</pre>
+
+    <h5>示例: J18906 患者离开手术室前选项框</h5>
+    <pre>关键词 'ICU' 命中:
+[1] 子阶段: 患者离开手术室前 <span class="diff-hl">[选项框]</span>
+    患者: □ 恢复室 □ 病房 □ <span class="diff-hl">ICU 病房</span> □ 急诊 □ 离院</pre>
+  </div>
+
+  <h3>1.3 section 模式 ETL 缺失探测</h3>
+  <div class="card">
+    <h4 style="margin-top: 0;">交叉引用模式</h4>
+    <p>search_notes(section=X) 命中 0 条时, 在全量文书扫 <code>见X / 详见X / 参见X / 见前述X</code> 引用. 有引用 → ⚠️ ETL 警告.</p>
+
+    <h5>R203 J13365 实锤 (V→I flip)</h5>
+    <pre>search_notes(section='麻醉记录') →
+⚠️ ETL 数据完整性警告: 该患者无 '麻醉记录' 子阶段, 但其他文书有 2 处引用该记录:
+[1] 来源子阶段: 第一手术经过： (引用 '见麻醉记录')
+    ...术中操作顺利，麻醉满意，<span class="diff-hl">术中出血见麻醉记录</span>，输血1U红悬2U血浆...
+提示: 引用存在但 section 本身未入索引, 通常 ETL 数据缺失.
+建议输出 INCONCLUSIVE, evidence source='etl_warning', locator='ETL_GAP: 麻醉记录'.</pre>
+  </div>
+
+  <h3>1.4 base.txt 教学</h3>
+  <div class="card">
+    <h4 style="margin-top: 0;">evidence source 集合扩 etl_warning</h4>
+    <pre>- **evidence**: source ∈ {note, fee, drug_indication, <span class="diff-hl">etl_warning</span>},
+  locator 用 "子阶段名 / 项目名 / 药品名 / <span class="diff-hl">ETL_GAP: &lt;section&gt;</span>"
+
+若工具返回 ⚠️ ETL 警告 → 输出 INCONCLUSIVE conf 0.50.</pre>
+  </div>
+</section>
+
+<!-- ========== TAB 3: 批次 2 ========== -->
+<section class="tab-panel" id="batch2">
+  <h2>批次 2: conf 漂移 + 科室配置</h2>
+  <p style="font-size: 14px;">v0.3 第一步 J66252 三条规则 (R220 / R212 / R291) 出现 INCONCLUSIVE conf=0.00 漂移. R220 LLM 不能拿到 "巨大甲状腺肿/丰富血供" 描述就退 I 但 conf=0.0, R212 PACU 配置未知卡 I conf 0.60, R291 fee 不命中却 conf=0.0. 本批次从 prompt 层 + 配置层各做一处修复.</p>
+
+  <h3>2.1 conf 区间收紧 (base.txt)</h3>
+  <div class="card">
+    <h4 style="margin-top: 0;">原 base.txt</h4>
+    <pre><span class="diff-del">- **confidence**: 你对 verdict 的把握; INCONCLUSIVE 时建议 ≤ 0.5</span></pre>
+
+    <h4>新 base.txt (5 行展开)</h4>
+    <pre><span class="diff-add">- **confidence**: 你对 verdict 的把握 (v0.3 收紧 conf 区间, 治漂移):</span>
+<span class="diff-add">  - VIOLATION / CLEAN: <span class="diff-hl">0.70 ~ 0.95</span></span>
+<span class="diff-add">  - INCONCLUSIVE: <span class="diff-hl">0.40 ~ 0.70</span> — 不要写 0.0</span>
+<span class="diff-add">  - conf = 0.00 仅在极端: 工具全 fail / 关键信息完全缺失</span>
+<span class="diff-add">  - 边界规则: 命中部分指征但不充分 → I conf 0.50 ~ 0.60</span>
+<span class="diff-add">  - ETL 缺失触发的 I → conf 0.50 (中性保守)</span></pre>
+
+    <p><b>核心思想</b>: 原文本 "≤ 0.5" 被 LLM 解读成 "保险起见 0.0", 现在改成明确区间 + "不要写 0.0" 硬约束.</p>
+  </div>
+
+  <h3>2.2 hospital_config.yaml + prompt_assembler 注入</h3>
+  <div class="card">
+    <h4 style="margin-top: 0;">新建 <code>configs/hospital_config.yaml</code> (25 科室)</h4>
+    <pre>hospital_id: demo_hospital
+hospital_name: 演示三甲医院
+
+departments:
+  # 麻醉 / 重症
+  <span class="diff-hl">PACU: true</span>                       # R212 直接判定依据
+  ICU: true / CCU: false / NICU: false / PICU: false / EICU: true
+
+  # 精神 / 神经
+  <span class="diff-hl">封闭式精神病专科病区: false</span>        # R291 项目内涵硬要求
+  精神医学科住院部: false / 神经监护病区: true
+
+  # 透析 / 净化 / 手术 / 介入
+  血液净化中心: true / 腹膜透析中心: true
+  介入手术室: true / 杂交手术室: false / 机器人手术系统: false
+
+  # 急救 / 创伤
+  胸痛中心: true / 卒中中心: true / 创伤中心: true / 急诊抢救室: true
+
+  # 其他: 康复医学科 / 高压氧舱 / PET-CT / 伽马刀 / 质子重离子治疗</pre>
+  </div>
+
+  <div class="card">
+    <h4 style="margin-top: 0;">prompt_assembler 注入逻辑</h4>
+    <p>新增 <code>load_hospital_config()</code> + <code>format_hospital_config_block()</code>. assemble_system_prompt 新增可选 <code>hospital_config</code> 参数, 配置存在则在规则段前插入科室开关表 + 使用说明.</p>
+    <pre># 医院科室配置 (供 PACU / 精神监护 / 透析等规则判定)
+**医院**: 演示三甲医院 (id=demo_hospital)
+
+**科室存在性** (true=有 / false=无):
+
+  - ✅ PACU: True
+  - ✅ ICU: True
+  - ❌ CCU: False
+  - ❌ <span class="diff-hl">封闭式精神病专科病区: False</span>
+  - ✅ 血液净化中心: True
+  - ...
+
+**使用方式**: 若规则需判断医院是否有某科室 (R212 PACU / R291 封闭式精神病专科病区), 查上表 —
+若该科室明确为 false 且 fee 收了对应费用 → VIOLATION (硬证据);
+若该科室 true → CLEAN (有科室开展);
+若该科室未列出 → INCONCLUSIVE conf 0.5 建议线下核实.</pre>
+  </div>
+
+  <h3>2.3 三条规则复跑实测 (J66252)</h3>
+
+  <div class="case flip">
+    <div class="case-head">
+      <h4>R220 控制性降压 — I conf=0.00 → V conf=0.90</h4>
+      <span class="badge purple">conf 漂移修复</span>
+    </div>
+    <div class="case-body">
+      <p><b>LLM 推理 (新)</b>: 患者费用明细中包含 '控制性降压' (¥80)，但诊断仅为甲状腺恶性肿瘤 cT1N0M 及结节，手术为甲状腺癌根治术。<b>手术记录显示出血量仅 2ml，且未提及 '巨大' / '丰富血供' 描述</b>。控制性降压适用于神经外科 / 大血管等高出血风险手术。该患者在无明确指征的情况下收取该费用，构成违规。</p>
+      <p><b>tool call 数</b>: 18 → 9 (砍半, 因 LLM 不再反复探索 "巨大/丰富血供")</p>
+      <p><b>evidence 行</b>: fee ¥80 + 出院诊断 + 手术经过 "出血量 2ml" + 手术方案 "甲状腺癌根治"</p>
+    </div>
+  </div>
+
+  <div class="case flip">
+    <div class="case-head">
+      <h4>R212 PACU 监护 — I conf=0.60 → C conf=0.90</h4>
+      <span class="badge teal">科室配置注入</span>
+    </div>
+    <div class="case-body">
+      <p><b>LLM 推理 (新)</b>: 费用检索确认患者 J66252 收取了 '麻醉后复苏监护(PACU)' ¥300 费用。<b>根据提供的医院科室配置信息，该医院 PACU 科室配置为 True</b>，即医院设有麻醉恢复室。规则 R212 的违规核心在于 '医院无麻醉恢复室' 却收取相关费用。由于医院具备 PACU 资质，该收费行为符合诊疗目录规定，不构成违规。</p>
+      <p><b>evidence 行</b>:</p>
+      <pre>[fee] 麻醉后复苏监护(PACU): 费用明细出现 ¥300.00
+[etl_warning] 医院科室配置: <span class="diff-hl">PACU: True</span> (存在麻醉恢复室)</pre>
+      <p><b>注</b>: LLM 用 source=etl_warning 来引用 hospital config 是受限选择 — 下一步可在 evidence source 集合加 hospital_config 让语义更清晰. 但当前已能正确表达意图.</p>
+    </div>
+  </div>
+
+  <div class="case flip">
+    <div class="case-head">
+      <h4>R291 精神科监护 — I conf=0.00 → C conf=0.95</h4>
+      <span class="badge purple">conf 漂移修复</span>
+    </div>
+    <div class="case-body">
+      <p><b>LLM 推理 (新)</b>: 工具 search_fees 明确返回未找到 '精神科监护' / '精神病人护理' 费用项目，且患者诊断均为甲状腺相关疾病，无精神科指征。由于缺乏违规收费的基础事实，判定为 CLEAN。</p>
+      <p><b>tool call 数</b>: 3 步即定 (search_fees × 2 + note_diagnosis × 1)</p>
+      <p><b>conf 区间生效</b>: 旧 conf=0.0 漂移 → 新 conf=0.95 高置信 CLEAN</p>
+    </div>
+  </div>
+</section>
+
+<!-- ========== TAB 4: 代码 / 测试 ========== -->
+<section class="tab-panel" id="files">
+  <h2>代码 + 测试改动</h2>
+
+  <h3>修改的文件 (6 个)</h3>
+  <div class="card">
+    <ul class="changelog">
+      <li>
+        <span class="file-pill">src/javert/tools/search_notes.py</span>
+        重写 — keyword 模式加 9 段噪音过滤 + 否认/选项框上下文标注; section 模式加 ETL 缺失探测.
+      </li>
+      <li>
+        <span class="file-pill">src/javert/audit/prompts/base.txt</span>
+        confidence 字段从 "≤ 0.5" 改为明确 5 行区间; evidence source 集合扩 <code>etl_warning</code>; 加 ETL 警告 / 否认段 / 选项框 三类边界信号说明.
+      </li>
+      <li>
+        <span class="file-pill">configs/hospital_config.yaml</span>
+        新建 — 25 个科室开关 (PACU / ICU / 封闭式精神病专科病区 / 血液净化中心 / 介入手术室 / ...).
+      </li>
+      <li>
+        <span class="file-pill">src/javert/config.py</span>
+        加 <code>hospital_config</code> 字段 (默认 <code>configs/hospital_config.yaml</code>) + <code>hospital_config_path</code> property.
+      </li>
+      <li>
+        <span class="file-pill">src/javert/audit/prompt_assembler.py</span>
+        加 <code>load_hospital_config()</code> + <code>format_hospital_config_block()</code>; <code>assemble_system_prompt</code> 加可选 hospital_config 参数, 注入到规则段前.
+      </li>
+      <li>
+        <span class="file-pill">src/javert/audit/runner.py</span>
+        _audit_body 中调用 <code>load_hospital_config(self.config.hospital_config_path)</code> 并传给 assemble_system_prompt.
+      </li>
+    </ul>
+  </div>
+
+  <h3>新增测试 (2 个文件 / 24 个 case)</h3>
+  <div class="card">
+    <ul class="changelog">
+      <li>
+        <span class="file-pill">tests/test_search_notes_boundary.py</span>
+        13 case: 噪音过滤 (4) + 否认/选项框 (4) + ETL 探测 (3) + 兼容性 (2)
+      </li>
+      <li>
+        <span class="file-pill">tests/test_hospital_config.py</span>
+        10 case: 加载 (4) + 格式化 (3) + assemble 注入 (3) + 真实 yaml 集成 (1)
+      </li>
+    </ul>
+    <h4>pytest 全量</h4>
+    <pre>$ uv run pytest tests/
+======================== 181 passed in 1.03s ========================</pre>
+  </div>
+
+  <h3>端到端验证</h3>
+  <div class="card">
+    <h4 style="margin-top: 0;">R203 J13365 (批次 1 — ETL 缺失)</h4>
+    <pre>$ uv run javert dry-run R203 --patient J13365
+[Tool] search_notes({"section": "麻醉记录"}) →
+  ⚠️ ETL 数据完整性警告: 该患者无 '麻醉记录' 子阶段, 但其他文书有 2 处引用...
+[Verdict] <span class="diff-hl">I conf=0.60</span> duration=95.2s tool_calls=8
+旧基线: V conf=0.95 (误判虚构全麻)</pre>
+
+    <h4>R220 / R212 / R291 J66252 (批次 2 — conf + 配置)</h4>
+    <pre>$ uv run javert audit-patient J66252 --rules R220,R212,R291 --share-tool-cache --concurrency 3
+[1/3] R291 → <span class="diff-hl">C conf=0.95</span> 78.5s tc=3
+[2/3] R220 → <span class="diff-hl">V conf=0.90</span> 90.9s tc=9
+[3/3] R212 → <span class="diff-hl">C conf=0.90</span> 119.6s tc=2
+
+Total: 119.7s avg=96.3s
+Verdicts: V=1 / C=2 / I=0
+旧基线: 全部 conf=0.00 漂移 (R220 18 tc / R212 I=0.60 卡 PACU 未知 / R291 漂移)</pre>
+  </div>
+</section>
+
+<!-- ========== TAB 5: 下一步 ========== -->
+<section class="tab-panel" id="next">
+  <h2>v0.3 完整路线图当前状态</h2>
+
+  <div class="card">
+    <h3 style="margin-top: 0;">v0.3 第一步 + 第二步 总结</h3>
+    <ul style="font-size: 14px;">
+      <li>✅ <b>第一步 audit-non-pilot-patient</b>: J18906 / J13365 跑完六模板, 19 V 核查 (18 真 V + 1 ETL + 1 边界, 0 假阳性)</li>
+      <li>✅ <b>第二步.批次 1</b>: search_notes 边界 + ETL 缺失打标 (本期完成)</li>
+      <li>✅ <b>第二步.批次 2</b>: conf 漂移 + 科室配置注入 (本期完成)</li>
+    </ul>
+  </div>
+
+  <h3>建议下一步</h3>
+
+  <div class="card">
+    <h4 style="margin-top: 0; color: var(--accent);">🔵 优先级 1: 复跑 J18906 / J13365 验证组合修复</h4>
+    <p>4 处修复都做完了, 但目前只在 J66252 上验证了批次 2. 应该把 J18906 / J13365 各 7-10 V 用新工具/新 prompt 复跑一遍, 看:</p>
+    <ul style="font-size: 13px;">
+      <li>R131 / R141 / R143 / R146 J18906 — V conf 是否仍 0.95 (期望: 因为他们的命中本就在告知段, 现在被默认过滤后, 真无 hit → V 更扎实)</li>
+      <li>R203 J13365 — 已验证 (V → I conf=0.60)</li>
+      <li>R141/R143/R146 J13365 — 同 J18906</li>
+      <li>R112 J13365 (边界 0.90) — 看 conf 区间收紧后是否更稳</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h4 style="margin-top: 0; color: var(--teal);">🟢 优先级 2: evidence source 集合加 hospital_config</h4>
+    <p>R212 J66252 LLM 用 <code>source=etl_warning</code> 引用医院配置是受限选择. base.txt 把 evidence source 集合扩为 <code>{note, fee, drug_indication, etl_warning, hospital_config}</code>, locator 推荐 <code>HOSPITAL_CONFIG: PACU</code>, 让语义更精确.</p>
+  </div>
+
+  <div class="card">
+    <h4 style="margin-top: 0; color: var(--purple);">🟣 优先级 3: 跨患者一致性核查 (add-cross-patient-stats)</h4>
+    <p>R141 / R143 / R146 / R131 在多患者上 V, 是系统性违规. 应该跑 10+ 患者后统计每条规则的跨患者 V 率, V 率 ≥ 50% 的规则提报到医院级合规整改.</p>
+  </div>
+
+  <div class="card">
+    <h4 style="margin-top: 0; color: var(--orange);">🟠 优先级 4: 多医院切换 hospital_config</h4>
+    <p>现在 hospital_config.yaml 是 hardcoded demo. 实际部署应该支持: 1) 多医院配置目录 <code>configs/hospitals/{hospital_id}.yaml</code>; 2) Patient → hospital_id 映射 (来自 fee.bah 前缀或独立表); 3) Runner 根据 patient_id 动态加载对应医院配置.</p>
+  </div>
+</section>
+
+</main>
+
+<script>
+  const buttons = document.querySelectorAll('.tab-btn');
+  const panels = document.querySelectorAll('.tab-panel');
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      buttons.forEach(b => b.classList.remove('active'));
+      panels.forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab).classList.add('active');
+    });
+  });
+</script>
+
+</body>
+</html>

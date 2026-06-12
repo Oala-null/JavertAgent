@@ -1,0 +1,52 @@
+rule_id: R212
+domain: 麻醉
+violation_type: 超标准收费
+question: 医院无麻醉恢复室，收取麻醉恢复室监护费用。
+example: 示例：某省《诊疗项目》规定，麻醉恢复室监护是指在麻醉恢复室内监测患者心电图、血压等生命体征。某医院无麻醉恢复室，但收取了“麻醉恢复室监护”费用，属于超标准收费。
+status: ready
+priority: P0
+prompt_addon: |
+  本规则关注: 患者本次住院里, 是否未按诊疗目录规定的计价标准收取「麻醉后复苏监护 (PACU) / 麻醉恢复室监护」费用.
+
+  📖 诊疗目录条款 (来源: 截至 2026-04-01 全量诊疗项目库):
+    项目名: 麻醉后复苏监护 (PACU) / 麻醉恢复室监护
+    计价单位: (配置依赖项目)
+    加成规则: 麻醉恢复室监护必须在麻醉恢复室 (PACU) 内提供, 监测患者心电图、血压等生命体征. 医院须设置 PACU 科室才能提供该项目.
+
+  ⚠️ 典型违规模式: 医院无 PACU 科室仍收取麻醉恢复室监护费
+
+  审计步骤:
+  1. 用 search_fees(keyword=...) 查 fee 是否命中, 记录出现次数 count + 实收金额合计. 检索关键词: "麻醉后复苏监护" / "麻醉恢复室监护" / "PACU"
+  2. 若 fee 无命中 → CLEAN (规则不适用, 患者未做该项目).
+  3. 用 search_notes(section="麻醉记录") 或 search_notes(keyword=...) 提取实际事件量化值 N.
+     量化关键词: "麻醉恢复室" / "PACU" / "复苏" / "麻醉后监护"
+  4. 按目录规则计算应收次数 expected:
+     判定核心: 医院是否设 PACU 科室 (外部信息). Javert 当前 4 工具不能直接验证医院科室配置. 若 fee 命中 + 文书描述'转入恢复室'/'PACU 监护'细节, 应 CLEAN (有实际开展); 若文书完全无相关描述, 退 INCONCLUSIVE (建议线下核实医院 PACU 是否存在).
+  5. 比对 count vs expected:
+     - count 显著大于 expected → VIOLATION (超标准多收),
+       evidence: 引 fee 项目名 × count + 实际事件 N + 目录单位 "(配置依赖项目)" + 应收 expected + 多收金额.
+     - count 等于 expected → CLEAN (按目录正确收).
+     - count 小于 expected → CLEAN (未足量收, 不属本规则).
+  6. 文书未提供量化信息 (切口数/治疗时长/牙数/血管数/疗程数 等) → INCONCLUSIVE.
+
+  特殊注意:
+  - 医院 PACU 配置是规则核心证据, 但当前 4 工具不可见, 留待 add-hospital-config change
+  - 文书 search_notes 若有'转入恢复室'/'PACU 观察'等描述, 可视为间接证据 PACU 存在 → CLEAN
+  - fee 命中 + 文书无任何 PACU 相关描述 → INCONCLUSIVE (不是 V, 因为科室配置未知)
+
+  注意: J66252 fee 含 '麻醉后复苏监护(PACU) ¥300', 需医院级 PACU 配置确认. 本规则当前应主要输出 INCONCLUSIVE 建议线下核实, 不强判 V.
+trigger_keywords:
+  - 麻醉后复苏监护
+  - 麻醉恢复室
+  - PACU
+  - 麻醉恢复室监护
+  - 复苏监护
+suggested_tools:
+  - search_fees
+  - search_notes
+expected_signal: |
+  典型违规: 医院无 PACU 但收 PACU 监护费 (需外部确认).
+  典型 CLEAN: 文书描述'转入恢复室观察' + 收 PACU 费.
+  典型 INCONCLUSIVE: fee 命中但文书无 PACU 相关描述, 建议线下核实医院科室配置.
+notes: ''
+derived_from_template: M4

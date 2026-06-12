@@ -1,0 +1,48 @@
+{
+  "treatment_desc": "特殊方法气管插管术 (纤支镜引导 / 视频喉镜 / 经鼻气管插管)",
+  "treatment_kw_list": [
+    "特殊方法气管插管",
+    "困难气道插管",
+    "纤支镜引导插管",
+    "视频喉镜插管",
+    "经鼻气管插管"
+  ],
+  "catalog_basis": "按医保政策, 特殊方法气管插管术 (纤支镜/视频喉镜) 仅适用于困难气道 / Mallampati Ⅲ-Ⅳ / 颈椎不稳定 / 巨大甲状腺肿压迫气道等. 无指征普遍开展属过度诊疗.",
+  "indication_dx_list": [
+    "困难气道",
+    "困难插管",
+    "Mallampati Ⅲ-Ⅳ",
+    "张口受限",
+    "颈椎不稳定",
+    "头颈手术",
+    "颌面外伤",
+    "喉部肿瘤",
+    "巨大甲状腺肿压迫气道"
+  ],
+  "exclusion_dx_list": [],
+  "notes_evidence_section": "麻醉记录",
+  "notes_evidence_kw_list": [
+    "插管方式",
+    "气道评估",
+    "Mallampati",
+    "插管难度"
+  ],
+  "special_notes": [
+    "普通甲状腺手术若无气道压迫描述, 一般用普通气管插管即可."
+  ],
+  "pilot_caveat": "甲状腺癌患者如有 '巨大甲状腺肿' 或 '气管受压' 描述, 是 CLEAN; 否则疑 V.",
+  "aux_keywords": [
+    "特殊方法气管插管",
+    "困难气道",
+    "纤支镜引导插管",
+    "视频喉镜",
+    "经鼻气管插管",
+    "Mallampati"
+  ],
+  "aux_tools": [
+    "search_fees",
+    "note_diagnosis",
+    "search_notes"
+  ],
+  "aux_signal": "典型违规: 普通甲状腺癌患者无气道压迫描述, 收特殊插管费.\n典型 CLEAN: 患者诊断含 '巨大甲状腺肿伴气管受压', 特殊插管有指征.\n典型 INCONCLUSIVE: 文书未明示气道评估细节."
+}

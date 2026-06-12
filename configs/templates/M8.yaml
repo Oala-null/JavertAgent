@@ -1,0 +1,96 @@
+template_id: M8
+name: 药品适应症/限定审计
+description: 药品 fee 命中监管 KB + 诊断比对 (限适应症/超说明书=诊断∉依据→V; 禁忌=诊断∈禁忌→V 反向; 限二线=无一线失败证据→V)
+master_prompt: |
+  本规则关注: {{target_desc}} 是否存在超出适应症 / 医保限定支付范围的用药.
+  {% if drug_focus %}本规则聚焦单一药品「{{drug_focus}}」.{% else %}本规则覆盖该患者全部命中「{{drug_rule_type}}」类型的药品 (工具 bulk 驱动).{% endif %}
+
+  ⚠️ on-label 误报闸 (本规则成败关键, 必须遵守):
+  命中知识库**不代表违规**. drug_audit_lookup 只做「该药在监管知识库」的确定性字典命中;
+  是否违规**取决于患者诊断是否落在依据范围内**:
+  {% if drug_rule_type == '禁忌症' %}- 患者诊断**命中**说明书疾病禁忌 → VIOLATION (反向逻辑, 属用药安全); 诊断不在禁忌内 → CLEAN.
+  {% elif drug_rule_type == '限二线' %}- 诊断**在**适应症内 **且** 文书有一线药失败/不耐受证据 → CLEAN; 诊断在适应症内但**无**一线失败证据 → VIOLATION.
+  {% else %}- 患者诊断**落在**依据 (限定支付 / 说明书) 适应症内, **或属其合理临床外延** → CLEAN; 诊断与依据**完全无关** → VIOLATION; 诊断模糊/缺失 → INCONCLUSIVE.
+    (合理外延示例: 甲状腺切除/甲状腺癌 → 甲状腺功能减退替代; 大手术/重症/活动性出血/低白蛋白血症/肝硬化/肿瘤胸腹水 → 人血白蛋白; 恶性肿瘤化疗 → 止吐/升白/升板.
+     **不要因病案首页未逐字写出依据病名就判 V** —— 诊断与依据临床相关即视为落在范围内.)
+  {% endif %}
+
+  诊断源 (重要): **优先采用 drug_audit_lookup 返回的「患者病案首页诊断 (shi_zd ground truth)」** (含主诊);
+  若该工具未返回病案首页诊断, 再用 note_diagnosis 取文书诊断兜底.
+
+  审计步骤:
+  1. drug_audit_lookup(patient_id, rule_type="{{drug_rule_type}}") 取该患者命中本类型的药品 + 各自依据原文 + 病案首页诊断.
+  {% if drug_focus %}   重点确认「{{drug_focus}}」是否在命中列表; 若不在 → 患者没用该药 → CLEAN.
+  {% endif %}2. 若命中列表为空 → CLEAN (患者无该类型命中药, 规则不适用, 不必再调其他工具).
+  3. 逐条命中药做「诊断 × 依据」比对:
+  {% if drug_rule_type == '禁忌症' %}     - 患者诊断是否符合该药「疾病禁忌」原文? 符合 → VIOLATION (用药安全/禁忌); 不符合 → CLEAN.
+  {% elif drug_rule_type == '限二线' %}     - 诊断是否在适应症内? 不在 → INCONCLUSIVE (可能系他用, 单病历看不清).
+       - 在适应症内: 用 note_diagnosis / search_notes 找「一线药无效 / 不耐受 / 治疗失败 / 既往用过 X 无效」证据. 有 → CLEAN; 无任何线索 → VIOLATION.
+       - (注: 文书常无结构化一线用药史, 拿不准时判 INCONCLUSIVE, 不硬判 V.)
+  {% else %}     - 患者诊断是否落在该药「限定支付 / 说明书」适应症内? 落在 → CLEAN; 完全不在 → VIOLATION.
+  {% endif %}4. **同名异药 / 剂型复核** (防 stem 误命中): 看 drug_audit_lookup 回传的「原始 fee 名」.
+     若其剂型 / 给药途径与依据所指药品明显不同 (例: 依据写"口服肠溶胶囊限 IgA 肾病", fee 却是"吸入用混悬液"),
+     极可能是同名异药被 stem 匹配误纳 → 判 INCONCLUSIVE, **不判 VIOLATION**.
+  5. 诊断为「待查 / 疑似 / 排除」中间状态, 或病案首页 + 文书均无相关诊断 → INCONCLUSIVE.
+
+  ⏱ 收敛: drug_audit_lookup + note_diagnosis (或工具带出的病案首页诊断) 两步通常即可判定 —— 诊断与依据明确相关 → CLEAN, 明确无关 → V. 仅当诊断真模糊时再补 1-2 次 search_notes; **不要为"找不到逐字证据"反复检索**, 临床相关性已足够裁决.
+  {% if not drug_focus %}
+  ⏱ 类型级收敛 (本规则 bulk 可能命中多药, 严控预算防超时):
+  - 先用 note_diagnosis + 上述病案首页诊断对照各命中药依据, 一次性快速分流 (大多数药能直接判定);
+  - 仅对**最可疑** (诊断明显不沾边) 的 1-2 个药再动用 search_notes / search_lab 深查, 不要为每个命中药逐一深查;
+  - 目标 ~6 次工具调用内收敛. 只要有 ≥1 个药明确「诊断不在依据内」即可判 VIOLATION (聚焦它, 不必查完全部).
+  {% endif %}
+  verdict 输出:
+  - VIOLATION: evidence **聚焦最明确的 1-3 条违规药** (不罗列全部命中药), 每条三者对照 —— (a) 命中药通用名 + 原始 fee 名 (b) 相关诊断 (c) 该药依据原文,
+    说明「诊断不在依据内」{% if drug_rule_type == '禁忌症' %}/「诊断命中禁忌」{% endif %}; 其余违规药可在 reasoning 一句话概述.
+  - CLEAN: evidence 引用支持性诊断 (诊断落在依据内){% if drug_rule_type == '限二线' %} 或一线失败证据{% endif %}.
+  - INCONCLUSIVE: 诊断缺失 / 中间状态 / 剂型存疑.
+  {% if special_notes %}
+  特殊注意:
+  {% for n in special_notes %}- {{n}}
+  {% endfor %}{% endif %}{% if pilot_caveat %}
+  注意: {{pilot_caveat}}{% endif %}
+keywords_template: |
+  {% for kw in trigger_kw %}- {{kw}}
+  {% endfor %}
+tools_template: |
+  - drug_audit_lookup
+  - note_diagnosis
+  {% if drug_rule_type == '限二线' %}- search_notes
+  {% endif %}
+signal_template: |
+  {% if drug_rule_type == '禁忌症' %}典型违规: 患者诊断命中该药说明书疾病禁忌 (如哮喘患者用乙酰半胱氨酸). 典型 CLEAN: 诊断无禁忌项. 典型 INCONCLUSIVE: 诊断缺失.
+  {% elif drug_rule_type == '限二线' %}典型违规: 诊断在适应症内但文书无任何一线药失败/不耐受证据. 典型 CLEAN: 文书有一线失败记录. 典型 INCONCLUSIVE: 文书无一线用药史 (单病历看不清).
+  {% else %}典型违规: {{target_desc}} 命中, 但患者诊断完全不在限定/说明书适应症内 (如人血白蛋白用于无低蛋白血症/重症诊断者). 典型 CLEAN: 诊断落在依据内 (如甲状腺片用于甲状腺切除后甲减). 典型 INCONCLUSIVE: 诊断缺失或剂型存疑.
+  {% endif %}
+fields:
+  - name: drug_rule_type
+    type: enum
+    options: [限适应症, 超说明书, 限二线, 禁忌症]
+    desc: "药品规则类型 — 驱动 4 种比对逻辑 (限适应症/超说明书=诊断∉依据→V; 禁忌症=诊断∈禁忌→V 反向; 限二线=无一线失败证据→V)"
+    required: true
+    default: 限适应症
+  - name: target_desc
+    type: str
+    desc: "审计目标的人类可读描述 (类型级例: '限适应症类药品 (全覆盖该患者命中药)'; 精选例: '人血白蛋白 (限适应症)')"
+    required: true
+  - name: drug_focus
+    type: str
+    desc: "精选规则的单一聚焦通用名 (例: 人血白蛋白); 类型级规则留空 '' 表示覆盖全部命中药"
+    required: false
+    default: ""
+  - name: special_notes
+    type: list[str]
+    desc: "特殊注意条款 (0+ 条; 例 甲状腺片: ['甲状腺癌术后/甲状腺全切患者甲减用甲状腺片是替代治疗, 判 CLEAN'])"
+    required: false
+    default: []
+  - name: pilot_caveat
+    type: str
+    desc: "pilot 适用性说明 (空字符串表示无)"
+    required: false
+    default: ""
+  - name: trigger_kw
+    type: list[str]
+    desc: "trigger_keywords (类型级留空 [] → router always-on; 精选填 [该药通用名] → router 精准触发)"
+    required: false
+    default: []

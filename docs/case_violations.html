@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Javert V 案例分析 — R203 + R220 结合原文书</title>
+<style>
+  :root {
+    --bg: #fafbfc;
+    --card: #ffffff;
+    --border: #e4e7eb;
+    --text: #1f2933;
+    --muted: #616e7c;
+    --accent: #3b82f6;
+    --accent-soft: #dbeafe;
+    --green: #10b981;
+    --green-soft: #d1fae5;
+    --yellow: #f59e0b;
+    --yellow-soft: #fef3c7;
+    --red: #ef4444;
+    --red-soft: #fee2e2;
+    --purple: #8b5cf6;
+    --purple-soft: #ede9fe;
+    --pink: #ec4899;
+    --pink-soft: #fce7f3;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  header {
+    background: linear-gradient(135deg, #fee2e2 0%, #fce7f3 100%);
+    padding: 28px 48px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 {
+    margin: 0 0 6px 0;
+    font-size: 26px;
+    color: #991b1b;
+  }
+  header .sub {
+    color: var(--muted);
+    font-size: 14px;
+  }
+  header .badges {
+    margin-top: 10px;
+  }
+  .badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-right: 6px;
+  }
+  .badge.green { background: var(--green-soft); color: #065f46; }
+  .badge.yellow { background: var(--yellow-soft); color: #92400e; }
+  .badge.red { background: var(--red-soft); color: #991b1b; }
+  .badge.blue { background: var(--accent-soft); color: #1e40af; }
+  .badge.purple { background: var(--purple-soft); color: #5b21b6; }
+  .badge.pink { background: var(--pink-soft); color: #9d174d; }
+
+  .tabs {
+    display: flex;
+    border-bottom: 2px solid var(--border);
+    background: white;
+    padding: 0 48px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    overflow-x: auto;
+  }
+  .tabs button {
+    background: none;
+    border: none;
+    padding: 14px 22px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+    margin-bottom: -2px;
+  }
+  .tabs button:hover { color: var(--accent); }
+  .tabs button.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .content {
+    padding: 28px 48px 64px;
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  h2 {
+    font-size: 22px;
+    margin: 24px 0 12px;
+    color: #1e3a8a;
+  }
+  h3 {
+    font-size: 16px;
+    margin: 22px 0 8px;
+    color: var(--text);
+  }
+  h4 {
+    font-size: 14px;
+    margin: 14px 0 6px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  /* === 关键评判块 === */
+  .verdict-block {
+    background: linear-gradient(135deg, #fee2e2 0%, #fce7f3 100%);
+    border: 2px solid #ef4444;
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin: 20px 0;
+  }
+  .verdict-block .top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .verdict-block .verdict {
+    font-size: 36px;
+    font-weight: 800;
+    color: #991b1b;
+  }
+  .verdict-block .conf {
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .verdict-block .meta {
+    font-size: 13px;
+    color: #374151;
+  }
+
+  /* === 步骤卡 === */
+  .step {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 10px 0;
+    overflow: hidden;
+  }
+  .step-header {
+    background: #f1f5f9;
+    padding: 10px 16px;
+    font-weight: 600;
+    font-size: 13px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .step-header .tool-name {
+    font-family: "SF Mono", Consolas, monospace;
+    color: var(--accent);
+  }
+  .step-header .duration {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 400;
+  }
+  .step-body {
+    padding: 14px 16px;
+    font-size: 13px;
+  }
+  .step-body.empty {
+    color: var(--muted);
+    font-style: italic;
+  }
+
+  /* 原文书引用 */
+  .doc-quote {
+    background: #fefefe;
+    border-left: 4px solid var(--accent);
+    padding: 12px 16px;
+    margin: 8px 0;
+    font-family: "PingFang SC", "Microsoft YaHei", serif;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #374151;
+  }
+  .doc-quote .doc-section {
+    font-size: 11px;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .doc-quote em {
+    background: var(--yellow-soft);
+    color: #92400e;
+    font-style: normal;
+    padding: 1px 3px;
+    border-radius: 2px;
+  }
+
+  /* fee 表 */
+  .fee-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 12px;
+    background: var(--green-soft);
+    border-radius: 4px;
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: 13px;
+    margin: 4px 0;
+    color: #065f46;
+  }
+  .fee-row.violated {
+    background: var(--red-soft);
+    color: #991b1b;
+    border-left: 4px solid var(--red);
+  }
+  .fee-row .price { font-weight: 700; }
+
+  /* evidence 卡 */
+  .evidence-card {
+    background: #fefefe;
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--red);
+    border-radius: 4px;
+    padding: 12px 16px;
+    margin: 8px 0;
+    font-size: 13px;
+  }
+  .evidence-card .src-label {
+    display: inline-block;
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    background: var(--red-soft);
+    color: #991b1b;
+    margin-bottom: 6px;
+  }
+  .evidence-card .src-label.note { background: var(--accent-soft); color: #1e40af; }
+  .evidence-card .src-label.fee { background: var(--yellow-soft); color: #92400e; }
+  .evidence-card .src-label.diag { background: var(--purple-soft); color: #5b21b6; }
+
+  /* 推理块 */
+  .reasoning {
+    background: linear-gradient(to right, #fffbeb, #fef9c3);
+    border-left: 4px solid var(--yellow);
+    padding: 14px 18px;
+    margin: 10px 0;
+    border-radius: 4px;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .reasoning b {
+    color: #92400e;
+  }
+
+  /* 解读评论 */
+  .commentary {
+    background: linear-gradient(to right, #ecfdf5, #d1fae5);
+    border-left: 4px solid var(--green);
+    padding: 14px 18px;
+    margin: 12px 0;
+    border-radius: 4px;
+    font-size: 13px;
+    line-height: 1.7;
+  }
+  .commentary h4 {
+    margin: 0 0 6px 0;
+    color: #065f46;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 14px;
+  }
+  .commentary.warn {
+    background: linear-gradient(to right, #fff7ed, #fed7aa);
+    border-left-color: #f97316;
+  }
+  .commentary.warn h4 { color: #9a3412; }
+
+  /* 时间线 */
+  .timeline {
+    border-left: 2px solid var(--border);
+    padding-left: 20px;
+    margin: 12px 0;
+  }
+  .timeline-item {
+    position: relative;
+    padding: 8px 0 14px 12px;
+    font-size: 13px;
+  }
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -26px;
+    top: 12px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--card);
+  }
+  .timeline-item.green::before { background: var(--green); }
+  .timeline-item.red::before { background: var(--red); }
+  .timeline-item.yellow::before { background: var(--yellow); }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0;
+    font-size: 13px;
+  }
+  table th, table td {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  table th {
+    background: #f1f5f9;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  table td.mono { font-family: "SF Mono", Consolas, monospace; font-size: 12px; }
+
+  .anchor-grid {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 12px;
+    margin: 12px 0;
+  }
+  .anchor-grid .label {
+    font-size: 12px;
+    color: var(--muted);
+    text-align: right;
+    padding-top: 6px;
+  }
+  .anchor-grid .val {
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  @media (max-width: 800px) {
+    .content, header, .tabs { padding-left: 20px; padding-right: 20px; }
+    .anchor-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🚨 Javert V 案例分析 — 结合原文书</h1>
+  <div class="sub">2026-05-14 · J66252 甲状腺癌患者 · 组 J 实测 · 首次 V 触发的 2 个规则</div>
+  <div class="badges">
+    <span class="badge red">R203 V (M5 全身麻醉)</span>
+    <span class="badge red">R220 V (M2 控制性降压)</span>
+    <span class="badge purple">model: Qwen3.5-35B-A3B-GPTQ-Int4</span>
+    <span class="badge yellow">conf 0.95 (非 1.0, 边界案例)</span>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="r203">🩺 R203 全身麻醉 — V</button>
+  <button class="tab-btn" data-tab="r220">💉 R220 控制性降压 — V</button>
+  <button class="tab-btn" data-tab="comparison">⚖️ 两案例对比</button>
+  <button class="tab-btn" data-tab="verdict-quality">🔍 判定质量评估</button>
+</nav>
+
+<main class="content">
+
+<!-- ========== TAB 1: R203 全麻 V ========== -->
+<section class="tab-panel active" id="r203">
+  <h2>R203 — 全身麻醉未做但收费 (M5 虚构医药服务)</h2>
+
+  <div class="anchor-grid">
+    <div class="label">规则 ID</div><div class="val">R203 (derived from M5)</div>
+    <div class="label">domain</div><div class="val">麻醉</div>
+    <div class="label">violation_type</div><div class="val">虚构医药服务项目</div>
+    <div class="label">patient</div><div class="val">J66252 (甲状腺癌 cT1N0M, 全麻甲状腺癌根治术)</div>
+    <div class="label">run_id</div><div class="val mono">aud_gtKrsAOUKnRR (2026-05-14T10:23:52)</div>
+    <div class="label">tool calls</div><div class="val">6 (search_fees × 3 + search_notes × 3)</div>
+    <div class="label">duration</div><div class="val">98.4s</div>
+  </div>
+
+  <div class="verdict-block">
+    <div class="top">
+      <div class="verdict">VIOLATION</div>
+      <div class="conf">confidence = <b style="color:#991b1b;">0.95</b> (非 1.0 反映边界)</div>
+    </div>
+    <p class="meta">fee 命中全身麻醉 ¥800, 文书 search_notes 未匹配 "麻醉记录" / "诱导" 等执行证据细节. 模板 M5 预期场景: <em>fee 命中 + 文书无执行证据 → V</em>.</p>
+  </div>
+
+  <h2>📜 LLM 推理过程 (6 步 tool calls)</h2>
+
+  <div class="step">
+    <div class="step-header">
+      <div><span class="badge yellow">Step 1</span> <span class="tool-name">search_fees(keyword="全身麻醉")</span></div>
+      <div class="duration">74ms</div>
+    </div>
+    <div class="step-body">
+      <h4>✅ Fee 命中 (1 条)</h4>
+      <div class="fee-row violated">
+        <span>全身麻醉(气管插管)</span><span class="price">¥800.00</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-header">
+      <div><span class="badge yellow">Step 2</span> <span class="tool-name">search_fees(keyword="气管插管全麻")</span></div>
+      <div class="duration">43ms</div>
+    </div>
+    <div class="step-body empty">未找到包含 '气管插管全麻' 的费用项目 (变体搜索)</div>
+  </div>
+
+  <div class="step">
+    <div class="step-header">
+      <div><span class="badge yellow">Step 3</span> <span class="tool-name">search_fees(keyword="静脉全麻")</span></div>
+      <div class="duration">41ms</div>
+    </div>
+    <div class="step-body empty">未找到包含 '静脉全麻' 的费用项目 (变体搜索)</div>
+  </div>
+
+  <div class="step">
+    <div class="step-header">
+      <div><span class="badge purple">Step 4</span> <span class="tool-name">search_notes(keyword="麻醉记录")</span></div>
+      <div class="duration">52ms</div>
+    </div>
+    <div class="step-body empty">⚠️ 未找到包含该关键词的文书记录 (这是 V 判定的关键证据缺失点)</div>
+  </div>
+
+  <div class="step">
+    <div class="step-header">
+      <div><span class="badge purple">Step 5</span> <span class="tool-name">search_notes(keyword="气管插管")</span></div>
+      <div class="duration">28ms</div>
+    </div>
+    <div class="step-body">
+      <h4>找到 2 处, 但都不是麻醉执行记录</h4>
+      <div class="doc-quote">
+        <div class="doc-section">[1] 子阶段: 告知内容</div>
+        手术名称: 甲状腺癌根治<br>
+        高值医用耗材名称: <em>神经监测气管插管</em><br>
+        使用该耗材适应症: 术中神经监测<br>
+        使用耗材大约费用: 5000元<br>
+        使用耗材可能风险: 风险同一般气管插管
+      </div>
+      <div class="doc-quote">
+        <div class="doc-section">[2] 子阶段: 患者离开手术室前</div>
+        实际手术方式确认: □ 是 □ 否<br>
+        各种管路: □ 中心静脉通路 □ 动脉通路 □ <em>气管插管</em> □ 伤口引流 □ 胃管 □ 尿管<br>
+        患者: □ 恢复室 □ 病房 □ ICU 病房 □ 急诊 □ 离院
+      </div>
+      <p style="font-size:13px;margin-top:8px;color:var(--muted);">两处都是<b>告知/核查文书</b> (耗材同意书 + 手术室核查单), <b>不是麻醉操作过程的实质记录</b>.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-header">
+      <div><span class="badge purple">Step 6</span> <span class="tool-name">search_notes(keyword="诱导")</span></div>
+      <div class="duration">23ms</div>
+    </div>
+    <div class="step-body empty">⚠️ 未找到 "诱导" 关键词 (麻醉诱导药物记录缺失)</div>
+  </div>
+
+  <h2>📋 LLM 给出的 evidence (3 条)</h2>
+
+  <div class="evidence-card">
+    <div class="src-label fee">FEE / 全身麻醉(气管插管)</div>
+    费用明细中出现 <b>¥800.00 全身麻醉(气管插管)</b> 项
+  </div>
+  <div class="evidence-card">
+    <div class="src-label note">NOTE / 麻醉记录 (缺失)</div>
+    在文书中未检索到包含 <b>'麻醉记录' / '诱导药物' / '维持药物'</b> 等关键词的记录
+  </div>
+  <div class="evidence-card">
+    <div class="src-label note">NOTE / 气管插管 (位置不对)</div>
+    检索到 '气管插管' 关键词<b>仅出现在 '告知内容' (耗材告知) 和 '患者离开手术室前' (手术核查单) 中</b>,
+    缺乏麻醉执行过程的具体描述 (如插管时间、苏醒过程等), 不足以证明全麻操作实际开展
+  </div>
+
+  <h2>🧠 LLM reasoning 原文</h2>
+  <div class="reasoning">
+    患者费用明细中明确收取了 <b>'全身麻醉(气管插管)' 费用 (¥800.00)</b>, 符合规则触发条件.
+    然而, 在文书检索中, <b>未找到任何 '麻醉记录'、'诱导药物' 或 '维持药物' 相关的执行记录</b>.
+    虽然文书中存在 '气管插管' 字样, 但分别位于 <b>'告知内容' (耗材知情同意) 和 '手术核查单' (管路确认)</b>,
+    均非麻醉操作过程的实质性记录 (缺少诱导、维持、插管时间、苏醒等关键要素).
+    根据规则 R203, 全身麻醉必须有麻醉记录单, <b>存在收费但无对应执行记录, 判定为虚构医药服务项目</b>.
+  </div>
+
+  <div class="commentary warn">
+    <h4>⚠️ 这个 V 是真的虚构吗? — 判定质量讨论</h4>
+    <p><b>支持 V 的证据</b>: M5 规则设计就是 "fee 命中 + 文书无执行证据 → V". LLM 严格按设计执行: 全麻费命中, 但<b>麻醉记录 section 缺失</b>, 文书目录里只有 "麻醉实施前" (1 条 245 字符) / "麻醉分级 (ASA)" (1 条 154 字符) 等简短记录, 没有完整的麻醉记录单.</p>
+    <p><b>反驳 V 的可能</b>: J66252 是择期甲状腺癌根治术, 实际肯定做了全麻 (否则手术过程无法进行). 文书没有完整麻醉记录 ≠ 麻醉没做, 可能只是 <b>数据源 ETL 阶段没把麻醉记录单导入 search_notes 子阶段</b>.</p>
+    <p><b>规则设计层面的判定是正确的</b>: 站在 0325 表 "虚构医药服务" 的字面意义看, "费用存在 + 病案文书无对应记录" 就是合规审计的核心证据. 后续是医院方解释 (拿出麻醉记录单原件) 还是认定违规, 取决于<b>线下核实</b>.</p>
+    <p><b>conf 0.95 而非 1.0</b> 反映 LLM 也意识到这种"数据 ETL 不全 vs 真虚构"的模糊性, 留 5% 的不确定空间. 这是合理的.</p>
+  </div>
+</section>
+
+<!-- ========== TAB 2: R220 控制性降压 V ========== -->
+<section class="tab-panel" id="r220">
+  <h2>R220 — 控制性降压用于无适应症患者 (M2 过度检查)</h2>
+
+  <div class="anchor-grid">
+    <div class="label">规则 ID</div><div class="val">R220 (derived from M2)</div>
+    <div class="label">domain</div><div class="val">麻醉</div>
+    <div class="label">violation_type</div><div class="val">虚构医药服务项目或过度诊疗</div>
+    <div class="label">patient</div><div class="val">J66252 (同前)</div>
+    <div class="label">run_id</div><div class="val mono">aud_p0wYpE884CSf (2026-05-14T10:24:33)</div>
+    <div class="label">tool calls</div><div class="val">7 (search_fees × 2 + note_diagnosis × 1 + search_notes × 4)</div>
+    <div class="label">duration</div><div class="val">83.9s</div>
+    <div class="label">历史 verdict</div><div class="val">组 G I conf=0.00 → 组 I I conf=0.00 → <b>组 J V conf=0.95</b> (verdict 漂移!)</div>
+  </div>
+
+  <div class="verdict-block">
+    <div class="top">
+      <div class="verdict">VIOLATION</div>
+      <div class="conf">confidence = <b style="color:#991b1b;">0.95</b></div>
+    </div>
+    <p class="meta">fee 命中控制性降压 ¥80, 诊断仅甲状腺微小癌 (cT1N0M, 0.4cm), 手术记录出血 <b>2ml</b>, 无血供丰富/巨大甲状腺肿描述. 模板 M2 预期场景: <em>无适应症 + 治疗命中 → V</em>.</p>
+  </div>
+
+  <h2>📜 LLM 推理过程 (7 步 tool calls)</h2>
+
+  <div class="step">
+    <div class="step-header">
+      <div><span class="badge yellow">Step 1</span> <span class="tool-name">search_fees(keyword="控制性降压")</span></div>
+      <div class="duration">76ms</div>
+    </div>
+    <div class="step-body">
+      <h4>✅ Fee 命中 (1 条)</h4>
+      <div class="fee-row violated">
+        <span>控制性降压</span><span class="price">¥80.00</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-header">
+      <div><span class="badge yellow">Step 2</span> <span class="tool-name">search_fees(keyword="术中降压")</span></div>
+      <div class="duration">43ms</div>
+    </div>
+    <div class="step-body empty">未找到 '术中降压' 的费用项目 (变体搜索)</div>
+  </div>
+
+  <div class="step">
+    <div class="step-header">
+      <div><span class="badge purple">Step 3</span> <span class="tool-name">note_diagnosis() (cached)</span></div>
+      <div class="duration">0ms cached</div>
+    </div>
+    <div class="step-body">
+      <h4>从文书提取到 6 条诊断</h4>
+      <ol style="font-size:13px;padding-left:20px;margin:8px 0;">
+        <li><em>甲状腺恶性肿瘤(cT1N0M)</em> (出现 7 次, 来源: 术前/术中/术后/出院诊断)</li>
+        <li>甲状腺结节 (出现 4 次)</li>
+        <li>双侧甲状腺结节 1 周 (出现 2 次)</li>
+        <li>超声: 甲状腺左叶结节 TI-RADS 4a, 右叶结节 TI-RADS 3; 双侧颈部淋巴结可显示</li>
+        <li>左甲结节穿刺细胞涂片: 滤泡上皮异型, 考虑乳头状癌</li>
+        <li>入院诊断: 甲状腺恶性肿瘤(cT1N0M)</li>
+      </ol>
+      <p style="font-size:13px;color:var(--muted);">📌 关键: 诊断全部围绕甲状腺微小癌, <b>无神经外科 / 颅内手术 / 主动脉手术 / 大血管手术等控制性降压指征</b>.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-header">
+      <div><span class="badge purple">Step 4</span> <span class="tool-name">search_notes(keyword="甲状腺", section="手术记录")</span></div>
+      <div class="duration">26ms</div>
+    </div>
+    <div class="step-body">
+      <h4>找到 57 条匹配, 关键看手术记录子阶段</h4>
+      <div class="doc-quote">
+        <div class="doc-section">子阶段: 手术中或手术后可能发生的并发症</div>
+        1. 麻醉风险及意外可能<br>
+        2. 术中、术后其他脏器并发症可能<br>
+        3. 术中根据实际情况决定具体手术方式...<br>
+        4. 术中意外损伤邻近重要组织, 如颈部大血管、气管、食管、喉上神经、喉返神经、甲状旁腺...<br>
+        <span style="color:var(--muted);font-size:12px;">(并发症告知, 非术中实际描述)</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-header">
+      <div><span class="badge purple">Step 5</span> <span class="tool-name">search_notes(keyword="控制性降压", section="手术记录")</span></div>
+      <div class="duration">23ms</div>
+    </div>
+    <div class="step-body empty">⚠️ 未找到 "控制性降压" 在手术记录中 (没有术中执行描述)</div>
+  </div>
+
+  <div class="step">
+    <div class="step-header">
+      <div><span class="badge purple">Step 6</span> <span class="tool-name">search_notes(keyword="出血", section="手术记录")</span></div>
+      <div class="duration">52ms</div>
+    </div>
+    <div class="step-body">
+      <h4>关键证据 — 手术经过描述</h4>
+      <div class="doc-quote">
+        <div class="doc-section">子阶段: 手术经过</div>
+        病灶描述: 肿瘤偏侧: 左侧 / 肿瘤大小: <em>0.4 × 0.6 × 0.4 cm</em> / 肿瘤数目 1 / 肿瘤边界不清 / 肿瘤质地硬 / 肿瘤无外侵<br>
+        手术切口: 颈前正中弧形切口<br>
+        引流方法: 引流管, 颈部, <em>出血量 2 ml</em>, 无输血<br>
+        术中见: 甲状腺腺体炎症性改变, 左叶见 0.4*0.6*0.4cm 结节<br>
+        病理: (甲状腺左叶) 甲状腺乳头状微小癌 + 桥本氏甲状腺炎<br>
+        行: 左甲癌根治. 手术程序: 1. 气-静麻醉下, 患者肩下垫枕, 呈颈过伸位, 常规消毒铺巾... 高频电刀分离皮下组织...
+      </div>
+      <p style="font-size:13px;color:#065f46;margin-top:8px;"><b>📌 决定性证据</b>: 出血量仅 <b>2ml</b>, 肿瘤微小 (0.4cm), 无输血. <b>常规甲状腺手术, 完全不需要术中控制性降压</b>.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-header">
+      <div><span class="badge purple">Step 7</span> <span class="tool-name">search_notes(keyword="血供", section="手术记录")</span></div>
+      <div class="duration">28ms</div>
+    </div>
+    <div class="step-body">
+      <h4>仅 1 处 "血供", 反向证据</h4>
+      <div class="doc-quote">
+        <div class="doc-section">子阶段: 手术经过 (同上)</div>
+        ...仔细辨别甲状旁腺, 并予以原位保留<em>带血供</em>的甲状旁腺...
+      </div>
+      <p style="font-size:13px;color:var(--muted);">"血供" 仅用于描述<b>甲状旁腺的血供保留</b>, 不是 "肿瘤血供丰富" 或 "巨大甲状腺肿压迫" 等支持控制性降压的描述.</p>
+    </div>
+  </div>
+
+  <h2>📋 LLM 给出的 evidence (3 条)</h2>
+  <div class="evidence-card">
+    <div class="src-label fee">FEE / 控制性降压</div>
+    费用明细中出现 <b>¥80.00 控制性降压</b> 项
+  </div>
+  <div class="evidence-card">
+    <div class="src-label diag">DIAG / 出院诊断</div>
+    甲状腺恶性肿瘤 (cT1N0M)
+  </div>
+  <div class="evidence-card">
+    <div class="src-label note">NOTE / 手术记录</div>
+    手术名称: 甲状腺癌根治; 肿瘤大小: <b>0.4*0.6*0.4 cm</b>; <b>出血量 2 ml</b>; 无输血; 术中未见血供丰富或巨大甲状腺肿描述
+  </div>
+
+  <h2>🧠 LLM reasoning 原文</h2>
+  <div class="reasoning">
+    患者被收取了 <b>'控制性降压' 费用 (¥80.00)</b>, 但根据诊断和手术记录, 患者仅行甲状腺癌根治术,
+    <b>肿瘤微小 (0.4cm), 出血量极少 (2ml), 无巨大甲状腺肿或血供丰富的描述</b>,
+    且诊断中无神经外科、血管外科等适用控制性降压的指征.
+    根据规则, 普通甲状腺手术无特殊指征不应收取控制性降压费用, <b>故判定为违规</b>.
+  </div>
+
+  <div class="commentary">
+    <h4>✅ 这个 V 比 R203 更确信 — 判定质量讨论</h4>
+    <p><b>支持 V 的硬证据</b>:</p>
+    <ul style="font-size:13px;margin:4px 0 8px 18px;padding-left:0;">
+      <li>诊断<b>明确</b>: 6 条全是甲状腺微小癌相关</li>
+      <li>手术记录<b>具体到数字</b>: 肿瘤 0.4cm, 出血量 2ml, 无输血</li>
+      <li>反向描述<b>清晰缺失</b>: 无"血供丰富"/"巨大甲状腺肿压迫气道"</li>
+      <li>临床逻辑<b>无争议</b>: 2ml 出血量根本不需要控制性降压 (此类手术常规 50-100ml 出血)</li>
+    </ul>
+    <p><b>这是个高质量 V</b>: ¥80 不大, 但反映医院"普遍开具控制性降压费"模式, 对样本扩展到 50+ 患者后会显著.</p>
+  </div>
+
+  <div class="commentary warn">
+    <h4>⚠️ 但: verdict 漂移现象</h4>
+    <p>R220 同规则同患者 3 次跑 verdict 不一致:</p>
+    <ul style="font-size:13px;margin:4px 0 8px 18px;padding-left:0;">
+      <li>组 G (2026-05-14 09:30): <b>I conf 0.00</b>, 18 tool_calls (LLM 反复探索没结论)</li>
+      <li>组 I (10:07): <b>I conf 0.00</b>, 18 tool_calls (同 G)</li>
+      <li>组 J (10:24): <b>V conf 0.95</b>, 7 tool_calls (这次"敢"出判断)</li>
+    </ul>
+    <p>组 G/I 的 18 tc + conf 0.00 说明 LLM 知道证据指向 V, 但 base.txt 没明确支持 "敢说 V" → 保守输出 I 但置信为 0.</p>
+    <p>组 J 的 7 tc + V conf 0.95 是更"自信"的输出 — 可能是 sglang temperature 抖动 + cache hit (note_diagnosis cached) 减少了犹豫.</p>
+    <p><b>修复方向</b>: <code>base-prompt-inconclusive-bias</code> change 改 base.txt, 让边界稳定 I conf 0.5-0.7, 避免 V/I 极端漂移.</p>
+  </div>
+</section>
+
+<!-- ========== TAB 3: 对比 ========== -->
+<section class="tab-panel" id="comparison">
+  <h2>R203 vs R220 对比</h2>
+
+  <div class="card">
+    <table>
+      <thead><tr><th>维度</th><th>R203 (全身麻醉)</th><th>R220 (控制性降压)</th></tr></thead>
+      <tbody>
+        <tr><td><b>模板</b></td><td>M5 虚构医药服务 (fee + notes 模式)</td><td>M2 过度检查 (fee + diagnosis 模式)</td></tr>
+        <tr><td><b>fee 金额</b></td><td class="mono">¥800.00</td><td class="mono">¥80.00</td></tr>
+        <tr><td><b>触发逻辑</b></td><td>fee 命中 + 文书无<b>执行证据</b></td><td>fee 命中 + 诊断无<b>适应症</b></td></tr>
+        <tr><td><b>关键缺失</b></td><td>麻醉记录 section 缺失, 诱导/维持药物未提</td><td>无神经外科/大血管手术诊断, 出血量 2ml</td></tr>
+        <tr><td><b>tool calls</b></td><td>6 (3 search_fees + 3 search_notes)</td><td>7 (2 search_fees + 1 note_diagnosis + 4 search_notes)</td></tr>
+        <tr><td><b>conf</b></td><td>0.95 (数据 ETL 不全 vs 真虚构)</td><td>0.95 (verdict 漂移过 I 0.00 → V 0.95)</td></tr>
+        <tr><td><b>临床合理性</b></td><td>实际肯定做了全麻, 但文书 ETL 可能不完整</td><td>2ml 出血不需要控制性降压, V 判定有医学硬证据支持</td></tr>
+        <tr><td><b>稳定性</b></td><td>跨跑 verdict 稳定 (组 I 也 CLEAN, 组 J V)</td><td><b>跨跑漂移</b>: I→I→V</td></tr>
+        <tr><td><b>需要补足的</b></td><td>需要医院方拿出麻醉记录单线下核实</td><td>纯医学证据已支持 V, 可定性</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>哪个更"应该"是 V?</h2>
+
+  <div class="commentary">
+    <h4>R220 是更"硬"的 V</h4>
+    <p>R220 的判定基于<b>医学逻辑</b>: 0.4cm 微小癌 + 2ml 出血量 + 无血供丰富 = 没有任何控制性降压指征. 这是<b>不可辩驳的医学事实</b>, 医院方很难解释为什么收 ¥80 的控制性降压费.</p>
+    <p>这条 V 暴露的是医院"普遍开具" / "默认勾选" 类违规模式, 单条 ¥80 但扩展到 50 患者 = ¥4000+, 是真实合规风险.</p>
+  </div>
+
+  <div class="commentary warn">
+    <h4>R203 是"程序性" V</h4>
+    <p>R203 的判定基于<b>文书完整性</b>: 收了全麻费但文书没匹配到麻醉记录细节. 但<b>临床实际肯定做了全麻</b> (否则手术无法进行).</p>
+    <p>这条 V 暴露的可能是<b>病案文书数字化 ETL 不完整</b> (麻醉记录单原件没有进入 search_notes 子阶段索引). 医院方拿出原件即可解释.</p>
+    <p>这条 V 在 v0.3 应该<b>额外加 fallback 逻辑</b>: 若 fee 命中 + 文书 ETL 标记不完整 → 降为 I 而非 V.</p>
+  </div>
+
+  <h2>对模板设计的反馈</h2>
+  <div class="grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+    <div class="card">
+      <h4>M5 优化建议</h4>
+      <ul style="font-size:13px;">
+        <li>加 <code>notes_completeness_check</code> 字段: 检测 search_notes 是否覆盖文书目录 ≥ 80% section</li>
+        <li>若文书 section 严重缺失 (< 50%), 降为 I 而非 V</li>
+        <li>R203 案例: 麻醉记录 section 缺失 + 麻醉实施前/麻醉分级仍存在 → 仍判 V 但 conf 0.85</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>M2 优化建议</h4>
+      <ul style="font-size:13px;">
+        <li>R220 的 exclusion_dx_list 已经够清晰 (神经外科/大血管手术)</li>
+        <li>建议 M2 引入 <code>quantitative_evidence_kw</code>: 允许引用具体数字 (出血量 < N ml) 作为反向证据</li>
+        <li>base-prompt-inconclusive-bias 修复后 R220 应稳定 V conf 0.95 (不再漂移到 I)</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ========== TAB 4: 判定质量 ========== -->
+<section class="tab-panel" id="verdict-quality">
+  <h2>判定质量评估</h2>
+
+  <h3>conf 0.95 vs 1.00 的差异</h3>
+  <div class="card">
+    <table>
+      <thead><tr><th>conf 范围</th><th>语义</th><th>典型案例</th><th>是否需复核</th></tr></thead>
+      <tbody>
+        <tr><td>1.00 (硬证据)</td><td>规则不适用 / 完美匹配</td><td>R141 患者无肌红蛋白费 → C 1.00</td><td>无需</td></tr>
+        <tr><td>0.95 (高置信)</td><td>证据齐全但有 5% 边界</td><td><b>R203 / R220</b></td><td>建议</td></tr>
+        <tr><td>0.90 (中置信)</td><td>有判定但 prompt 有歧义</td><td>R203 组 I CLEAN 0.90</td><td>需复核</td></tr>
+        <tr><td>0.6-0.85 (低置信)</td><td>边界明确 INCONCLUSIVE</td><td>R151 single_count I 0.60</td><td>必复核</td></tr>
+        <tr><td>0.00 (异常)</td><td>LLM 困惑无判定</td><td><b>R220 组 G/I I 0.00</b></td><td>必复核 + 修 prompt</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>R220 verdict 漂移的根因分析</h3>
+  <div class="card">
+    <h4>3 跑 trace 数据</h4>
+    <table>
+      <thead><tr><th>组</th><th>verdict</th><th>conf</th><th>tool calls</th><th>cached</th><th>duration</th></tr></thead>
+      <tbody>
+        <tr><td>G (2026-05-14 09:30)</td><td>I</td><td class="mono">0.00</td><td class="mono">18</td><td>3</td><td>45.3s</td></tr>
+        <tr><td>I (10:07)</td><td>I</td><td class="mono">0.00</td><td class="mono">18</td><td>5</td><td>45.9s</td></tr>
+        <tr style="background:#fef3c7;"><td>J (10:24)</td><td><b>V</b></td><td class="mono"><b>0.95</b></td><td class="mono">7 ⚡</td><td>1</td><td>83.9s</td></tr>
+      </tbody>
+    </table>
+
+    <h4>关键差异: tool_calls 18 vs 7</h4>
+    <p style="font-size:13px;">
+      组 G/I 时 LLM 调用了 18 个 tool_call, 反复探索后仍输出 I conf 0.00 — 说明 LLM 知道证据指向 V 但 base.txt 没给足够支持, 退一步 I.
+      组 J 时 LLM 只调用 7 个 tool_call, 直接到位 → V conf 0.95.
+    </p>
+
+    <h4>可能原因</h4>
+    <ul style="font-size:13px;">
+      <li><b>sglang temperature 抖动</b>: 即使 temperature=0, sglang 在并发批处理时 batch 切分会引入微小差异, 边界 token 概率翻转</li>
+      <li><b>cache 状态影响</b>: 组 J 1 cached vs 组 G 3 cached — cache miss 让 LLM 重看 fee → 重新激活推理路径</li>
+      <li><b>prompt 长度 / 上下文影响</b>: 同一 conversation 内不同 turn 上下文略有不同</li>
+    </ul>
+
+    <h4>修复方向</h4>
+    <ol style="font-size:13px;">
+      <li><code>base-prompt-inconclusive-bias</code>: 改 base.txt 明确 "证据完整时优先 V/C, 证据不足时优先 I conf 0.5-0.7, 禁止 conf 0.00"</li>
+      <li>引入 <code>verdict_consistency_check</code>: 同规则同患者 3 次跑取多数 (但贵)</li>
+      <li>调整 sglang 参数: <code>temperature=0.0 + top_k=1</code> 减少抖动 (可能损失推理多样性)</li>
+    </ol>
+  </div>
+
+  <h3>V 触发率 vs CLEAN 触发率</h3>
+  <div class="card">
+    <p>组 J 45 条规则: V=2 / C=43 / I=0 → <b>V 触发率 4.4%</b></p>
+    <p>对比国家医保自查自纠预期: 真实违规率 5-15% (实际医院自查 0325 表后通常 8-12% 条规则确认违规, 但样本是大量患者随机抽样).</p>
+    <p>当前 J66252 单患者跑 45 规则触发 V=2, 说明:</p>
+    <ul style="font-size:13px;">
+      <li>✅ 模板触发能力非零 (不再像 m1-m3 全 CLEAN)</li>
+      <li>⚠️ 但 J66252 是择期手术患者, 文书相对完整, 实际 V 数偏低</li>
+      <li>🎯 在<b>抽 50+ 患者扩展跑</b>后 V 总数应该 50-100 条, 才能形成医院级合规审计报告</li>
+    </ul>
+  </div>
+
+  <h3>下一步验证计划</h3>
+  <ol style="font-size:14px;">
+    <li><b>跑 J18906 (脑干非肿瘤患者)</b>: 期望触发 R141 (肌红蛋白) / R143 (乳酸) / R146 (BNP) 等检验过度</li>
+    <li><b>跑 J13365 (骨科患者)</b>: 期望触发 R037 (胸腰椎骨折切开复位虚构) 类</li>
+    <li><b>R203 在多个患者上验证</b>: 看是不是普遍存在 "全麻费有 + 麻醉记录缺失", 若是则可能是<b>数据 ETL 系统问题</b>, 不是医院违规</li>
+    <li><b>R220 base-prompt 修复后复跑</b>: 看是否稳定 V conf 0.95</li>
+  </ol>
+</section>
+
+</main>
+
+<script>
+  const buttons = document.querySelectorAll('.tab-btn');
+  const panels = document.querySelectorAll('.tab-panel');
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      buttons.forEach(b => b.classList.remove('active'));
+      panels.forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab).classList.add('active');
+    });
+  });
+</script>
+
+</body>
+</html>

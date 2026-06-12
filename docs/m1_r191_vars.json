@@ -1,0 +1,40 @@
+{
+  "a_concept": "肿瘤全身断层显像类",
+  "b_concept": "人工/图文报告",
+  "catalog_basis": "按各省《医疗服务诊疗目录》, 全身断层显像项目本身已包含报告费, 单独再收报告费 = 重复收费.",
+  "fee_category": "检查类",
+  "a_class_label": "扫描",
+  "b_class_label": "报告",
+  "a_class_items": [
+    "PET-CT 全身显像",
+    "SPECT 全身骨显像",
+    "全身断层",
+    "肿瘤全身断层显像"
+  ],
+  "b_class_items": [
+    "图文报告",
+    "人工报告",
+    "PET-CT 报告",
+    "SPECT 报告费"
+  ],
+  "scan_action_term": "断层显像",
+  "aux_short_label": "报告费",
+  "notes_sections": ["辅助检查", "PET-CT"],
+  "third_party_clause": "第三方人工出具",
+  "violation_evidence": "两笔费用项目名 + 价格",
+  "inconclusive_example": "检查类只 1 项, 名字模糊无法判断是 A 还是 B",
+  "basic_diagnosis_subject": "肿瘤",
+  "basic_diagnosis_keywords": ["癌", "瘤"],
+  "aux_keywords": [
+    "PET-CT",
+    "SPECT",
+    "全身断层",
+    "肿瘤全身断层显像",
+    "全身骨显像",
+    "图文报告",
+    "人工报告",
+    "报告费"
+  ],
+  "aux_tools": ["note_diagnosis", "search_fees", "search_notes"],
+  "aux_signal": "典型违规: 同次住院里同时存在 \"PET-CT 全身断层显像\" 与 \"PET-CT 图文报告费\" 两笔费用项, 且文书中无第三方报告说明.\n典型 CLEAN: 全身骨显像无报告费独立计价, 或患者根本未做断层显像."
+}

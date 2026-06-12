@@ -1,0 +1,54 @@
+rule_id: R292
+domain: 精神医学
+violation_type: 超标准收费
+question: 已诊断为精神疾病的住院患者，多次收取首诊精神病费用。
+example: 示例：某省《诊疗目录》规定首诊精神病检查仅限第一次就诊患者。某医院在患者第二次住院时仍收取该项目费用。
+status: ready
+priority: P0
+prompt_addon: |
+  本规则关注: 患者本次住院里, 是否未按诊疗目录规定的计价标准收取「首诊精神病检查 / 首次精神疾病诊察」费用.
+
+  📖 诊疗目录条款 (来源: 截至 2026-04-01 全量诊疗项目库):
+    项目名: 首诊精神病检查 / 首次精神疾病诊察
+    计价单位: 次 (限第一次就诊患者)
+    加成规则: 仅限第一次就诊患者收取; 已诊断为精神疾病的复诊患者不应再收取首诊精神病检查费.
+
+  ⚠️ 典型违规模式: 同患者跨多次住院重复收 / 已有精神病既往史仍收首诊
+
+  审计步骤:
+  1. 用 search_fees(keyword=...) 查 fee 是否命中, 记录出现次数 count + 实收金额合计. 检索关键词: "首诊精神病" / "首次精神病" / "初诊精神病" / "首次精神疾病诊察"
+  2. 若 fee 无命中 → CLEAN (规则不适用, 患者未做该项目).
+  3. 用 search_notes(section="既往史") 或 search_notes(keyword=...) 提取实际事件量化值 N.
+     量化关键词: "首诊" / "初诊" / "既往精神病诊断" / "复诊" / "再次入院" / "既往史"
+  4. 按目录规则计算应收次数 expected:
+     判定核心: note_diagnosis 是否含既往精神病诊断或 search_notes(section=既往史) 是否描述'既往精神分裂症/抑郁症等病史' + fee 命中'首诊精神病'. 若有既往史 + 收首诊 → V (硬证据).
+  5. 比对 count vs expected:
+     - count 显著大于 expected → VIOLATION (超标准多收),
+       evidence: 引 fee 项目名 × count + 实际事件 N + 目录单位 "次 (限第一次就诊患者)" + 应收 expected + 多收金额.
+     - count 等于 expected → CLEAN (按目录正确收).
+     - count 小于 expected → CLEAN (未足量收, 不属本规则).
+  6. 文书未提供量化信息 (切口数/治疗时长/牙数/血管数/疗程数 等) → INCONCLUSIVE.
+
+  特殊注意:
+  - 判定关键: 既往史中'既往精神病'/'2 年前确诊精神分裂'等描述
+  - 若文书 既往史含精神病史 + fee 命中首诊 → 强支持 V
+  - 纯新发病例 (首次诊断) 收首诊 → CLEAN
+
+  注意: J66252 非精神科患者, fee 不命中 → CLEAN. 该规则在精神科高频复诊患者群体高命中.
+trigger_keywords:
+  - 首诊精神病
+  - 首次精神病
+  - 初诊
+  - 既往精神病
+  - 复诊
+  - 再次入院
+suggested_tools:
+  - search_fees
+  - search_notes
+  - note_diagnosis
+expected_signal: |
+  典型违规: 既往史明确'10 年前精神分裂症' + 此次收首诊精神病检查费.
+  典型 CLEAN: 新发精神症状首次诊察.
+  典型 INCONCLUSIVE: 既往史描述模糊.
+notes: ''
+derived_from_template: M4

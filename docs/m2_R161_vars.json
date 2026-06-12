@@ -1,0 +1,35 @@
+{
+  "exam_concept_desc": "肌钙蛋白 I (cTnI, TnI, 高敏肌钙蛋白 hs-cTnI)",
+  "catalog_basis": "按诊疗规范, cTnI 用于急性冠脉综合征 / 心肌损伤诊断和随访, 不应作为普通入院常规.",
+  "exam_kw_primary_list": ["肌钙蛋白", "cTnI", "TnI", "高敏肌钙蛋白", "hs-cTnI"],
+  "indication_dx_list": [
+    "急性心肌梗死 / 心梗 / 急性 STEMI / NSTEMI",
+    "急性冠脉综合征 / ACS",
+    "不稳定心绞痛 / 稳定心绞痛恶化",
+    "胸痛 (待查或明确)",
+    "心电图缺血改变 / ST 段抬高 / ST 段压低",
+    "心肌损伤 / 心肌炎",
+    "心律失常待查",
+    "心力衰竭急性发作",
+    "围术期心肌缺血风险"
+  ],
+  "min_count": 1,
+  "inconclusive_addendum": "",
+  "drug_check": false,
+  "drug_kw_list": [],
+  "drug_concept_desc": "",
+  "special_notes": [],
+  "pilot_caveat": "",
+  "aux_keywords": [
+    "肌钙蛋白",
+    "cTnI",
+    "TnI",
+    "高敏肌钙蛋白",
+    "hs-cTnI",
+    "心梗",
+    "ACS",
+    "心肌损伤"
+  ],
+  "aux_tools": ["note_diagnosis", "search_fees"],
+  "aux_signal": "典型违规: 患者诊断无胸痛/心电图异常/心肌问题, 收 cTnI × 1.\n典型 CLEAN: 急性胸痛患者多次 cTnI 排查心梗.\n典型 INCONCLUSIVE: 诊断 \"胸痛待查\" 等中间状态."
+}

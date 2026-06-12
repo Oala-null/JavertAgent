@@ -1,0 +1,35 @@
+{
+  "exam_concept_desc": "糖类抗原 / 癌胚抗原系列 (CEA, CA199, CA125, CA153, CA724, CA50, CA242)",
+  "catalog_basis": "按诊疗规范, 糖类抗原 / CEA 用于肿瘤筛查 (高危人群) 或既往肿瘤治疗后随访, 不应作为普通入院常规.",
+  "exam_kw_primary_list": ["癌胚抗原", "CEA", "糖类抗原", "CA199", "CA125"],
+  "indication_dx_list": [
+    "癌 / 肿瘤 / 恶性肿瘤",
+    "占位性病变 / 结节待排",
+    "既往肿瘤病史 / 肿瘤治疗后随访",
+    "直系亲属肿瘤史 / 肿瘤家族史",
+    "肝硬化 / 慢性炎症高危人群",
+    "异常出血 / 不明原因消瘦",
+    "影像学示肿块待定性"
+  ],
+  "min_count": 1,
+  "inconclusive_addendum": "",
+  "drug_check": false,
+  "drug_kw_list": [],
+  "drug_concept_desc": "",
+  "special_notes": [
+    "CEA 对甲状腺髓样癌有意义; 患者诊断含 '髓样癌' 则有指征 → CLEAN."
+  ],
+  "pilot_caveat": "甲状腺癌患者部分有指征 (CEA 对甲状腺髓样癌随访), 判 V 前先看诊断是否明确髓样型.",
+  "aux_keywords": [
+    "癌胚抗原",
+    "CEA",
+    "糖类抗原",
+    "CA199",
+    "CA125",
+    "CA153",
+    "CA724",
+    "肿瘤标志物"
+  ],
+  "aux_tools": ["note_diagnosis", "search_fees"],
+  "aux_signal": "典型违规: 阑尾炎手术患者收 CA199 × 1, 无肿瘤/家族史/高危指征.\n典型 CLEAN: 甲状腺髓样癌患者随访 CEA, 或胃癌术后随访 CA199 + CEA.\n典型 INCONCLUSIVE: 诊断 \"占位待查\" / \"消瘦待查\" 等中间状态."
+}

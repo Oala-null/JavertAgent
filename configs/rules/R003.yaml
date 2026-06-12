@@ -1,0 +1,13 @@
+rule_id: R003
+domain: 各科室通用类
+violation_type: 虚构医药服务项目
+question: 套用模版病历下达虚假医嘱、虚构检查检验项目、开具虚假处方、虚假开具药品。
+example: 示例：某医院眼科护士，在未对患者提供诊疗服务的情况下，套用模板下达医嘱，虚构检查检验、诊疗用药等项目，存在虚构医药服务项目问题。
+status: drafting
+priority: P2
+prompt_addon: ''
+trigger_keywords: []
+suggested_tools: []
+expected_signal: ''
+notes: 套用模板病历需跨患者文书相似度比对, 当前工具不支持. 留 add-cross-patient-stats change.
+derived_from_template: null

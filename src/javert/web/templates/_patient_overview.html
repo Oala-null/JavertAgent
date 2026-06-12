@@ -1,0 +1,242 @@
+{# partial: 患者概览 (复刻 build_clerk_report 风格), expects var: overview #}
+<details class="patient-overview" open id="patient-overview-block">
+  <summary class="overview-summary">
+    <strong>① 病案基本信息 + 费用结构</strong>
+    <span class="muted">点此折叠 / 展开</span>
+  </summary>
+
+  <table class="meta-table">
+    <colgroup>
+      <col style="width:13%"><col style="width:37%"><col style="width:13%"><col style="width:37%">
+    </colgroup>
+    <tr>
+      <th>住院号</th><td><strong>{{ overview.patient_id }}</strong></td>
+      <th>性别 · 年龄</th><td>{{ overview.gender or "—" }} · {{ overview.age or "—" }}</td>
+    </tr>
+    <tr>
+      <th>入院日期</th><td>{{ overview.admit_date }}</td>
+      <th>出院日期</th><td>{{ overview.discharge_date }}</td>
+    </tr>
+    <tr>
+      <th>住院天数</th><td>{{ overview.los_days }} 天</td>
+      <th>文书 / 费用</th>
+      <td>{{ overview.notes_total }} 条文书 · {{ overview.fees_count }} 条费用</td>
+    </tr>
+    <tr>
+      <th>费用合计</th>
+      <td><strong style="color:var(--verdict-v)">¥{{ "{:,.2f}".format(overview.fees_sum) }}</strong></td>
+      <th>麻醉 / ASA</th>
+      <td>{{ overview.anesthesia or "—" }} / ASA {{ overview.asa or "—" }}</td>
+    </tr>
+    <tr>
+      <th>收治科室</th>
+      <td colspan="3">
+        {% if overview.top_depts %}
+          {% for d, n in overview.top_depts %}{{ d }}({{ n }}){% if not loop.last %} · {% endif %}{% endfor %}
+        {% else %}—{% endif %}
+      </td>
+    </tr>
+    <tr>
+      <th>经治医师</th>
+      <td colspan="3">
+        {% if overview.top_drs %}
+          {% for d, n in overview.top_drs %}{{ d }}({{ n }}){% if not loop.last %} · {% endif %}{% endfor %}
+        {% else %}—{% endif %}
+      </td>
+    </tr>
+    <tr>
+      <th>主诊断</th>
+      <td colspan="3">
+        <strong>{{ overview.primary_dx }}</strong>
+        <span class="muted">· 来源: {{ overview.primary_source }}</span>
+      </td>
+    </tr>
+  </table>
+
+  {% if overview.other_dx %}
+  <div class="subblock">
+    <strong>其他诊断 (Top {{ overview.other_dx | length }})</strong>
+    <ul class="dx-list">
+      {% for d in overview.other_dx %}<li>{{ d }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if overview.post_dx %}
+  <div class="subblock">
+    <strong>术后诊断</strong>
+    <ul class="dx-list">
+      {% for d in overview.post_dx %}<li>{{ d }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {# 主诉 / 现病史 / 既往史 已移除 — 注意力不应起于病史叙述, 原文对照面板的「入院记录」桶里可查全文 #}
+
+  {% if overview.surgeries %}
+  <div class="subblock">
+    <strong>手术列表 <span class="muted">· 来源: 病案首页 shi_ss (ICD-9-CM3)</span></strong>
+    <table class="data-table">
+      <thead><tr>
+        <th>主/次</th><th>手术名称</th><th>ICD-9 临床</th><th>ICD-9 医保</th><th>日期</th><th>等级/麻醉/术者</th>
+      </tr></thead>
+      <tbody>
+      {% for s in overview.surgeries %}
+        <tr>
+          <td>
+            {% if s.main == 1 %}<strong style="color:var(--verdict-v)">主</strong>
+            {% else %}<span class="muted">次</span>{% endif %}
+          </td>
+          <td>{{ s.name }}</td>
+          <td><code>{{ s.code or "—" }}</code></td>
+          <td><code>{{ s.hi_code or "—" }}</code></td>
+          <td>{{ s.date or "—" }}</td>
+          <td class="muted">
+            {% set bits = [] %}
+            {% if s.level %}{% set _ = bits.append(s.level) %}{% endif %}
+            {% if s.anesthesia %}{% set _ = bits.append("麻醉:" + s.anesthesia) %}{% endif %}
+            {% if s.oper_dr %}{% set _ = bits.append("主刀:" + s.oper_dr) %}{% endif %}
+            {% if s.anst_dr %}{% set _ = bits.append("麻醉师:" + s.anst_dr) %}{% endif %}
+            {{ bits | join(" · ") if bits else "—" }}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% elif overview.actual_surgery %}
+  <div class="subblock"><strong>手术 <span class="muted">· 来源: 病历文书 (无 shi_ss)</span></strong>
+    <div class="note-box">{{ overview.actual_surgery[:300] }}</div></div>
+  {% endif %}
+
+  {% if overview.pathology %}
+  <div class="subblock"><strong>病理诊断</strong>
+    <div class="note-box">{{ overview.pathology[:300] }}</div></div>
+  {% endif %}
+
+  {% if overview.fee_categories %}
+  <details class="subblock" open>
+    <summary><strong>按医保项目类别拆分 <span class="muted">· 点类别行就地展开明细</span></strong></summary>
+    <div class="fee-cat-table">
+      <div class="fee-cat-head">
+        <span class="fc-label">类别</span>
+        <span class="fc-cnt num">条数</span>
+        <span class="fc-sum num">金额</span>
+        <span class="fc-pct num">占比</span>
+        <span class="fc-bar"></span>
+      </div>
+      {% for c in overview.fee_categories %}
+      <details class="fee-cat">
+        <summary class="fee-cat-summary">
+          <span class="fc-label">{{ c.label }}</span>
+          <span class="fc-cnt num">{{ c.cnt }}</span>
+          <span class="fc-sum num">¥{{ "{:,.2f}".format(c.sum) }}</span>
+          <span class="fc-pct num">{{ "%.1f"|format(c.pct) }}%</span>
+          <span class="fc-bar"><span class="bar"><span class="bar-fill" style="width:{{ c.bar_pct }}%"></span></span></span>
+        </summary>
+        <table class="data-table fee-cat-items">
+          <thead><tr>
+            <th>编码</th><th>项目名称</th><th class="num">次数</th><th class="num">金额</th>
+          </tr></thead>
+          <tbody>
+          {% for it in c['items'] %}
+            <tr>
+              <td><code title="{% if it.code_local %}院内码 {{ it.code_local }}{% else %}无院内码{% endif %}">{{ it.code_nat or "—" }}</code></td>
+              <td>{{ it.name[:55] }}{% if it.refund_count %} <span class="muted refund-note" title="净量已抵消退费">(含 {{ it.refund_count }} 次退费, 已抵消)</span>{% endif %}</td>
+              <td class="num">{{ "%.1f"|format(it.cnt) }}</td>
+              <td class="num">¥{{ "{:,.2f}".format(it.sum) }}</td>
+            </tr>
+          {% endfor %}
+          {% if c.items_truncated %}
+            <tr><td colspan="4" class="muted">… 共 {{ c.items_total }} 项, 已按金额显示 Top {{ c['items']|length }}</td></tr>
+          {% endif %}
+          </tbody>
+        </table>
+      </details>
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+
+  {% if overview.fee_items %}
+  <details class="subblock">
+    <summary><strong>费用项目 Top 15 (按金额倒序)</strong></summary>
+    <table class="data-table">
+      <thead><tr>
+        <th>#</th><th>项目名</th><th class="num">次数</th><th class="num">单价</th>
+        <th class="num">小计</th><th class="num">占比</th>
+      </tr></thead>
+      <tbody>
+      {% for it in overview.fee_items %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ it.name[:55] }}
+            {% if it.spec and it.spec != "-" %}
+              <div class="spec-tag">规格: {{ it.spec[:30] }}</div>
+            {% endif %}
+          </td>
+          <td class="num">{{ "%.1f"|format(it.cnt) }}</td>
+          <td class="num">{{ it.price_range }}</td>
+          <td class="num"><strong>¥{{ "{:,.2f}".format(it.sum) }}</strong></td>
+          <td class="num">{{ "%.1f"|format(it.pct) }}%</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endif %}
+
+  {% if overview.drugs %}
+  <details class="subblock">
+    <summary><strong>药品 / 耗材 Top 8 (prodname)</strong></summary>
+    <table class="data-table">
+      <thead><tr>
+        <th>#</th><th>药品/耗材</th><th>规格</th><th class="num">数量</th><th class="num">金额</th>
+      </tr></thead>
+      <tbody>
+      {% for d in overview.drugs %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ d.name[:50] }}</td>
+          <td class="muted">{{ d.spec[:30] }}</td>
+          <td class="num">{{ "%.1f"|format(d.cnt) }}</td>
+          <td class="num">¥{{ "{:,.2f}".format(d.sum) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endif %}
+
+  {% if overview.top_stages %}
+  <details class="subblock">
+    <summary><strong>文书阶段分布 Top 8</strong></summary>
+    <table class="data-table">
+      <thead><tr><th>阶段</th><th class="num">条数</th></tr></thead>
+      <tbody>
+      {% for s, n in overview.top_stages %}
+        <tr><td>{{ s }}</td><td class="num">{{ n }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endif %}
+
+  {% for sp in overview.stored_spokes %}
+  <details class="subblock">
+    <summary><strong>{{ sp.name }}</strong> <span class="muted">· 已接收·暂不参与判定 · {{ sp.total }} 行</span></summary>
+    {% if sp.rows %}
+    <table class="data-table">
+      <thead><tr>{% for c in sp.columns %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+      <tbody>
+      {% for row in sp.rows %}
+        <tr>{% for cell in row %}<td>{{ cell[:60] }}</td>{% endfor %}</tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">该患者在此表无记录</p>
+    {% endif %}
+  </details>
+  {% endfor %}
+</details>

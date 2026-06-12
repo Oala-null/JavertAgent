@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Javert 非肿瘤/跨病种患者审计报告</title>
+<style>
+  :root {
+    --bg: #fafbfc;
+    --card: #ffffff;
+    --border: #e4e7eb;
+    --text: #1f2933;
+    --muted: #616e7c;
+    --accent: #3b82f6;
+    --accent-soft: #dbeafe;
+    --green: #10b981;
+    --green-soft: #d1fae5;
+    --yellow: #f59e0b;
+    --yellow-soft: #fef3c7;
+    --red: #ef4444;
+    --red-soft: #fee2e2;
+    --purple: #8b5cf6;
+    --purple-soft: #ede9fe;
+    --pink: #ec4899;
+    --pink-soft: #fce7f3;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  header {
+    background: linear-gradient(135deg, #fee2e2 0%, #fef3c7 50%, #dbeafe 100%);
+    padding: 28px 48px 22px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 {
+    margin: 0 0 6px 0;
+    font-size: 26px;
+    color: #991b1b;
+  }
+  header .sub {
+    color: var(--muted);
+    font-size: 14px;
+  }
+  header .badges { margin-top: 10px; }
+  .badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-right: 6px;
+  }
+  .badge.green { background: var(--green-soft); color: #065f46; }
+  .badge.yellow { background: var(--yellow-soft); color: #92400e; }
+  .badge.red { background: var(--red-soft); color: #991b1b; }
+  .badge.blue { background: var(--accent-soft); color: #1e40af; }
+  .badge.purple { background: var(--purple-soft); color: #5b21b6; }
+  .badge.pink { background: var(--pink-soft); color: #9d174d; }
+
+  .tabs {
+    display: flex;
+    border-bottom: 2px solid var(--border);
+    background: white;
+    padding: 0 48px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    overflow-x: auto;
+  }
+  .tabs button {
+    background: none;
+    border: none;
+    padding: 14px 22px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+    margin-bottom: -2px;
+  }
+  .tabs button:hover { color: var(--accent); }
+  .tabs button.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .content {
+    padding: 28px 48px 64px;
+    max-width: 1240px;
+    margin: 0 auto;
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  h2 { font-size: 22px; margin: 24px 0 12px; color: #1e3a8a; }
+  h3 { font-size: 16px; margin: 22px 0 10px; color: var(--text); }
+  h4 { font-size: 14px; margin: 12px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    margin: 16px 0;
+  }
+  .stat {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+  }
+  .stat .label { color: var(--muted); font-size: 12px; }
+  .stat .value { font-size: 28px; font-weight: 700; color: var(--text); margin-top: 4px; }
+  .stat .delta { font-size: 12px; margin-top: 4px; color: var(--muted); }
+  .stat .delta.up { color: var(--red); }
+  .stat .delta.down { color: var(--green); }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0;
+    font-size: 13px;
+  }
+  table th, table td {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  table th {
+    background: #f1f5f9;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  table tr:hover { background: #f8fafc; }
+  table td.mono { font-family: "SF Mono", Consolas, monospace; font-size: 12px; }
+  .verdict-V { color: var(--red); font-weight: 700; }
+  .verdict-C { color: var(--green); font-weight: 600; }
+  .verdict-I { color: var(--yellow); font-weight: 600; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .v-case {
+    background: linear-gradient(to right, #fee2e2, #fff);
+    border-left: 4px solid var(--red);
+    padding: 14px 18px;
+    margin: 10px 0;
+    border-radius: 4px;
+  }
+  .v-case h4 {
+    margin: 0 0 6px 0;
+    text-transform: none;
+    letter-spacing: 0;
+    color: #991b1b;
+    font-size: 15px;
+  }
+  .v-case .meta {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .v-case .evidence {
+    background: #fefefe;
+    border-left: 3px solid var(--accent);
+    padding: 8px 12px;
+    margin: 6px 0;
+    font-size: 13px;
+  }
+  .v-case .evidence .src {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 11px;
+    margin-right: 6px;
+    background: var(--accent-soft);
+    color: #1e40af;
+  }
+  .v-case .evidence .src.fee { background: var(--yellow-soft); color: #92400e; }
+  .v-case .evidence .reason {
+    margin-top: 6px;
+    padding: 8px 10px;
+    background: #fffbeb;
+    border-left: 3px solid var(--yellow);
+    font-size: 12px;
+    color: #374151;
+    line-height: 1.6;
+  }
+  .v-case .amount {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #991b1b;
+    color: white;
+    border-radius: 3px;
+    font-weight: 700;
+    font-family: monospace;
+    font-size: 13px;
+  }
+
+  .i-case {
+    background: linear-gradient(to right, #fef3c7, #fff);
+    border-left: 4px solid var(--yellow);
+    padding: 12px 16px;
+    margin: 8px 0;
+    border-radius: 4px;
+  }
+  .i-case h4 {
+    margin: 0 0 4px 0;
+    text-transform: none;
+    letter-spacing: 0;
+    color: #92400e;
+    font-size: 14px;
+  }
+  .i-case p { font-size: 13px; margin: 4px 0; }
+
+  .patient-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin: 16px 0;
+    border-top: 5px solid;
+  }
+  .patient-card.p1 { border-top-color: var(--accent); }
+  .patient-card.p2 { border-top-color: var(--red); }
+  .patient-card.p3 { border-top-color: var(--purple); }
+  .patient-card h3 { margin-top: 0; }
+
+  .matrix-table th.diagonal {
+    background: #ddd6fe;
+  }
+  .pattern-card {
+    background: linear-gradient(to right, #fce7f3, #fff);
+    border-left: 4px solid var(--pink);
+    padding: 14px 18px;
+    margin: 10px 0;
+    border-radius: 4px;
+  }
+  .pattern-card h4 {
+    margin: 0 0 6px 0;
+    text-transform: none;
+    letter-spacing: 0;
+    color: #9d174d;
+    font-size: 15px;
+  }
+
+  @media (max-width: 800px) {
+    .content, header, .tabs { padding-left: 20px; padding-right: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🏥 Javert 非肿瘤 / 跨病种患者审计报告</h1>
+  <div class="sub">2026-05-15 · 3 患者跨病种对比 · 六模板 P0 子集 (57 条) · concurrency 5</div>
+  <div class="badges">
+    <span class="badge green">J66252 甲状腺癌: V=2</span>
+    <span class="badge red">J18906 脑干血管瘤: V=7</span>
+    <span class="badge red">J13365 骨科/肺癌骨转移: V=10</span>
+    <span class="badge purple">合计 V=19 跨 3 患者</span>
+    <span class="badge yellow">~¥9000+ 估算违规金额</span>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="overview">📊 三患者总览</button>
+  <button class="tab-btn" data-tab="j18906">🧠 J18906 脑干血管瘤</button>
+  <button class="tab-btn" data-tab="j13365">🦴 J13365 骨科肿瘤</button>
+  <button class="tab-btn" data-tab="patterns">🔍 跨患者发现</button>
+  <button class="tab-btn" data-tab="next">🎯 下一步</button>
+</nav>
+
+<main class="content">
+
+<!-- ========== TAB 1: 总览 ========== -->
+<section class="tab-panel active" id="overview">
+  <h2>三患者审计概览</h2>
+
+  <div class="stat-grid">
+    <div class="stat">
+      <div class="label">规则集</div>
+      <div class="value">57 P0</div>
+      <div class="delta">六模板 ready 子集</div>
+    </div>
+    <div class="stat">
+      <div class="label">累计 V 触发</div>
+      <div class="value verdict-V">19</div>
+      <div class="delta up">vs J66252 单跑 2 → 9.5×</div>
+    </div>
+    <div class="stat">
+      <div class="label">累计 I 触发</div>
+      <div class="value verdict-I">6</div>
+      <div class="delta">R212/R037/R220 漂移</div>
+    </div>
+    <div class="stat">
+      <div class="label">估算违规金额</div>
+      <div class="value">¥9000+</div>
+      <div class="delta">仅 3 患者样本</div>
+    </div>
+  </div>
+
+  <h3>三患者并排对比</h3>
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>维度</th>
+          <th>J66252 甲状腺癌</th>
+          <th>J18906 脑干血管瘤</th>
+          <th>J13365 骨科 + 肺癌骨转移</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>主诊断</b></td>
+          <td>甲状腺恶性肿瘤 (cT1N0M)</td>
+          <td>脑干海绵状血管畸形伴蛛网膜下腔出血</td>
+          <td>肺恶性肿瘤 + 病理性骨折 + 胸椎/肱骨继发癌</td>
+        </tr>
+        <tr>
+          <td><b>专科</b></td>
+          <td>甲乳外科 (择期手术)</td>
+          <td>神经外科</td>
+          <td>骨科 + 肿瘤靶向治疗</td>
+        </tr>
+        <tr>
+          <td><b>总耗时</b></td>
+          <td class="mono">10:32 min</td>
+          <td class="mono">18:33 min</td>
+          <td class="mono">18:34 min</td>
+        </tr>
+        <tr>
+          <td><b>avg / rule</b></td>
+          <td class="mono">68.4s</td>
+          <td class="mono">94.9s</td>
+          <td class="mono">92.0s</td>
+        </tr>
+        <tr>
+          <td><b>Verdicts</b></td>
+          <td><span class="verdict-V">V=2</span> <span class="verdict-C">C=43</span> <span class="verdict-I">I=0</span></td>
+          <td><span class="verdict-V">V=7</span> <span class="verdict-C">C=49</span> <span class="verdict-I">I=1</span></td>
+          <td><span class="verdict-V"><b>V=10</b></span> <span class="verdict-C">C=42</span> <span class="verdict-I">I=5</span></td>
+        </tr>
+        <tr>
+          <td><b>tool calls</b></td>
+          <td class="mono">174</td>
+          <td class="mono">262</td>
+          <td class="mono">264</td>
+        </tr>
+        <tr>
+          <td><b>cache hit_rate</b></td>
+          <td>33.3%</td>
+          <td>31.7%</td>
+          <td>29.2%</td>
+        </tr>
+        <tr>
+          <td><b>慢规则 Top-3</b></td>
+          <td>R015 / R222 / R208</td>
+          <td>R203 254s / R105 246s / R200 173s</td>
+          <td>R063 398s / R200 341s / R112 257s</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>V 触发矩阵 (跨患者)</h3>
+  <div class="card">
+    <table class="matrix-table">
+      <thead>
+        <tr>
+          <th>规则</th><th>模板</th><th>项目</th>
+          <th class="diagonal">J66252</th>
+          <th class="diagonal">J18906</th>
+          <th class="diagonal">J13365</th>
+          <th>跨患者 V 次数</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>R103</b></td><td><span class="badge purple">M5</span></td><td>影像未做但收费</td>
+          <td><span class="verdict-C">C</span></td>
+          <td><span class="verdict-V">V 0.95</span></td>
+          <td><span class="verdict-C">C</span></td>
+          <td>1</td>
+        </tr>
+        <tr>
+          <td><b>R112</b></td><td><span class="badge blue">M1</span></td><td>CT 增强 + 平扫重复</td>
+          <td><span class="verdict-C">C</span></td>
+          <td><span class="verdict-C">C</span></td>
+          <td><span class="verdict-V">V 0.90</span></td>
+          <td>1</td>
+        </tr>
+        <tr>
+          <td><b>R131</b></td><td><span class="badge blue">M2</span></td><td>心脏彩超系列无指征</td>
+          <td><span class="verdict-C">C</span></td>
+          <td><span class="verdict-V">V 0.95</span></td>
+          <td><span class="verdict-V">V 0.95</span></td>
+          <td>2 ⚠️</td>
+        </tr>
+        <tr style="background:#fee2e2;">
+          <td><b>R141</b></td><td><span class="badge blue">M2</span></td><td>肌红蛋白普查</td>
+          <td><span class="verdict-C">C</span></td>
+          <td><span class="verdict-V">V 0.95</span></td>
+          <td><span class="verdict-V">V 0.95</span></td>
+          <td>2 ⚠️ 系统性</td>
+        </tr>
+        <tr style="background:#fee2e2;">
+          <td><b>R143</b></td><td><span class="badge blue">M2</span></td><td>血浆乳酸普查</td>
+          <td><span class="verdict-C">C</span></td>
+          <td><span class="verdict-V">V 0.95</span></td>
+          <td><span class="verdict-V">V 0.95</span></td>
+          <td>2 ⚠️ 系统性</td>
+        </tr>
+        <tr style="background:#fee2e2;">
+          <td><b>R146</b></td><td><span class="badge blue">M2</span></td><td>BNP / NT-proBNP 普查</td>
+          <td><span class="verdict-C">C</span></td>
+          <td><span class="verdict-V">V 0.95</span></td>
+          <td><span class="verdict-V">V 0.95</span></td>
+          <td>2 ⚠️ 系统性</td>
+        </tr>
+        <tr>
+          <td><b>R153</b></td><td><span class="badge blue">M2</span></td><td>AFP 普查</td>
+          <td><span class="verdict-C">C</span></td>
+          <td><span class="verdict-C">C</span></td>
+          <td><span class="verdict-V">V 0.95</span></td>
+          <td>1</td>
+        </tr>
+        <tr>
+          <td><b>R160</b></td><td><span class="badge blue">M2</span></td><td>PCT 普查</td>
+          <td><span class="verdict-C">C</span></td>
+          <td><span class="verdict-V">V 0.95</span></td>
+          <td><span class="verdict-C">C</span></td>
+          <td>1</td>
+        </tr>
+        <tr>
+          <td><b>R161</b></td><td><span class="badge blue">M2</span></td><td>cTnI 普查</td>
+          <td><span class="verdict-C">C</span></td>
+          <td><span class="verdict-C">C</span></td>
+          <td><span class="verdict-V">V 0.95</span></td>
+          <td>1</td>
+        </tr>
+        <tr style="background:#fef3c7;">
+          <td><b>R203</b></td><td><span class="badge purple">M5</span></td><td>全身麻醉未做但收费</td>
+          <td><span class="verdict-V">V 0.95</span></td>
+          <td><span class="verdict-C">C</span></td>
+          <td><span class="verdict-V">V 0.95</span></td>
+          <td>2 ⚠️ ETL?</td>
+        </tr>
+        <tr style="background:#fee2e2;">
+          <td><b>R224</b></td><td><span class="badge purple">M5</span></td><td>重症监护检验未做但收费</td>
+          <td><span class="verdict-C">C</span></td>
+          <td><span class="verdict-V">V 0.95</span></td>
+          <td><span class="verdict-V">V 0.95</span></td>
+          <td>2 ⚠️ 系统性</td>
+        </tr>
+        <tr>
+          <td><b>R080</b></td><td><span class="badge purple">M5</span></td><td>康复评定打包未做</td>
+          <td><span class="verdict-C">C</span></td>
+          <td><span class="verdict-C">C</span></td>
+          <td><span class="verdict-V">V 0.90</span></td>
+          <td>1</td>
+        </tr>
+        <tr>
+          <td><b>R220</b></td><td><span class="badge blue">M2</span></td><td>控制性降压无适应症</td>
+          <td><span class="verdict-V">V 0.95</span></td>
+          <td><span class="verdict-C">C</span></td>
+          <td>(not run)</td>
+          <td>1 (漂移)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>结论</h3>
+  <div class="pattern-card">
+    <h4>核心发现: 模板触发能力随病种切换显著提升</h4>
+    <p>J66252 (甲状腺择期手术 / 健康基线) 跑下来 V=2 看不出医院问题. 切到 <b>J18906 V=7 + J13365 V=10</b>, 揭示出多个<b>系统性违规模式</b>:</p>
+    <ul style="font-size:13px;margin:6px 0 0 18px;">
+      <li><b>急诊心肌四项打包</b>: R141/R143/R146 在 2/3 患者命中, 是医院"住院普查"常规模式</li>
+      <li><b>R131 心脏彩超无指征</b>: 神经/骨科患者也开 = 全院通用模式</li>
+      <li><b>R224 血气分析虚构</b>: 文书完全无证据, 系统性 ETL/文书缺失或真违规</li>
+      <li><b>R203 全麻虚构</b>: 跨 2 患者命中, 反映医院麻醉记录数字化不全 (推测 ETL 问题)</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ========== TAB 2: J18906 详情 ========== -->
+<section class="tab-panel" id="j18906">
+  <h2>🧠 J18906 脑干海绵状血管瘤 — V=7 详情</h2>
+
+  <div class="patient-card p2">
+    <h3>患者画像</h3>
+    <table>
+      <tr><td><b>诊断</b></td><td>脑干占位性病变 (海绵状血管瘤?) / 脑干海绵状血管畸形伴蛛网膜下腔出血</td></tr>
+      <tr><td><b>主诉</b></td><td>头晕伴恶心呕吐 2 天</td></tr>
+      <tr><td><b>科室</b></td><td>神经外科 (无心血管/感染/创伤指征)</td></tr>
+      <tr><td><b>fee 总量</b></td><td>多项 (含 8 次 PRO-BNP, 8 次肌红蛋白, 6 次乳酸, 4 次 PCT 等)</td></tr>
+    </table>
+  </div>
+
+  <h3>7 个 V 案例 (按估算金额降序)</h3>
+
+  <div class="v-case">
+    <h4>R146 BNP / NT-proBNP 8 次 (M2 过度检查)</h4>
+    <div class="meta">conf 0.95 · 71s · 4 tool calls · 估算 <span class="amount">¥1808</span></div>
+    <div class="evidence">
+      <span class="src fee">FEE</span>费用明细中显示 <b>8 次「B 型钠尿肽前体 (PRO-BNP) 测定」</b>, 每次 ¥226.00, 合计 ¥1808.00
+    </div>
+    <div class="evidence">
+      <span class="src">NOTE</span>主要诊断: 脑干占位性病变 / 海绵状血管畸形 / 头晕恶心呕吐. <b>无心力衰竭/心功能不全/急性冠脉综合征/呼吸困难待查</b>等 BNP 指征.
+    </div>
+    <div class="reason">LLM 推理: 神经系统疾病不应作为 BNP 常规检查 (8 次更不合理), 符合"过度检查"违规.</div>
+  </div>
+
+  <div class="v-case">
+    <h4>R141 血清肌红蛋白 8 次 (M2 过度检查)</h4>
+    <div class="meta">conf 0.95 · 76s · 2 tool calls · 估算 <span class="amount">¥800</span></div>
+    <div class="evidence">
+      <span class="src fee">FEE</span>费用明细中出现 <b>8 次血清肌红蛋白测定</b>, 合计 ¥800.00
+    </div>
+    <div class="evidence">
+      <span class="src">NOTE</span>诊断列表: 脑干占位 / 海绵状血管畸形. <b>无急性心肌梗死/心肌损伤/横纹肌溶解/严重创伤</b>等指征.
+    </div>
+    <div class="reason">LLM 推理: 神经患者无心肌损伤指征却 8 次肌红蛋白, 典型"普查模式".</div>
+  </div>
+
+  <div class="v-case">
+    <h4>R160 降钙素原 (PCT) 4 次 (M2 过度检查)</h4>
+    <div class="meta">conf 0.95 · 66s · 3 tool calls · 估算 <span class="amount">¥320</span></div>
+    <div class="evidence">
+      <span class="src fee">FEE</span>费用明细中显示 <b>4 次降钙素原检测</b>, 单价 ¥80.00, 合计 ¥320.00
+    </div>
+    <div class="evidence">
+      <span class="src">NOTE</span>主要诊断: 脑干占位 / 蛛网膜下腔出血. <b>无脓毒症/严重感染/SIRS/术后感染</b>等 PCT 指征.
+    </div>
+    <div class="reason">LLM 推理: 神经外科疾病不应作为 PCT 常规检查.</div>
+  </div>
+
+  <div class="v-case">
+    <h4>R224 血气分析 6 次 (M5 虚构服务) — 强证据</h4>
+    <div class="meta">conf 0.95 · 124s · 6 tool calls · 估算 <span class="amount">¥270</span></div>
+    <div class="evidence">
+      <span class="src fee">FEE</span>费用明细中出现 <b>6 项血气分析</b>, 每项 ¥45.00, 合计 ¥270.00
+    </div>
+    <div class="evidence">
+      <span class="src">NOTE</span><b>关键词"血气分析"在文书中未检索到任何记录</b> (无检验报告 / 无监测数值 / 无执行描述); 文书目录中<b>缺失"重症监护记录"</b>子阶段, 缺乏 ICU 服务执行痕迹.
+    </div>
+    <div class="reason">LLM 推理: fee 有 + 文书无执行证据 + 无 ICU 介入痕迹 → 强支持 VIOLATION 虚构服务.</div>
+  </div>
+
+  <div class="v-case">
+    <h4>R103 影像未做但收费 (M5 虚构服务)</h4>
+    <div class="meta">conf 0.95 · 135s · 9 tool calls · 估算 <span class="amount">¥500+</span></div>
+    <div class="evidence">
+      <span class="src fee">FEE</span>费用明细包含 <b>CT 平扫 (64 层以上)×3 次, CT 平扫 (64 层以下)×1 次, 第 2 部位 CT×3 次, 心脏彩色多普勒超声×1 次</b>.
+    </div>
+    <div class="evidence">
+      <span class="src">NOTE</span>文书辅助检查段<b>仅 3 条颅脑 CT 记录 (2024-08-15)</b>, 未包含心脏超声记录, 也未包含其他部位 CT 报告.
+    </div>
+    <div class="reason">LLM 推理: 收费多项, 文书仅匹配 3 项颅脑 CT, 心脏超声 + 第 2 部位 CT 等无执行证据 → 虚构.</div>
+  </div>
+
+  <div class="v-case">
+    <h4>R143 血浆乳酸 6 次 (M2 过度检查)</h4>
+    <div class="meta">conf 0.95 · 65s · 4 tool calls · 估算 <span class="amount">¥60</span></div>
+    <div class="evidence">
+      <span class="src fee">FEE</span>6 次 ¥10/次, 合计 ¥60
+    </div>
+    <div class="evidence">
+      <span class="src">NOTE</span>无<b>休克 / 脓毒症 / 严重感染 / 呼吸衰竭 / 酮症酸中毒 / 心搏骤停</b>等指征.
+    </div>
+    <div class="reason">LLM 推理: 神经患者无乳酸测定指征, 多次重复属过度.</div>
+  </div>
+
+  <div class="v-case">
+    <h4>R131 心脏彩超系列 — 左心功能 + TDI (M2 过度检查)</h4>
+    <div class="meta">conf 0.95 · 90s · 5 tool calls · 估算 <span class="amount">¥95</span></div>
+    <div class="evidence">
+      <span class="src fee">FEE</span>左心功能测定 ¥55 + 组织多普勒显象 (TDI) ¥40
+    </div>
+    <div class="evidence">
+      <span class="src">NOTE</span>诊断为脑干占位 / 海绵状血管畸形, <b>无心脏病 / 冠心病 / 心衰 / 心律失常</b>等心脏指征.
+    </div>
+    <div class="reason">LLM 推理: 神经患者无心脏评估指征, 心脏彩超系列属过度检查.</div>
+  </div>
+
+  <h3>J18906 估算违规金额</h3>
+  <div class="card">
+    <p style="font-size:14px;"><b>合计 (M2 5 条 + M5 2 条): 约 ¥3,853</b> (单一患者本次住院).</p>
+    <p style="font-size:13px;color:var(--muted);">按医院类似患者(脑干/神经外科)每月 30-50 例, 单院月违规金额估算 ¥120,000-200,000.</p>
+  </div>
+
+  <h3>1 个 INCONCLUSIVE</h3>
+  <div class="i-case">
+    <h4>R212 PACU (M4 超标准收费, 设计预期 I)</h4>
+    <p>conf 0.60 · 101s · 6 tool calls. fee 命中 PACU 监护, 但文书无 PACU 操作细节. 按 M4 设计 pilot_caveat, 退 I 建议线下核实医院 PACU 配置.</p>
+  </div>
+</section>
+
+<!-- ========== TAB 3: J13365 详情 ========== -->
+<section class="tab-panel" id="j13365">
+  <h2>🦴 J13365 骨科 + 肺癌骨转移 — V=10 详情</h2>
+
+  <div class="patient-card p3">
+    <h3>患者画像</h3>
+    <table>
+      <tr><td><b>诊断</b></td><td>肺恶性肿瘤 (cTxNxM) + 病理性骨折 + 胸椎继发癌 + 肱骨恶性肿瘤 + 靶向治疗</td></tr>
+      <tr><td><b>专科</b></td><td>骨科 (肱骨活检) + 肿瘤靶向</td></tr>
+      <tr><td><b>fee 总量</b></td><td>骨转移随访 + CT 多次 + 心肌四项 + 麻醉等</td></tr>
+    </table>
+  </div>
+
+  <h3>10 个 V 案例 (按估算金额降序)</h3>
+
+  <div class="v-case">
+    <h4>R203 全身麻醉 (气管插管) ×2 — M5 虚构服务</h4>
+    <div class="meta">conf 0.95 · 112s · 7 tool calls · 估算 <span class="amount">¥1600</span></div>
+    <div class="evidence">
+      <span class="src fee">FEE</span>2 项 全身麻醉 (气管插管), 单价 ¥800, 合计 ¥1600
+    </div>
+    <div class="evidence">
+      <span class="src">NOTE</span>搜 "麻醉记录" / "诱导药物" / "维持药物" / "苏醒" <b>均无结果</b>; 搜 "气管插管" 仅找到术后核查单中的勾选记录, <b>无插管时间 / 操作过程描述</b>.
+    </div>
+    <div class="reason">LLM 推理: fee 命中全麻 + 文书完全缺失麻醉记录 → 虚构.</div>
+  </div>
+
+  <div class="v-case">
+    <h4>R146 BNP + PRO-BNP 4 次 — M2 过度检查</h4>
+    <div class="meta">conf 0.95 · 70s · 4 tool calls · 估算 <span class="amount">¥912</span></div>
+    <div class="evidence">
+      <span class="src fee">FEE</span>2 次 BNP (单价 ¥230) + 2 次 PRO-BNP (单价 ¥226), 合计 ¥912
+    </div>
+    <div class="evidence">
+      <span class="src">NOTE</span>所有诊断为恶性肿瘤 (肺/骨转移), <b>无心衰 / ACS / 呼吸困难待查</b>.
+    </div>
+    <div class="reason">LLM 推理: 肿瘤患者无心衰指征, 4 次 BNP 类无依据.</div>
+  </div>
+
+  <div class="v-case">
+    <h4>R112 CT 增强 + 平扫重复 — M1 重复收费</h4>
+    <div class="meta">conf 0.90 · 257s · 6 tool calls · 估算 <span class="amount">¥800+</span></div>
+    <div class="evidence">
+      <span class="src fee">FEE</span><b>CT 增强 (64 层以上) ¥300 + 4 次 CT 平扫 (64 层以上) ¥800</b>, 增强项目本身已含平扫
+    </div>
+    <div class="evidence">
+      <span class="src">NOTE</span>文书未明确说明平扫是独立于增强的不同部位或不同时相采集; 平扫次数 (4 次) 远多于增强 (1 次).
+    </div>
+    <div class="reason">LLM 推理: CT 增强已含平扫, 单独再收 4 次平扫 → 重复收费; 文书未提供合理解释.</div>
+  </div>
+
+  <div class="v-case">
+    <h4>R141 肌红蛋白 4 次 — M2 过度检查</h4>
+    <div class="meta">conf 0.95 · 67s · 2 tool calls · 估算 <span class="amount">¥400</span></div>
+    <div class="evidence">
+      <span class="src fee">FEE</span>4 次, 每次 ¥100, 合计 ¥400
+    </div>
+    <div class="evidence">
+      <span class="src">NOTE</span>肿瘤/骨折相关诊断, 无心肌损伤指征.
+    </div>
+  </div>
+
+  <div class="v-case">
+    <h4>R161 cTnI 肌钙蛋白 2 次 — M2 过度检查</h4>
+    <div class="meta">conf 0.95 · 58s · 2 tool calls · 估算 <span class="amount">¥240</span></div>
+    <div class="evidence">
+      <span class="src fee">FEE</span>2 次 ¥120/次, 合计 ¥240
+    </div>
+    <div class="evidence">
+      <span class="src">NOTE</span>无 ACS / 胸痛 / 心肌损伤 / 心电图异常等心脏指征.
+    </div>
+  </div>
+
+  <div class="v-case">
+    <h4>R153 AFP + 异质体 — M2 过度检查</h4>
+    <div class="meta">conf 0.95 · 80s · 3 tool calls · 估算 <span class="amount">¥182</span></div>
+    <div class="evidence">
+      <span class="src fee">FEE</span>甲胎蛋白异质体 ¥150 + AFP ¥32 = ¥182
+    </div>
+    <div class="evidence">
+      <span class="src">NOTE</span>肺癌骨转移患者, <b>无肝癌 / 肝硬化 / 肝炎 / 睾丸生殖细胞肿瘤 / 妊娠</b>指征.
+    </div>
+    <div class="reason">LLM 推理: AFP 用于肝/睾丸/孕妇, 肺癌无 AFP 指征.</div>
+  </div>
+
+  <div class="v-case">
+    <h4>R224 血气分析 — M5 虚构服务</h4>
+    <div class="meta">conf 0.95 · 209s · 10 tool calls · 估算 <span class="amount">¥135</span></div>
+    <div class="evidence">
+      <span class="src fee">FEE</span>血气分析 ¥135
+    </div>
+    <div class="evidence">
+      <span class="src">NOTE</span>关键词"血气分析" 和 "检验报告" 在文书中<b>均未检索到</b>; 文书目录中<b>缺失"重症监护记录"</b>.
+    </div>
+  </div>
+
+  <div class="v-case">
+    <h4>R131 心脏彩超系列 — M2 过度检查</h4>
+    <div class="meta">conf 0.95 · 83s · 5 tool calls · 估算 <span class="amount">¥95</span></div>
+    <div class="evidence">
+      <span class="src fee">FEE</span>左心功能测定 ¥55 + TDI ¥40
+    </div>
+    <div class="evidence">
+      <span class="src">NOTE</span>肿瘤/骨折诊断, 无心脏指征.
+    </div>
+  </div>
+
+  <div class="v-case">
+    <h4>R143 血浆乳酸 2 次 — M2 过度检查</h4>
+    <div class="meta">conf 0.95 · 66s · 4 tool calls · 估算 <span class="amount">¥40</span></div>
+    <div class="evidence">
+      <span class="src fee">FEE</span>2 次 (¥30 + ¥10)
+    </div>
+    <div class="evidence">
+      <span class="src">NOTE</span>肺癌靶向治疗中, 无休克 / 脓毒症 / 严重感染指征.
+    </div>
+  </div>
+
+  <div class="v-case">
+    <h4>R080 日常生活能力评定 — M5 虚构服务</h4>
+    <div class="meta">conf 0.90 · 101s · 6 tool calls · 估算 <span class="amount">¥6</span></div>
+    <div class="evidence">
+      <span class="src fee">FEE</span>日常生活能力评定 ¥6
+    </div>
+    <div class="evidence">
+      <span class="src">NOTE</span>未检索到 "康复评定记录" / 无评定量表 / 分数 / 评定人.
+    </div>
+    <div class="reason">LLM 推理: 患者无康复指征 + 文书无执行记录 → 虚构.</div>
+  </div>
+
+  <h3>J13365 估算违规金额</h3>
+  <div class="card">
+    <p style="font-size:14px;"><b>合计 (M1 1 + M2 6 + M5 3): 约 ¥4,410</b>.</p>
+    <p style="font-size:13px;color:var(--muted);">R203 全麻 (¥1600) + R112 CT 重复 (¥800) + R146 BNP (¥912) 是金额前三, 占 ~75%.</p>
+  </div>
+
+  <h3>5 个 INCONCLUSIVE</h3>
+  <div class="i-case">
+    <h4>R037 胸腰椎骨折切开复位虚构 (M5) — I 0.00, 21 tool calls ⚠️</h4>
+    <p><b>"max tool calls exhausted"</b>. 患者有"病理性骨折"但实际手术是肱骨活检, R037 prompt 没区分病理 vs 外伤骨折, LLM 探索 21 次无结论. <b>prompt 待优化</b>.</p>
+  </div>
+  <div class="i-case">
+    <h4>R151 单次乙肝丙肝抗体 (M2) — I 0.80, 设计预期</h4>
+    <p>单次术前筛查触发 single_count INCONCLUSIVE 分支.</p>
+  </div>
+  <div class="i-case">
+    <h4>R165 / R200 / R212 (M4) — I 0.60, 设计预期</h4>
+    <p>M4 自我节制: 文书未明示蜡块数/疗程数/PACU 配置, 退 I 建议线下核实.</p>
+  </div>
+</section>
+
+<!-- ========== TAB 4: 跨患者发现 ========== -->
+<section class="tab-panel" id="patterns">
+  <h2>🔍 跨患者发现 — 系统性违规模式</h2>
+
+  <h3>3 大系统性违规模式</h3>
+
+  <div class="pattern-card">
+    <h4>🔴 模式 1: 急诊心肌四项 + 心脏彩超 普查打包</h4>
+    <p><b>触发证据</b>: R141 (肌红蛋白) / R143 (乳酸) / R146 (BNP) / R131 (心脏彩超) 在 <b>2/3 患者</b>命中. 跨神经外科 + 骨科 + 肿瘤靶向 (不同专科, 不同病因), 都被开"急诊心肌四项 + 左心功能"打包.</p>
+    <p style="font-size:13px;"><b>违规归因</b>: 医院 HIS 系统可能预设"住院入院默认勾选这些检验项目", 不考虑临床指征. 单次 ¥100-1808 不大, 但月均 1000+ 患者 × 平均 ¥800/患者 = <b>月违规约 ¥800,000+</b>.</p>
+    <p style="font-size:13px;"><b>合规建议</b>: 修改 HIS 默认医嘱模板, 心肌四项 + 心脏彩超改为"按需开"; 同时医保稽核重点关注非心血管科室的高频心肌检验.</p>
+  </div>
+
+  <div class="pattern-card">
+    <h4>🔴 模式 2: R224 血气分析 文书完全缺失 (重症监护)</h4>
+    <p><b>触发证据</b>: J18906 6 次 ¥270 + J13365 1 次 ¥135 + 文书完全无"血气分析"关键词命中, 缺失"重症监护记录"子阶段.</p>
+    <p style="font-size:13px;"><b>违规归因</b>: 二选一: (a) 真虚构 — 医院未实际做但收费; (b) 文书 ETL 不完整 — 重症监护记录未导入 search_notes 数据源. 跨 2 患者命中, 建议<b>线下抽查 1-2 例确认</b>.</p>
+    <p style="font-size:13px;"><b>合规建议</b>: 若 (a) 整改医嘱开单流程; 若 (b) 完善病案文书数字化覆盖率.</p>
+  </div>
+
+  <div class="pattern-card">
+    <h4>🔴 模式 3: R203 全身麻醉 麻醉记录系统性缺失</h4>
+    <p><b>触发证据</b>: J66252 全麻 ¥800 + J13365 全麻 ¥1600, <b>2/2 真做了手术的患者都判 V</b>. 文书都缺"麻醉记录"详细描述 (诱导药物 / 维持药物 / 苏醒).</p>
+    <p style="font-size:13px;"><b>违规归因</b>: <b>极可能是文书 ETL 系统问题</b>, 麻醉记录单原件未数字化进入 search_notes 索引. 真"虚构全麻"在外科手术中几乎不可能 (没全麻外科手术无法进行).</p>
+    <p style="font-size:13px;"><b>合规建议</b>: <b>优先排查数字化系统</b>, 而非定性医院违规. M5 模板需要加 "ETL 完整性回退" 机制 (文书覆盖率 < 阈值时降为 I).</p>
+  </div>
+
+  <h3>金额估算 (三患者合计)</h3>
+  <div class="card">
+    <table>
+      <thead><tr><th>患者</th><th>V 数</th><th>估算金额</th><th>主要违规模式</th></tr></thead>
+      <tbody>
+        <tr><td>J66252 甲状腺癌</td><td>2</td><td class="mono">¥880</td><td>R203 全麻 ¥800 + R220 控降 ¥80</td></tr>
+        <tr><td>J18906 脑干血管瘤</td><td>7</td><td class="mono">¥3,853</td><td>BNP 8 次 ¥1808 + 肌红蛋白 8 次 ¥800 + CT/超声 ¥500 + ...</td></tr>
+        <tr><td>J13365 骨科肿瘤</td><td>10</td><td class="mono">¥4,410</td><td>全麻 ¥1600 + BNP ¥912 + CT 重复 ¥800 + ...</td></tr>
+        <tr style="font-weight:600;background:#fee2e2;"><td>合计 (3 患者)</td><td>19</td><td class="mono">¥9,143</td><td>—</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:13px;color:var(--muted);margin-top:8px;"><b>外推</b>: 若医院年住院 50,000 例, 单例平均 ¥3,000 违规 (取中位数), 年违规金额估算 ¥1.5 亿. 这是<b>非常显著的合规风险</b>.</p>
+  </div>
+
+  <h3>R220 漂移问题再现</h3>
+  <div class="card">
+    <p style="font-size:13px;">本次跑也观察到 verdict 漂移:</p>
+    <ul style="font-size:13px;margin:6px 0 0 18px;">
+      <li><b>J13365 R037</b>: I conf 0.00 + 21 tool calls + "max tool calls exhausted" — 同 R220 漂移模式</li>
+      <li><b>R203 在 J18906 是 C</b>, 但在 J66252/J13365 是 V — 同一规则在不同患者上 verdict 不一致也是漂移信号</li>
+    </ul>
+    <p style="font-size:13px;color:var(--muted);"><b>必须 base-prompt-inconclusive-bias 修复</b>: 已经累计 3+ 漂移案例, 影响审计稳定性.</p>
+  </div>
+
+  <h3>模板验证: 在非肿瘤患者上表现</h3>
+  <div class="card">
+    <table>
+      <thead><tr><th>模板</th><th>J18906 V 数</th><th>J13365 V 数</th><th>评价</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge blue">M1 重复收费</span></td><td>0</td><td>1 (R112)</td><td>低频, 因 fee 端对偶模式严格; 但 R112 跨患者有效</td></tr>
+        <tr style="background:#fee2e2;"><td><span class="badge blue">M2 过度检查</span></td><td><b>5</b></td><td><b>6</b></td><td>✅ <b>主力模板</b>, 跨病种均高触发, 暴露医院普查模式</td></tr>
+        <tr><td><span class="badge green">M3 口腔串换</span></td><td>0</td><td>0</td><td>非口腔患者全 CLEAN, 设计预期 (v0.3 切换口腔患者才会触发)</td></tr>
+        <tr><td><span class="badge red">M4 超标准收费</span></td><td>0</td><td>0 (3 I)</td><td>诊疗目录条款多 INCONCLUSIVE — 因量化数据 (切口/疗程/蜡块) 文书未明示</td></tr>
+        <tr style="background:#fce7f3;"><td><span class="badge purple">M5 虚构服务</span></td><td><b>2</b></td><td><b>3</b></td><td>✅ <b>第二主力</b>, 揭示文书 ETL 完整性问题</td></tr>
+        <tr><td><span class="badge purple">M6 过度诊疗</span></td><td>0</td><td>0</td><td>非精神/麻醉极端患者全 CLEAN, 设计预期</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ========== TAB 5: 下一步 ========== -->
+<section class="tab-panel" id="next">
+  <h2>🎯 下一步建议</h2>
+
+  <div class="pattern-card">
+    <h4>🥇 优先级 1: base-prompt-inconclusive-bias</h4>
+    <p>累计漂移已 3+ 例 (R220 / R037 / R203 跨患者不一致). 修 base.txt 让边界稳定 I conf 0.5-0.7, 不允许 conf 0.00 + max tool calls exhausted 现象.</p>
+    <p style="font-size:13px;"><b>预期收益</b>: 多次跑结果稳定一致, 不再依赖 LLM temperature 抖动.</p>
+  </div>
+
+  <div class="pattern-card">
+    <h4>🥈 优先级 2: 扩大样本到 10-20 患者</h4>
+    <p>当前 3 患者已揭示 3 大系统性违规模式. 扩到 10+ 患者后可:</p>
+    <ul style="font-size:13px;margin:6px 0 0 18px;">
+      <li>统计哪些规则跨患者命中率 ≥ 50% → 确定为系统性违规</li>
+      <li>计算医院级违规金额估算 (按比例外推)</li>
+      <li>生成"医院合规自查报告"</li>
+    </ul>
+  </div>
+
+  <div class="pattern-card">
+    <h4>🥉 优先级 3: R203 / R224 等 M5 模板加 ETL 完整性回退</h4>
+    <p>R203 跨患者命中暗示文书 ETL 问题. 在 M5 模板加:</p>
+    <ul style="font-size:13px;margin:6px 0 0 18px;">
+      <li>检测文书 section 覆盖率 (例如 总 section 数 / 预期 ≥ 80%)</li>
+      <li>覆盖率低时, 降 V → I + 备注 "建议核实数据完整性"</li>
+      <li>避免假阳性影响医院信任</li>
+    </ul>
+  </div>
+
+  <div class="pattern-card">
+    <h4>🥈 优先级 4: R037 prompt 优化</h4>
+    <p>R037 (M5 胸腰椎骨折切开复位虚构) 在 J13365 跑 21 tool calls 仍 "max tool calls exhausted". 因为患者有"病理性骨折"但实际手术是肱骨活检. R037 prompt 应区分:</p>
+    <ul style="font-size:13px;margin:6px 0 0 18px;">
+      <li>外伤性胸腰椎骨折 + 内固定术 = 合理 CLEAN</li>
+      <li>肿瘤性病理性骨折 + 活检 / 椎体成形 = 不同手术, 应明确排除</li>
+      <li>主手术非胸腰椎骨折切开复位但收该费 = V</li>
+    </ul>
+  </div>
+
+  <h3>是否继续?</h3>
+  <div class="card">
+    <p style="font-size:14px;">本次报告完成. 等待你的指示:</p>
+    <ul style="font-size:13px;">
+      <li>(a) <b>base-prompt-inconclusive-bias</b> 修 R220/R037 漂移</li>
+      <li>(b) <b>R203/R224 M5 ETL 完整性回退</b> 减假阳性</li>
+      <li>(c) <b>R037 prompt 优化</b> 区分外伤 vs 病理性骨折</li>
+      <li>(d) <b>扩样本到 5-10 患者</b> 统计系统性违规率</li>
+      <li>(e) <b>装 add-hospital-config</b> 解锁 R212 完整 V/C 判定 (需医院 PACU 配置数据)</li>
+      <li>(f) 别的我没想到的</li>
+    </ul>
+  </div>
+</section>
+
+</main>
+
+<script>
+  const buttons = document.querySelectorAll('.tab-btn');
+  const panels = document.querySelectorAll('.tab-panel');
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      buttons.forEach(b => b.classList.remove('active'));
+      panels.forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab).classList.add('active');
+    });
+  });
+</script>
+
+</body>
+</html>

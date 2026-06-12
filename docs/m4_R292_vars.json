@@ -1,0 +1,43 @@
+{
+  "service_name": "首诊精神病检查 / 首次精神疾病诊察",
+  "service_kw_list": [
+    "首诊精神病",
+    "首次精神病",
+    "初诊精神病",
+    "首次精神疾病诊察"
+  ],
+  "catalog_unit": "次 (限第一次就诊患者)",
+  "catalog_price": "",
+  "addon_rule_text": "仅限第一次就诊患者收取; 已诊断为精神疾病的复诊患者不应再收取首诊精神病检查费.",
+  "violation_pattern": "同患者跨多次住院重复收 / 已有精神病既往史仍收首诊",
+  "actual_event_kw_list": [
+    "首诊",
+    "初诊",
+    "既往精神病诊断",
+    "复诊",
+    "再次入院",
+    "既往史"
+  ],
+  "notes_section": "既往史",
+  "expected_calc_hint": "判定核心: note_diagnosis 是否含既往精神病诊断或 search_notes(section=既往史) 是否描述'既往精神分裂症/抑郁症等病史' + fee 命中'首诊精神病'. 若有既往史 + 收首诊 → V (硬证据).",
+  "pilot_caveat": "J66252 非精神科患者, fee 不命中 → CLEAN. 该规则在精神科高频复诊患者群体高命中.",
+  "special_notes": [
+    "判定关键: 既往史中'既往精神病'/'2 年前确诊精神分裂'等描述",
+    "若文书 既往史含精神病史 + fee 命中首诊 → 强支持 V",
+    "纯新发病例 (首次诊断) 收首诊 → CLEAN"
+  ],
+  "aux_keywords": [
+    "首诊精神病",
+    "首次精神病",
+    "初诊",
+    "既往精神病",
+    "复诊",
+    "再次入院"
+  ],
+  "aux_tools": [
+    "search_fees",
+    "search_notes",
+    "note_diagnosis"
+  ],
+  "aux_signal": "典型违规: 既往史明确'10 年前精神分裂症' + 此次收首诊精神病检查费.\n典型 CLEAN: 新发精神症状首次诊察.\n典型 INCONCLUSIVE: 既往史描述模糊."
+}

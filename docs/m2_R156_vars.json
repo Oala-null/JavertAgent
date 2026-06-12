@@ -1,0 +1,36 @@
+{
+  "exam_concept_desc": "前列腺特异性抗原 (PSA, 游离 PSA, 总 PSA)",
+  "catalog_basis": "按诊疗规范, PSA 用于前列腺增生 / 前列腺癌筛查与随访, 仅限男性, 不应作为普通入院常规.",
+  "exam_kw_primary_list": ["前列腺特异性抗原", "PSA", "游离 PSA", "fPSA", "总 PSA", "tPSA"],
+  "indication_dx_list": [
+    "前列腺增生 / 良性前列腺增生 BPH",
+    "前列腺癌 / 前列腺肿瘤",
+    "前列腺炎",
+    "男性泌尿系疾病",
+    "排尿困难 / 尿潴留",
+    "血尿 (男性)",
+    "直肠指检异常",
+    "前列腺癌家族史"
+  ],
+  "min_count": 1,
+  "inconclusive_addendum": "",
+  "drug_check": false,
+  "drug_kw_list": [],
+  "drug_concept_desc": "",
+  "special_notes": [
+    "女性患者收 PSA → 直接 VIOLATION, 无任何医学合理性 (PSA 是男性专属标志物).",
+    "判性别可从 note_diagnosis 或基本人口学信息推断; 若无法判定性别, 退 INCONCLUSIVE."
+  ],
+  "pilot_caveat": "",
+  "aux_keywords": [
+    "前列腺特异性抗原",
+    "PSA",
+    "游离 PSA",
+    "fPSA",
+    "总 PSA",
+    "tPSA",
+    "前列腺"
+  ],
+  "aux_tools": ["note_diagnosis", "search_fees"],
+  "aux_signal": "典型违规: 女性甲状腺癌患者收 PSA × 1, 直接违规.\n典型 CLEAN: 老年男性前列腺增生患者定期 PSA 随访, 或前列腺癌术后监测 PSA.\n典型 INCONCLUSIVE: 患者性别在文书中未明示, 单收 PSA 无诊断指征."
+}

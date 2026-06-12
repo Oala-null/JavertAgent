@@ -1,0 +1,144 @@
+# -*- coding: utf-8 -*-
+"""tests for routes_workbench 纯逻辑 (redesign-review-card-and-source):
+fee_date 格式 / 细类分组 V前I后 / /raw 文书分桶排序 + fee_date. 不连 142 / 不走 HTTP auth.
+"""
+
+from __future__ import annotations
+
+import re
+from datetime import datetime, timezone
+
+import pytest
+
+from javert.store.models import RunWithReviews
+from javert.web.api.routes_workbench import (
+    _fmt_fee_date,
+    _group_runs_by_violation_type,
+    get_raw_patient,
+)
+
+
+# =========================================================
+# fee_date 格式 (dd/mm/yyyy → YYYY/MM/DD, 多格式 fallback)
+# =========================================================
+def test_fmt_fee_date_dd_mm_yyyy():
+    # spec 场景: 05/03/2024 (dd/mm/yyyy) → 2024/03/05
+    assert _fmt_fee_date("05/03/2024") == "2024/03/05"
+    # 带时间部分 (实数据形态 3/8/2024 00:00:00)
+    assert _fmt_fee_date("3/8/2024 00:00:00") == "2024/08/03"
+
+
+def test_fmt_fee_date_iso_and_slash():
+    assert _fmt_fee_date("2024-03-05") == "2024/03/05"
+    assert _fmt_fee_date("2024/03/05") == "2024/03/05"
+
+
+def test_fmt_fee_date_empty_and_garbage():
+    assert _fmt_fee_date("") == ""
+    assert _fmt_fee_date(None) == ""
+    # 解析失败 → 回退原日期段 (不抛)
+    assert _fmt_fee_date("不是日期") == "不是日期"
+
+
+# =========================================================
+# 细类分组 — V 前 I 后, 计数, 锚点, 缺 meta 归未分类
+# =========================================================
+def _mkrun(rid, verdict):
+    return RunWithReviews(
+        run_id="aud_" + rid, rule_id=rid, patient_id="P",
+        verdict=verdict, confidence=0.5, reasoning="",
+        created_at=datetime.now(timezone.utc),
+    )
+
+
+def test_group_runs_orders_v_before_i_and_counts():
+    runs = [
+        _mkrun("R1", "INCONCLUSIVE"),
+        _mkrun("R2", "VIOLATION"),
+        _mkrun("R3", "VIOLATION"),
+    ]
+    meta = {
+        "R1": {"violation_type": "过度检查"},
+        "R2": {"violation_type": "过度检查"},
+        "R3": {"violation_type": "重复收费"},
+    }
+    groups = _group_runs_by_violation_type(runs, meta)
+    assert len(groups) == 2
+    g0 = groups[0]
+    # 组按首次出现序 (R1 先 → 过度检查 在前)
+    assert g0["vt"] == "过度检查"
+    assert g0["alias"] == "过度检查"
+    assert g0["anchor"] == "vt-0"
+    assert g0["n_v"] == 1 and g0["n_i"] == 1
+    # 组内 V 前 I 后 (R2=V 排在 R1=I 前)
+    assert [r.rule_id for r in g0["runs"]] == ["R2", "R1"]
+    assert groups[1]["vt"] == "重复收费"
+    assert groups[1]["anchor"] == "vt-1"
+    assert groups[1]["n_v"] == 1 and groups[1]["n_i"] == 0
+
+
+def test_group_runs_missing_meta_falls_to_unclassified():
+    groups = _group_runs_by_violation_type([_mkrun("RX", "VIOLATION")], {})
+    assert len(groups) == 1
+    assert groups[0]["vt"] == "未分类"
+    assert groups[0]["alias"] == "未分类"
+
+
+def test_group_runs_alias_compresses_long_violation_type():
+    runs = [_mkrun("R1", "VIOLATION")]
+    meta = {"R1": {"violation_type": "虚构医药服务项目或以骗保为目的串换项目"}}
+    groups = _group_runs_by_violation_type(runs, meta)
+    assert groups[0]["alias"] == "虚构/串换"  # 整句压成短词
+
+
+# =========================================================
+# /raw 端点 — 文书分桶 + bucket_order 升序 + fee_date 预格式化
+# (直接调路由函数, 绕过 HTTP auth; J66252 是 primary 测试患者)
+# =========================================================
+def test_raw_endpoint_notes_bucketed_and_sorted():
+    data = get_raw_patient("J66252")
+    notes = data["notes"]
+    assert notes, "J66252 应有文书"
+    # 每条带 bucket + bucket_order
+    assert all("bucket" in n and "bucket_order" in n for n in notes)
+    # 输出按 bucket_order 升序 (临床文书序分组的前提)
+    orders = [n["bucket_order"] for n in notes]
+    assert orders == sorted(orders), "notes 应按 bucket_order 升序排列"
+    # 同一 bucket 内按 事件时间 升序 (抽第一个非空 bucket 验证)
+    from itertools import groupby
+    for _b, grp in groupby(notes, key=lambda n: n["bucket_order"]):
+        ts = [n.get("ts", "") for n in grp]
+        assert ts == sorted(ts), "同桶内应按事件时间升序"
+
+
+def test_raw_endpoint_fees_have_formatted_date():
+    data = get_raw_patient("J66252")
+    fees = data["fees"]
+    assert fees, "J66252 应有费用"
+    assert all("fee_date" in f for f in fees)
+    dated = [f["fee_date"] for f in fees if f["fee_date"]]
+    assert dated, "至少部分 fee 应有可解析日期"
+    assert all(re.match(r"^\d{4}/\d{2}/\d{2}$", d) for d in dated), \
+        "fee_date 应为 YYYY/MM/DD"
+
+
+# =========================================================
+# /raw 端点 — 检验(化验) + 检查(影像) 数据 (新增检验记录 tab)
+# (J66252 同时有检验+检查记录; 首次触发 LabLoader 索引构建, 稍慢)
+# =========================================================
+def test_raw_endpoint_includes_labs_and_exams():
+    data = get_raw_patient("J66252")
+    for key in ("labs", "exams", "n_labs", "n_exams"):
+        assert key in data, f"raw 响应应含 {key}"
+    assert data["n_labs"] == len(data["labs"])
+    assert data["n_exams"] == len(data["exams"])
+    assert data["labs"], "J66252 应有检验记录"
+    assert data["exams"], "J66252 应有检查记录"
+    # 检验行 shape (前端 _labsPanelHtml 依赖这些 key)
+    lab = data["labs"][0]
+    assert {"date", "item", "result", "flag"}.issubset(lab.keys())
+    # 日期归一为 YYYY/MM/DD (空串放行)
+    assert lab["date"] == "" or re.match(r"^\d{4}/\d{2}/\d{2}$", lab["date"])
+    # 检查行 shape
+    exam = data["exams"][0]
+    assert {"date", "check_type", "item", "conclusion"}.issubset(exam.keys())

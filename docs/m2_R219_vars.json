@@ -1,0 +1,39 @@
+{
+  "exam_concept_desc": "麻醉中肌松监测 (TOF 监测 / 肌松监测)",
+  "catalog_basis": "按诊疗规范, 麻醉中肌松监测仅在使用肌松药物时有意义, 用于评估肌松残余 / 拮抗时机. 未用肌松药患者收取该监测属于无适应症加收.",
+  "exam_kw_primary_list": ["麻醉中肌松监测", "肌松监测", "TOF 监测"],
+  "indication_dx_list": [
+    "全身麻醉",
+    "气管插管全麻",
+    "大手术麻醉 (≥2 小时)",
+    "重症患者麻醉",
+    "需深度肌松手术 (腹腔镜 / 神经外科 / 骨科)"
+  ],
+  "min_count": 1,
+  "inconclusive_addendum": "若诊断含全麻 + 麻醉时长长但 search_fees 未明示肌松药费用, 退 INCONCLUSIVE (可能药品命名不在搜索范围).",
+  "drug_check": true,
+  "drug_kw_list": [
+    "罗库溴铵",
+    "维库溴铵",
+    "顺阿曲库铵",
+    "阿曲库铵",
+    "琥珀胆碱",
+    "米库氯铵",
+    "泮库溴铵"
+  ],
+  "drug_concept_desc": "肌松药",
+  "special_notes": [
+    "麻醉中肌松监测的判定关键是 \"实际用了肌松药\", 不是 \"诊断有指征\". 因此优先用 search_fees 查肌松药费用, 而非 note_diagnosis."
+  ],
+  "pilot_caveat": "",
+  "aux_keywords": [
+    "麻醉中肌松监测",
+    "肌松监测",
+    "TOF 监测",
+    "罗库溴铵",
+    "维库溴铵",
+    "顺阿曲库铵"
+  ],
+  "aux_tools": ["note_diagnosis", "search_fees"],
+  "aux_signal": "典型违规: 患者用药里无肌松药 (search_fees 查 \"罗库溴铵\" / \"维库溴铵\" 等全空), 费用列肌松监测.\n典型 CLEAN: 全麻气管插管手术患者用了罗库溴铵, 收肌松监测.\n典型 INCONCLUSIVE: 全麻短小手术, 文书未明示用药细节."
+}

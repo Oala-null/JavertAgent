@@ -1,0 +1,48 @@
+rule_id: R109
+domain: 医学影像
+violation_type: 过度检查
+question: 将X线计算机体层(CT)扫描使用心电或呼吸门控加收），作为常规检查，向大多数患者普遍开展并收费。
+example: 示例：心电门控使用于冠状动脉造影，主动脉造影扫描观察心率。某医院为神经内科患者开展影像检查时，常规收取“头部X线计算机体层(CT)平扫”和“X线计算机体层(CT)扫描使用心电门控设备加收”费用，其中，使用心电门控设备检查为过度检查，“X线计算机体层(CT)扫描使用心电门控设备加收”为过度检查费用。
+status: ready
+priority: P0
+prompt_addon: |+
+  本规则关注: 患者本次住院里, 是否被无指征收取了「CT 心电门控 / 呼吸门控加收」检查/检验.
+  按诊疗规范, CT 心电/呼吸门控加收用于心律失常 / 不能屏气患者 / 儿童不配合时, 不应作为成人扫描常规加收.
+
+  审计步骤:
+  1. 用 note_diagnosis 列出该患者全部诊断 (入院/出院/术前/术后/病理).
+  2. 用 search_fees(category="检查类") 或 search_fees(keyword=...) 查该检查是否做过, 记录出现次数 count.
+     检索关键词: "心电门控" / "呼吸门控" / "门控加收"
+  3. 若 count == 0 → CLEAN (规则不适用, 患者根本没做该检查).
+  4. 检查 note_diagnosis 中是否含以下指征任一:
+     - 心律失常 / 房颤 / 房扑 / 频发早搏
+     - 不能屏气 / 呼吸不能配合
+     - 儿童不配合 / 镇静下扫描
+     - 冠脉 CTA / 冠状动脉 CT 成像 (需心电门控)
+     - 急诊重症 / 意识不清
+     - 肺动脉栓塞急性发作 / 不能配合屏气
+     
+  5. 若有任一指征命中 → CLEAN (有指征).
+  6. 若无任一指征命中, 且 count >= 1 → VIOLATION,
+     evidence: 引诊断完整列表 + 该检查项目名 × count.
+  7. 诊断为「待查」「疑似」「排除」等中间状态 → INCONCLUSIVE.
+
+  特殊注意:
+  - 冠脉 CTA 必带心电门控, 若 search_fees 同时命中 "冠脉 CTA" / "冠状动脉 CT" 则 CLEAN.
+
+trigger_keywords:
+  - 心电门控加收
+  - 呼吸门控加收
+  - 门控加收
+  - 心律失常
+  - 屏气
+  - 冠脉 CTA
+suggested_tools:
+  - note_diagnosis
+  - search_fees
+expected_signal: |
+  典型违规: 普通成人胸 CT 无心律失常诊断, 费用列心电门控加收.
+  典型 CLEAN: 房颤患者冠脉 CTA, 心电门控为必要技术.
+  典型 INCONCLUSIVE: 文书未明示心电图节律状态, 仅看 CT 报告无法确认.
+notes: ''
+derived_from_template: M2

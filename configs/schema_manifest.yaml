@@ -1,0 +1,281 @@
+# ============================================================
+# Javert 数据模型唯一真相源 (schema_manifest)
+# ============================================================
+# add-visual-schema-onboarding: UI 星图渲染 / etl_import 转换 / tool registry 注册
+#   三处 MUST 全部从本文件读, 不得各自硬编码字段表 (设计 D1).
+#
+# 每个 spoke 声明:
+#   name        中文名 (UI 星点标签)
+#   status      档位: live(真工具产裁决) / view(视图工具弱信号) / stored(只存不审)  (设计 D2)
+#   loader      消费它的 loader (信息性; 视图/stored 为 null)
+#   tool        消费它的审计工具名 (视图工具也填; stored 为 null → registry 注册兜底 stub)
+#   output_file ETL 产出文件名 (tabular live spoke 才有; view/stored 无独立物理表)
+#   id_form     患者键落盘形态: compound(复合键, get_fees 包含匹配) / bare(裸号, get_notes 精确相等) (设计 D4)
+#   id_column   输出表里承载患者键的列
+#   join_key    源表里连 hub 用哪列的"语义默认"(实际值由本次 column_mapping 覆盖)
+#   via_bridge  可选, 经桥表归一: {table, source_col, canonical_col} (设计 D3)
+#   output_schema  输出列完整有序清单 (保证与旧硬编码 ETL 逐列一致)
+#   split_sections 文书专属: 内容含【段落】时按标记拆行
+#   synth_seq      自动填 1..N 的输出列 (诊断的 ipt_medcas_hmpg_sn)
+#   const_columns  常量列 {输出列: 取值}, 取值 $hospital_code 时注入医院代码
+#   derived_from   view spoke 的视图来源 spoke 列表 (无独立物理表)
+#   fields         语义字段, key 与 column_mapping 的语义键一致:
+#                    key/name/required, targets(输出列列表), is_date
+# ============================================================
+
+version: 1
+
+hub:
+  name: 患者
+  # canonical 患者 id 两种形态由目标 getter 决定:
+  #   bare     裸号 211xxx       — get_notes 精确相等
+  #   compound {prefix}-211xxx   — get_fees 包含匹配
+  forms: [bare, compound]
+
+spokes:
+
+  # ────────────── 费用明细 (live) ──────────────
+  fees:
+    name: 费用明细
+    status: live
+    loader: CsvLoader.get_fees
+    tool: search_fees
+    output_file: shi_fee.csv
+    id_form: compound
+    id_column: bah
+    join_key: hsp_account_no
+    via_bridge: null
+    const_columns:
+      hospital: $hospital_code
+    output_schema:
+      - bah
+      - feedetl_sn
+      - fee_ocur_time
+      - cnt
+      - pric
+      - det_item_fee_sumamt
+      - pric_uplmt_amt
+      - selfpay_prop
+      - fulamt_ownpay_amt
+      - overlmt_amt
+      - preselfpay_amt
+      - inscp_scp_amt
+      - chrgitm_lv
+      - list_type
+      - med_list_codg
+      - medins_list_codg
+      - medins_list_name
+      - med_chrgitm_type
+      - prodname
+      - spec
+      - dosform_name
+      - bilg_dept_codg
+      - bilg_dept_name
+      - bilg_dr_codg
+      - bilg_dr_name
+      - acord_dept_codg
+      - acord_dept_name
+      - orders_dr_code
+      - orders_dr_name
+      - dscg_tkdrug_flag
+      - fee_type
+      - medins_chrgitm_type
+      - hosp_appr_flag
+      - hospital
+      - create_time
+      - id
+    fields:
+      - {key: patient_id,    name: 患者标识,   required: true,  targets: [bah]}
+      - {key: item_name,     name: 收费项目名, required: true,  targets: [medins_list_name]}
+      - {key: amount,        name: 金额,       required: true,  targets: [det_item_fee_sumamt]}
+      - {key: date,          name: 收费日期,   required: true,  targets: [fee_ocur_time], is_date: true}
+      - {key: category,      name: 费用类别,   required: true,  targets: [medins_chrgitm_type]}
+      - {key: quantity,      name: 数量,       required: false, targets: [cnt]}
+      - {key: unit_price,    name: 单价,       required: false, targets: [pric]}
+      - {key: spec,          name: 规格,       required: false, targets: [spec]}
+      - {key: item_code,     name: 项目编码,   required: false, targets: [medins_list_codg]}
+      - {key: dept_order,    name: 开单科室,   required: false, targets: [acord_dept_name]}
+      - {key: doctor_order,  name: 开单医生,   required: false, targets: [orders_dr_name]}
+      - {key: dept_billing,  name: 计费科室,   required: false, targets: [bilg_dept_name]}
+      - {key: doctor_billing,name: 计费医生,   required: false, targets: [bilg_dr_name]}
+      - {key: product_name,  name: 药品通用名, required: false, targets: [prodname]}
+
+  # ────────────── 病历文书 (live) ──────────────
+  notes:
+    name: 病历文书
+    status: live
+    loader: CsvLoader.get_notes
+    tool: search_notes
+    output_file: case_notes.csv
+    id_form: bare
+    id_column: 住院号
+    join_key: medcasno
+    via_bridge:
+      table: r_basy
+      source_col: medcasno
+      canonical_col: psn_no
+    split_sections: true
+    const_columns:
+      来源文件: etl_import
+    output_schema: [住院号, 事件时间, 阶段, 子阶段, 内容, 来源文件]
+    fields:
+      - {key: patient_id, name: 患者标识, required: true,  targets: [住院号]}
+      - {key: section,    name: 文书段落, required: true,  targets: [阶段]}
+      - {key: content,    name: 文书正文, required: true,  targets: [内容]}
+      - {key: doc_name,   name: 文书标题, required: false, targets: [阶段]}
+      - {key: time,       name: 文书时间, required: false, targets: [事件时间], is_date: true}
+
+  # ────────────── 病案首页-诊断 (live) ──────────────
+  diagnoses:
+    name: 诊断
+    status: live
+    loader: CsvLoader (shi_zd)
+    tool: note_diagnosis
+    output_file: shi_zd.csv
+    id_form: compound
+    id_column: ba_id
+    join_key: hsp_account_no
+    via_bridge: null
+    synth_seq: ipt_medcas_hmpg_sn
+    output_schema:
+      - ba_id
+      - maindiag_flag
+      - inhosp_diag_name
+      - inhosp_diag_code
+      - diag_name
+      - diag_code
+      - ipt_medcas_hmpg_sn
+    fields:
+      - {key: patient_id, name: 患者标识,   required: true,  targets: [ba_id]}
+      - {key: main_flag,  name: 主诊断标志, required: true,  targets: [maindiag_flag]}
+      - {key: diag_name,  name: 诊断名称,   required: true,  targets: [inhosp_diag_name, diag_name]}
+      - {key: diag_code,  name: 诊断编码,   required: true,  targets: [inhosp_diag_code, diag_code]}
+
+  # ────────────── 病案首页-手术 (live) ──────────────
+  surgeries:
+    name: 手术
+    status: live
+    loader: CsvLoader (shi_ss)
+    tool: note_diagnosis
+    output_file: shi_ss.csv
+    id_form: compound
+    id_column: ba_id
+    join_key: hsp_account_no
+    via_bridge: null
+    output_schema:
+      - ba_id
+      - oprn_oprt_name
+      - oprn_oprt_code
+      - main_oprn_flag
+      - oprn_oprt_date
+      - oprn_lv_name
+      - anst_mtd_name
+      - oper_dr_name
+      - anst_dr_name
+    fields:
+      - {key: patient_id,      name: 患者标识,   required: true,  targets: [ba_id]}
+      - {key: surgery_name,    name: 手术名称,   required: true,  targets: [oprn_oprt_name]}
+      - {key: main_flag,       name: 主手术标志, required: true,  targets: [main_oprn_flag]}
+      - {key: surgery_code,    name: 手术编码,   required: false, targets: [oprn_oprt_code]}
+      - {key: surgery_date,    name: 手术日期,   required: false, targets: [oprn_oprt_date], is_date: true}
+      - {key: level,           name: 手术级别,   required: false, targets: [oprn_lv_name]}
+      - {key: anesthesia,      name: 麻醉方式,   required: false, targets: [anst_mtd_name]}
+      - {key: surgeon,         name: 手术医师,   required: false, targets: [oper_dr_name]}
+      - {key: anesthesiologist,name: 麻醉医师,   required: false, targets: [anst_dr_name]}
+
+  # ────────────── 化验/检验 (live, 工具已就位仅缺接入口) ──────────────
+  labs:
+    name: 化验/检验
+    status: live
+    loader: LabLoader
+    tool: search_lab_results
+    output_file: lab_results.csv
+    id_form: bare
+    id_column: zyh
+    join_key: zyh
+    via_bridge: null
+    output_schema:
+      - zyh
+      - rpt_itemname
+      - rpt_itemcode
+      - result
+      - result_unit
+      - result_ref
+      - result_flag
+      - diagnosisOpinion
+      - department
+      - report_dt
+      - specimen
+      - inspectionName
+      - age
+      - sex
+      - trier
+      - auditor
+    fields:
+      - {key: patient_id,   name: 患者标识,   required: true,  targets: [zyh]}
+      - {key: item_name,    name: 检验项名,   required: true,  targets: [rpt_itemname]}
+      - {key: item_code,    name: 检验项代码, required: false, targets: [rpt_itemcode]}
+      - {key: result,       name: 结果,       required: true,  targets: [result]}
+      - {key: result_unit,  name: 单位,       required: false, targets: [result_unit]}
+      - {key: result_ref,   name: 参考范围,   required: false, targets: [result_ref]}
+      - {key: result_flag,  name: 异常标志,   required: false, targets: [result_flag]}
+      - {key: report_dt,    name: 报告时间,   required: false, targets: [report_dt], is_date: true}
+      - {key: specimen,     name: 样本,       required: false, targets: [specimen]}
+      - {key: inspection,   name: 检验类别,   required: false, targets: [inspectionName]}
+      - {key: department,   name: 科室,       required: false, targets: [department]}
+
+  # ────────────── 检查报告 (live, 工具已就位仅缺接入口) ──────────────
+  examinations:
+    name: 检查报告
+    status: live
+    loader: ExaminationLoader
+    tool: search_examinations
+    output_file: examinations.csv
+    id_form: bare
+    id_column: zyh
+    join_key: zyh
+    via_bridge: null
+    output_schema:
+      - zyh
+      - checkType
+      - checkItemName
+      - checkConclusion
+      - checkDescribe
+      - checkPosition
+      - department
+      - checkDate
+      - reportDate
+      - diagnosis
+      - isPos
+      - age
+      - Sex
+      - reporter
+      - auditor
+    fields:
+      - {key: patient_id,   name: 患者标识,   required: true,  targets: [zyh]}
+      - {key: check_type,   name: 检查类型,   required: false, targets: [checkType]}
+      - {key: item_name,    name: 检查项名,   required: true,  targets: [checkItemName]}
+      - {key: conclusion,   name: 检查结论,   required: false, targets: [checkConclusion]}
+      - {key: describe,     name: 检查所见,   required: false, targets: [checkDescribe]}
+      - {key: position,     name: 检查部位,   required: false, targets: [checkPosition]}
+      - {key: department,   name: 科室,       required: false, targets: [department]}
+      - {key: check_date,   name: 检查日期,   required: false, targets: [checkDate], is_date: true}
+      - {key: report_date,  name: 报告日期,   required: false, targets: [reportDate], is_date: true}
+
+  # ────────────── 麻醉 (view, 无独立物理源表) ──────────────
+  anesthesia:
+    name: 麻醉
+    status: view
+    loader: null
+    tool: search_anesthesia
+    output_file: null
+    derived_from: [notes, surgeries]
+
+  # ────────────── 病理 (view, 无独立物理源表) ──────────────
+  pathology:
+    name: 病理
+    status: view
+    loader: null
+    tool: search_pathology
+    output_file: null
+    derived_from: [labs, notes]

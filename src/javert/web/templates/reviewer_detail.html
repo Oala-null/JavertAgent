@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="display:flex; align-items:baseline; gap:10px; margin:0 0 6px;">
+  <h1 style="color:var(--primary); margin:0;">
+    {{ target_user.display_name or target_user.username }}
+  </h1>
+  <span class="muted">@{{ target_user.username }}</span>
+</div>
+<p class="muted" style="margin:0 0 16px;">共 {{ drills|length }} 条 latest 审核 · 点击行可跳转回违规卡片</p>
+
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>时间</th>
+      <th>病人</th>
+      <th>规则</th>
+      <th>Agent 判</th>
+      <th>专家判</th>
+      <th>评语</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for d in drills %}
+    {% set target = "/workbench/" + d.patient_id + "?filter=all#run_" + d.run_id %}
+    <tr>
+      <td class="tabular muted">{{ d.created_at | humanize_since }}</td>
+      <td><a href="{{ target }}">{{ d.patient_id }}</a></td>
+      <td><strong>{{ d.rule_id }}</strong></td>
+      <td>
+        <span class="badge badge-{{ d.agent_verdict | verdict_color }}">{{ d.agent_verdict | verdict_label }}</span>
+        {% if d.agent_confidence is not none %}
+        <span class="muted" style="margin-left:4px;">{{ '%.2f' % d.agent_confidence }}</span>
+        {% endif %}
+      </td>
+      <td><span class="badge badge-{{ d.expert_verdict | verdict_color }}">{{ d.expert_verdict | verdict_label }}</span></td>
+      <td style="max-width:340px;">{{ (d.comment or '')[:120] }}{% if d.comment and d.comment|length > 120 %}…{% endif %}</td>
+      <td><a class="btn-secondary" href="{{ target }}">→ 看卡片</a></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" class="muted">该专家尚无审核</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div style="margin-top:24px;">
+  <a href="/dashboard" class="btn-link">← 返回仪表盘</a>
+</div>
+{% endblock %}

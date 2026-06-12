@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Javert Pilot v0.2 总结 — Rules / Model / Concurrency</title>
+<style>
+  :root {
+    --bg: #fafbfc;
+    --card: #ffffff;
+    --border: #e4e7eb;
+    --text: #1f2933;
+    --muted: #616e7c;
+    --accent: #3b82f6;
+    --accent-soft: #dbeafe;
+    --green: #10b981;
+    --green-soft: #d1fae5;
+    --yellow: #f59e0b;
+    --yellow-soft: #fef3c7;
+    --red: #ef4444;
+    --red-soft: #fee2e2;
+    --purple: #8b5cf6;
+    --purple-soft: #ede9fe;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  header {
+    background: linear-gradient(135deg, #dbeafe 0%, #ede9fe 100%);
+    padding: 32px 48px 28px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 {
+    margin: 0 0 8px 0;
+    font-size: 28px;
+    color: #1e3a8a;
+  }
+  header .sub {
+    color: var(--muted);
+    font-size: 14px;
+  }
+  header .badges {
+    margin-top: 12px;
+  }
+  .badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-right: 6px;
+  }
+  .badge.green { background: var(--green-soft); color: #065f46; }
+  .badge.yellow { background: var(--yellow-soft); color: #92400e; }
+  .badge.red { background: var(--red-soft); color: #991b1b; }
+  .badge.blue { background: var(--accent-soft); color: #1e40af; }
+  .badge.purple { background: var(--purple-soft); color: #5b21b6; }
+
+  .tabs {
+    display: flex;
+    border-bottom: 2px solid var(--border);
+    background: white;
+    padding: 0 48px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    overflow-x: auto;
+  }
+  .tabs button {
+    background: none;
+    border: none;
+    padding: 14px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+    margin-bottom: -2px;
+  }
+  .tabs button:hover {
+    color: var(--accent);
+  }
+  .tabs button.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .content {
+    padding: 32px 48px 64px;
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  h2 {
+    font-size: 22px;
+    margin: 28px 0 12px;
+    color: #1e3a8a;
+  }
+  h3 {
+    font-size: 16px;
+    margin: 20px 0 8px;
+    color: var(--text);
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  @media (max-width: 800px) {
+    .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+    .content, header, .tabs { padding-left: 20px; padding-right: 20px; }
+  }
+  .stat {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+  }
+  .stat .label { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+  .stat .value { font-size: 24px; font-weight: 700; color: var(--text); }
+  .stat .delta { font-size: 12px; margin-top: 4px; }
+  .stat .delta.green { color: var(--green); }
+  .stat .delta.red { color: var(--red); }
+  .stat .delta.muted { color: var(--muted); }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 13px;
+  }
+  table th, table td {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  table th {
+    background: #f1f5f9;
+    color: var(--text);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  table tr:hover { background: #f8fafc; }
+  table td.mono { font-family: "SF Mono", Consolas, monospace; font-size: 12px; }
+  .verdict-V { color: var(--red); font-weight: 600; }
+  .verdict-C { color: var(--green); font-weight: 600; }
+  .verdict-I { color: var(--yellow); font-weight: 600; }
+
+  .case {
+    background: linear-gradient(to right, #fefefe, #fafbfc);
+    border-left: 4px solid var(--accent);
+    padding: 16px 20px;
+    margin: 12px 0;
+    border-radius: 4px;
+  }
+  .case.green { border-left-color: var(--green); }
+  .case.yellow { border-left-color: var(--yellow); }
+  .case.red { border-left-color: var(--red); }
+  .case.purple { border-left-color: var(--purple); }
+  .case h4 {
+    margin: 0 0 6px 0;
+    font-size: 15px;
+    color: var(--text);
+  }
+  .case .meta {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .case p { margin: 6px 0; font-size: 13px; }
+  .case code {
+    background: #f1f5f9;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-family: "SF Mono", Consolas, monospace;
+  }
+
+  .progress-bar {
+    background: #f1f5f9;
+    border-radius: 4px;
+    height: 8px;
+    overflow: hidden;
+    margin: 4px 0;
+  }
+  .progress-bar > div {
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.3s;
+  }
+  .progress-bar > div.green { background: var(--green); }
+  .progress-bar > div.yellow { background: var(--yellow); }
+
+  .timeline {
+    border-left: 2px solid var(--border);
+    padding-left: 20px;
+    margin: 12px 0;
+  }
+  .timeline-item {
+    position: relative;
+    padding: 8px 0 16px 12px;
+  }
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -26px;
+    top: 12px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--card);
+  }
+  .timeline-item.green::before { background: var(--green); }
+  .timeline-item.purple::before { background: var(--purple); }
+
+  .data-gap-table tr.urgent td:first-child { border-left: 4px solid var(--red); padding-left: 10px; }
+  .data-gap-table tr.medium td:first-child { border-left: 4px solid var(--yellow); padding-left: 10px; }
+  .data-gap-table tr.low td:first-child { border-left: 4px solid var(--green); padding-left: 10px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Javert Pilot v0.2 — Rules / Model / Concurrency 总结</h1>
+  <div class="sub">2026-05-14 · 单一对话完成 4 个 rollout (m2/m3/m5/m6) · 82 条规则 yaml · 65 条 ready · 5 模板装满</div>
+  <div class="badges">
+    <span class="badge green">ready: 65/82</span>
+    <span class="badge blue">5 模板装满 (M1/M2/M3/M5/M6)</span>
+    <span class="badge purple">组 J: V=2 C=43 I=0 (45 条 P0)</span>
+    <span class="badge yellow">17 条 P2 drafting (等外部数据)</span>
+    <span class="badge red">M4 跳过 (需诊疗目录)</span>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="overview">📊 总览</button>
+  <button class="tab-btn" data-tab="rules">📋 Rules 现状</button>
+  <button class="tab-btn" data-tab="model">🤖 Model 表现</button>
+  <button class="tab-btn" data-tab="concurrency">⚡ Concurrency 实测</button>
+  <button class="tab-btn" data-tab="datagap">🔓 外部数据缺口</button>
+  <button class="tab-btn" data-tab="next">🎯 下一步</button>
+</nav>
+
+<main class="content">
+
+<!-- ========== TAB 1: 总览 ========== -->
+<section class="tab-panel active" id="overview">
+  <h2>v0.2 闭环总览</h2>
+
+  <div class="grid-4">
+    <div class="stat">
+      <div class="label">规则 yaml 总数</div>
+      <div class="value">82</div>
+      <div class="delta green">+41 (本次对话 4 rollout 新增)</div>
+    </div>
+    <div class="stat">
+      <div class="label">ready 状态</div>
+      <div class="value">65 <span style="font-size:14px;color:var(--muted);">/ 82</span></div>
+      <div class="delta green">+50 vs 起始 (从 15 翻 4.3×)</div>
+    </div>
+    <div class="stat">
+      <div class="label">模板装满</div>
+      <div class="value">5 / 6</div>
+      <div class="delta muted">M1-M3 + M5/M6; M4 待诊疗目录</div>
+    </div>
+    <div class="stat">
+      <div class="label">组 J V/C/I (45 条 P0)</div>
+      <div class="value"><span class="verdict-V">2</span> / <span class="verdict-C">43</span> / 0</div>
+      <div class="delta green">首次 V 出现 (R203 + R220)</div>
+    </div>
+  </div>
+
+  <h3>模板 ↔ 规则 数量分布</h3>
+  <div class="card">
+    <table>
+      <thead>
+        <tr><th>模板</th><th>名称</th><th>规则数</th><th>priority</th><th>avg/rule</th><th>触发模式</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><span class="badge blue">M1</span></td><td>重复收费</td><td>15</td><td>P0:15</td><td class="mono">69.5s</td><td>两笔费用并存 + 文书无反证</td></tr>
+        <tr><td><span class="badge blue">M2</span></td><td>过度检查</td><td>18</td><td>P0:15 / P1:3</td><td class="mono">58.8s ⚡</td><td>exam 命中 + dx 无指征 (drug_check / single_count)</td></tr>
+        <tr><td><span class="badge blue">M3</span></td><td>口腔串换</td><td>17</td><td>P1:17</td><td class="mono">64.4s</td><td>dx 全 trivial + fee 命中大手术</td></tr>
+        <tr><td><span class="badge blue">M5</span></td><td>虚构医药服务</td><td>8 (主审)</td><td>P0:8</td><td class="mono">81.8s</td><td>fee 命中 + 文书无执行证据</td></tr>
+        <tr><td><span class="badge blue">M6</span></td><td>过度诊疗</td><td>7 (主审)</td><td>P0:7</td><td class="mono">71s</td><td>treatment + indication / <b>exclusion_dx 硬证据</b></td></tr>
+        <tr><td><span class="badge red">M4</span></td><td>超标准收费</td><td>0 (跳过)</td><td>-</td><td>-</td><td>⚠️ 需诊疗目录工具 (E 类红区)</td></tr>
+        <tr style="background:#f8fafc;"><td>—</td><td>P2 drafting (无模板)</td><td>17</td><td>P2:17</td><td>-</td><td>等外部数据/工具 (见 Data Gap tab)</td></tr>
+        <tr style="font-weight:600;background:#dbeafe;"><td>合计</td><td>—</td><td><b>82</b></td><td>P0:45 / P1:20 / P2:17</td><td><b>66.6s 平均</b></td><td>覆盖 0325 表 5 大违规类型</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>本次对话推进时间线</h3>
+  <div class="timeline">
+    <div class="timeline-item green">
+      <b>m2-rollout</b> (完成 → archived) <span class="badge green">18 条 B 类</span>
+      <p>M2 模板装满 (14 fields + drug_check / single_count 条件块) + R151 reference round-trip + 18 条规则装 prompt. 组 G: 30 条 P0 6:59 min, V=0 C=28 I=2.</p>
+    </div>
+    <div class="timeline-item green">
+      <b>m3-rollout</b> (完成 → archived) <span class="badge green">17 条 G 类口腔</span>
+      <p>M3 模板装满 (15 fields + dental_dept_check + subclass G-a/G-b 子类) + init 17 条 yaml (全 MISSING). 组 H: 20 条 P1 4:40 min, V=0 C=20 I=0, 全 CLEAN 符合 pilot 预期.</p>
+    </div>
+    <div class="timeline-item green">
+      <b>m5-rollout</b> (完成 → archived) <span class="badge green">8 条主审 + 2 条 P2 特殊</span>
+      <p>设计 doc 写就 + M5 模板装满 (12 fields) + 10 条 H 类 init (R003/R004 P2). 组 I: 38 条 P0 9:16 min, V=0 C=37 I=1.</p>
+    </div>
+    <div class="timeline-item purple">
+      <b>m6-rollout</b> (完成 → archived) <span class="badge purple">7 条主审 + 7 条 P2 特殊</span>
+      <p>M6 模板装满 (13 fields + <b>exclusion_dx 硬证据机制</b>) + 14 条 init (R280-R286 P2). 组 J: <b>45 条 P0 10:32 min, V=2 C=43 I=0</b>, 首次 V 出现 (R203 M5 + R220 M2).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ========== TAB 2: Rules 现状 ========== -->
+<section class="tab-panel" id="rules">
+  <h2>Rules 现状: 65 ready + 17 P2 drafting</h2>
+
+  <h3>5 个模板的关键案例</h3>
+
+  <div class="case green">
+    <h4>R191 (M1 reference) — 肿瘤全身断层显像重复收费 ✅</h4>
+    <div class="meta">domain=肿瘤 · violation_type=重复收费 · prompt_addon=620c · J66252: C conf=1.00, 2 tc, 61.9s</div>
+    <p>设计意图: 同次住院里 "PET-CT 全身显像" + 独立 "图文报告费" 并存 + 文书无第三方报告说明 → V.</p>
+    <p><b>byte-equal round-trip 验证</b>: vars.json → prompt-fit → R191.yaml.prompt_addon 一字不差还原, M1 模板稳定性正样本.</p>
+  </div>
+
+  <div class="case yellow">
+    <h4>R151 (M2 reference) — 非肝炎多次乙肝丙肝抗体 ⚠️</h4>
+    <div class="meta">domain=临床检验 · violation_type=过度检查 · J66252: 组 G I conf=0.60 / 组 I C conf=1.00</div>
+    <p>设计意图: <code>min_count=2</code> + <code>inconclusive_addendum</code> → count==1 单次术前筛查时退 I 而非 V.</p>
+    <p><b>验证 M2 single_count INCONCLUSIVE 分支</b>: J66252 是甲状腺癌择期手术, 术前可能查一次乙肝五项 (count=1, 无肝炎诊断 → I conf 0.60, 边界明确, 模板按设计工作).</p>
+  </div>
+
+  <div class="case purple">
+    <h4>R219 (M2 drug_check) — 麻醉中肌松监测联查药品 🧪</h4>
+    <div class="meta">domain=麻醉 · drug_check=true · drug_kw_list=7 种肌松药 · J66252: C conf=1.00, 11 tc, 87.6s</div>
+    <p>设计意图: 文书无肌松监测费 + search_fees 命中 "罗库溴铵" → CLEAN (患者用了肌松药, 监测合理).</p>
+    <p><b>11 个 tool_calls 完整跑完 drug_check 分支</b>: 7 种肌松药逐一搜 + 3 种监测项目查 + note_diagnosis, 验证 M2 联查药品分支可靠.</p>
+  </div>
+
+  <div class="case red">
+    <h4>R203 (M5 V trigger) — 全身麻醉未做但收费 🚨 首次 V</h4>
+    <div class="meta">domain=麻醉 · J66252 组 J: <span class="verdict-V">V</span> conf=0.95, 6 tc, 98.4s</div>
+    <p>设计意图: fee 命中全麻 + 文书 search_notes(麻醉记录) 无 "诱导药物/维持药物/苏醒过程" 等执行证据 → V.</p>
+    <p><b>M5 fee-notes 触发能力首个正样本</b>: J66252 全麻甲状腺手术, fee 列全麻费但 LLM 在文书 search_notes 中未匹配 execution_evidence_kw 细节 → V conf 0.95. 边界案例, conf 非 1.0 反映 LLM 自知模糊.</p>
+  </div>
+
+  <div class="case red">
+    <h4>R220 (M2 漂移) — 控制性降压用于无适应症 ⚠️ verdict 漂移</h4>
+    <div class="meta">domain=麻醉 · 组 G: I conf=0.00 / 组 I: I conf=0.00 / <b>组 J: V conf=0.95</b></div>
+    <p>3 次跑 verdict 不一致: <span class="verdict-I">I 0.00</span> × 2 → <span class="verdict-V">V 0.95</span>. 同规则同患者抖动暴露 LLM 推理对边界案例的不稳定.</p>
+    <p><b>根因</b>: temperature 影响 + base.txt 对模糊证据偏 C 而非 I. <b>待 <code>base-prompt-inconclusive-bias</code> change 解决</b>.</p>
+  </div>
+
+  <div class="case green">
+    <h4>R245 (M3 reference) — 口腔颌面软组织清创术 🦷</h4>
+    <div class="meta">domain=口腔 · dental_dept_check=true · self_pay_bonus 4 项 · J66252: C 1.00, 3 tc, 62.1s</div>
+    <p>设计意图: dental_dept_check 步骤 1 即识别患者无口腔科介入 → CLEAN. self_pay_bonus_list (种植牙/烤瓷冠 加分判 V) + total_amount_threshold=800 (G-a 子类专属).</p>
+    <p>J66252 甲状腺患者无口腔记录, M3 模板第一步即 CLEAN, 验证设计 doc §7 "G 类对甲状腺 pilot 命中率近 0" 预期.</p>
+  </div>
+
+  <h3>P2 drafting 17 条 (按外部数据需求分类)</h3>
+  <div class="card">
+    <table>
+      <thead><tr><th>规则</th><th>违规类型</th><th>缺失工具/数据</th><th>留待 change</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">R003</td><td>虚构医药服务项目</td><td>跨患者文书相似度比对</td><td><code>add-cross-patient-stats</code></td></tr>
+        <tr><td class="mono">R004</td><td>虚构医药服务项目</td><td>采购侧数据 (申请 vs 库存)</td><td><code>add-procurement-data</code></td></tr>
+        <tr><td class="mono">R007</td><td>不属医保支付范围</td><td>药品说明书 + 医保支付限定</td><td><code>add-drug-catalog</code></td></tr>
+        <tr><td class="mono">R010</td><td>串换项目</td><td>护理等级标准表</td><td><code>add-care-level-catalog</code></td></tr>
+        <tr><td class="mono">R012</td><td>DRG/DIP 高编高套</td><td>DRG 分组器 + 历史病组数据</td><td><code>add-drg-classifier</code></td></tr>
+        <tr><td class="mono">R135</td><td>不属医保支付范围</td><td>临床试验项目台账</td><td><code>add-trial-registry</code></td></tr>
+        <tr><td class="mono">R193 R196 R200</td><td>超标准收费</td><td>诊疗目录/计价单位标准</td><td><code>add-catalog-loader</code> + <code>m4-rollout</code></td></tr>
+        <tr><td class="mono">R201</td><td>串换项目</td><td>诊疗项目内涵字典</td><td><code>add-catalog-loader</code></td></tr>
+        <tr><td class="mono">R280 R281</td><td>诱导住院</td><td>行为审计 (赠送/返利)</td><td><code>audit-behavior</code></td></tr>
+        <tr><td class="mono">R282 R283</td><td>虚假诊断 / 虚构病情</td><td>真实临床表现对比 + ICD 篡改</td><td><code>enhanced-diagnostic-check</code></td></tr>
+        <tr><td class="mono">R284</td><td>虚假住院 (挂床/冒名)</td><td>身份核验</td><td><code>add-identity-verification</code></td></tr>
+        <tr><td class="mono">R285</td><td>虚构诊疗 (部分实施)</td><td>频次统计</td><td><code>add-frequency-stats</code></td></tr>
+        <tr><td class="mono">R286</td><td>虚构服务频次 (超工时)</td><td>跨患者工时统计</td><td><code>add-cross-patient-stats</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>规则质量评估</h3>
+  <div class="grid-3">
+    <div class="card">
+      <h4 style="margin-top:0;">✅ 优点</h4>
+      <ul style="font-size:13px;padding-left:18px;">
+        <li>prompt_addon 平均 800c, 远超 spec 500c 门槛</li>
+        <li>5 模板可被 prompt-fit 套填 + byte-equal round-trip</li>
+        <li>设计 doc 5 份就位 (M1/M2/M3/M5/M6)</li>
+        <li>17 条 P2 drafting 全部 notes 说明限制</li>
+        <li>M3 G-a/G-b 子类共享字段, vars json 可程序化生成</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0;">⚠️ 注意</h4>
+      <ul style="font-size:13px;padding-left:18px;">
+        <li>R220 verdict 跨跑漂移 (I↔V)</li>
+        <li>M5 子集 avg 81.8s 偏慢 (4-7 tool_calls)</li>
+        <li>M3 17 条对甲状腺 pilot 命中率 0 (设计预期, v0.3 切换数据集才用)</li>
+        <li>R208/R228/R226 (M1 重症麻醉) 慢规则 100-160s</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0;">🚧 缺失</h4>
+      <ul style="font-size:13px;padding-left:18px;">
+        <li>M4 模板未装 (12 条超标准收费, 需诊疗目录)</li>
+        <li>10 条 B 类 MISSING (R108 R132 R278 R279 等 4 条真 MISSING)</li>
+        <li>非甲状腺患者验证 (J18906/J13365)</li>
+        <li>dry-run 5 患者样本 (`docs/sample_run_R191.md`)</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ========== TAB 3: Model 表现 ========== -->
+<section class="tab-panel" id="model">
+  <h2>Model 表现: Qwen3.5-35B-A3B-GPTQ-Int4 @ sglang</h2>
+
+  <div class="card">
+    <h3 style="margin-top:0;">配置</h3>
+    <table>
+      <tr><td><b>Model</b></td><td class="mono">baichuan-inc/Baichuan-M2-32B-GPTQ-Int4 → 实际 Qwen3.5-35B-A3B-GPTQ-Int4</td></tr>
+      <tr><td><b>Endpoint</b></td><td class="mono">http://192.168.31.62:30000/v1 (sglang on RTX 5880 Ada 48GB)</td></tr>
+      <tr><td><b>Reasoning</b></td><td><code>--reasoning-parser qwen3</code> 分离思考过程到 reasoning_content</td></tr>
+      <tr><td><b>Function calling</b></td><td>禁用 (enable_tool_use=false), 模型用 <code>&lt;tool_call&gt;{}&lt;/tool_call&gt;</code> 文本标签</td></tr>
+      <tr><td><b>临界值</b></td><td>单次 LLM 调用 timeout 300s; sglang 端 batch scheduling 限制 concurrency ≤ 5</td></tr>
+    </table>
+  </div>
+
+  <h3>规则跑批耗时分布 (组 J 45 条 P0)</h3>
+  <div class="grid-4">
+    <div class="stat">
+      <div class="label">最快规则</div>
+      <div class="value">42.8s</div>
+      <div class="delta muted">R143 (M2 血浆乳酸)</div>
+    </div>
+    <div class="stat">
+      <div class="label">P50</div>
+      <div class="value">59.4s</div>
+      <div class="delta muted">中位 ≈ 60s</div>
+    </div>
+    <div class="stat">
+      <div class="label">P95</div>
+      <div class="value">~121s</div>
+      <div class="delta muted">R222 / R208 M1 / M6</div>
+    </div>
+    <div class="stat">
+      <div class="label">最慢规则</div>
+      <div class="value">170s</div>
+      <div class="delta red">R015 (M5 血流动力学, 18 tc)</div>
+    </div>
+  </div>
+
+  <h3>Verdict 抖动案例 (R220 跨 3 跑)</h3>
+  <div class="card">
+    <table>
+      <thead><tr><th>组</th><th>verdict</th><th>conf</th><th>tool calls</th><th>duration</th><th>解读</th></tr></thead>
+      <tbody>
+        <tr><td>组 G (concurrency=5)</td><td class="verdict-I">I</td><td>0.00</td><td>18 ⚠️</td><td>45.3s</td><td>LLM 在 V/C/I 间纠结, 18 tc 探索后输出 I conf 0</td></tr>
+        <tr><td>组 I (concurrency=5)</td><td class="verdict-I">I</td><td>0.00</td><td>18 ⚠️</td><td>45.9s</td><td>同上, 抖动复现</td></tr>
+        <tr><td>组 J (concurrency=5)</td><td class="verdict-V">V</td><td>0.95</td><td>7</td><td>83.9s</td><td><b>翻转</b>: LLM 这次"敢"输出 V conf 0.95, 同一 prompt 同一患者</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:13px;color:var(--muted);margin-top:8px;">
+      <b>根因分析</b>:
+      sglang 默认 temperature ≠ 0, 边界案例 LLM 输出概率分布平坦. base.txt 当前对 "证据不足" 没有明确指引应该输出哪种 verdict, 让 LLM 在 V (无适应症过度) vs C (无证据视为安全) vs I (信息不足) 间犹豫.
+      建议 <code>base-prompt-inconclusive-bias</code> change: 改 base.txt 强调 "证据不足优先 I conf=0.5 而非 V/C".
+    </p>
+  </div>
+
+  <h3>慢规则 Top-5 (组 G/H/I/J 综合)</h3>
+  <div class="card">
+    <table>
+      <thead><tr><th>规则</th><th>模板</th><th>耗时</th><th>tool calls</th><th>慢原因</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">R015</td><td><span class="badge purple">M5</span></td><td class="mono">170s</td><td>5-18</td><td>需查重症监护记录 + 多药品 + 血流动力学数值, 多 section 搜索</td></tr>
+        <tr><td class="mono">R208</td><td><span class="badge blue">M1</span></td><td class="mono">131-157s</td><td>5-6</td><td>fee_category=其他类, LLM 枚举费用项目, 重症麻醉混类</td></tr>
+        <tr><td class="mono">R203</td><td><span class="badge purple">M5</span></td><td class="mono">98-152s</td><td>6-7</td><td>麻醉记录多 section + 麻醉药品 + 全身麻醉指征</td></tr>
+        <tr><td class="mono">R222</td><td><span class="badge red">M6</span></td><td class="mono">121s</td><td>5</td><td>查"巨大甲状腺肿"等指征描述 + pilot_caveat 复杂判断</td></tr>
+        <tr><td class="mono">R228</td><td><span class="badge blue">M1</span></td><td class="mono">97-105s</td><td>2-4</td><td>重症监护 + 各类基础护理, 费用项目混杂</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>tool_call patterns</h3>
+  <div class="grid-3">
+    <div class="card">
+      <h4 style="margin-top:0;">M1 (重复收费)</h4>
+      <p style="font-size:13px;">主调 <code>search_fees(category=...)</code> 一次 + <code>search_notes(section=...)</code> 文书反证.</p>
+      <p style="font-size:13px;"><b>avg 2.8 tc/rule</b>, M1 模板调用最简洁.</p>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0;">M2 (过度检查)</h4>
+      <p style="font-size:13px;">主调 <code>note_diagnosis()</code> + <code>search_fees(keyword=)</code> × N; drug_check 时多 <code>search_fees(keyword=药品)</code> × M.</p>
+      <p style="font-size:13px;"><b>avg 4.0 tc/rule</b>; R219 drug_check 11 tc.</p>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0;">M5 (虚构服务)</h4>
+      <p style="font-size:13px;">主调 <code>search_fees + search_notes(多 section)</code> 验执行证据; 文书不全则深挖.</p>
+      <p style="font-size:13px;"><b>avg 4.5 tc/rule</b>, 最高 R015 18 tc.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ========== TAB 4: Concurrency 实测 ========== -->
+<section class="tab-panel" id="concurrency">
+  <h2>Concurrency 实测: 组 E → 组 J 演进</h2>
+
+  <div class="card">
+    <h3 style="margin-top:0;">6 组实测一览</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>组</th><th>N 条</th><th>concurrency</th><th>build</th><th>总耗时</th><th>avg/rule</th><th>verdict</th><th>hit_rate</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>A (冷启动 baseline)</td>
+          <td>30</td><td>1</td>
+          <td>骨架 prompt 全空</td>
+          <td class="mono">41:30</td><td class="mono">83.1s</td>
+          <td><span class="verdict-V">V=1</span> C=28 <span class="verdict-I">I=1</span></td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td>E (m1-rollout 后)</td>
+          <td>15 (M1)</td><td>1</td>
+          <td>15 条 M1 ready</td>
+          <td class="mono">18:38</td><td class="mono">74.5s</td>
+          <td>C=15</td><td>35.3%</td>
+        </tr>
+        <tr style="background:#dbeafe;">
+          <td><b>F (+ patient_id 注入 + 并发 3)</b></td>
+          <td>15 (M1)</td><td><b>3</b></td>
+          <td>组 E + 并发</td>
+          <td class="mono"><b>5:41</b></td><td class="mono">65.4s</td>
+          <td>C=15</td><td><b>62.5%</b></td>
+        </tr>
+        <tr>
+          <td>G (+ m2-rollout)</td>
+          <td>30 (M1+M2)</td><td>5</td>
+          <td>组 F + 18 M2 ready</td>
+          <td class="mono">6:59</td><td class="mono">64.9s</td>
+          <td>C=28 <span class="verdict-I">I=2</span></td><td>39.3%</td>
+        </tr>
+        <tr>
+          <td>H (+ m3-rollout, P1 子集)</td>
+          <td>20 (M2 P1 + M3)</td><td>5</td>
+          <td>组 G + 17 M3 ready</td>
+          <td class="mono">4:40</td><td class="mono">63.5s</td>
+          <td>C=20</td><td>45.7%</td>
+        </tr>
+        <tr>
+          <td>I (+ m5-rollout)</td>
+          <td>38 (M1+M2+M5)</td><td>5</td>
+          <td>组 G + 8 M5 ready</td>
+          <td class="mono">9:16</td><td class="mono">67.9s</td>
+          <td>C=37 <span class="verdict-I">I=1</span></td><td>33.5%</td>
+        </tr>
+        <tr style="background:#ede9fe;">
+          <td><b>J (+ m6-rollout, 五模板闭环)</b></td>
+          <td>45 (M1+M2+M5+M6)</td><td>5</td>
+          <td>组 I + 7 M6 ready</td>
+          <td class="mono"><b>10:32</b></td><td class="mono">68.4s</td>
+          <td><span class="verdict-V"><b>V=2</b></span> C=43</td><td>33.3%</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>关键提速节点</h3>
+  <div class="grid-2">
+    <div class="case green">
+      <h4>组 E → 组 F: 3.27× 提速</h4>
+      <div class="meta">同 N=15 条 / 仅切串行 → 并发 3 + patient_id 注入</div>
+      <p>📉 总耗时: <b>18:38 → 5:41</b> (↓ 69.5%)</p>
+      <p>📉 tool_calls 总数: <b>68 → 40</b> (↓ 41%, patient_id 注入砍 LLM 漏传重试)</p>
+      <p>📈 hit_rate: <b>35.3% → 62.5%</b> (并发让多规则共享同一 search 调用)</p>
+      <p>📉 R208 单条: <b>130s → 71s</b> (↓ 45.6%, 单条最大提速)</p>
+    </div>
+    <div class="case purple">
+      <h4>组 H → 组 J: 模板套用扩量</h4>
+      <div class="meta">20 → 45 条 / 同 concurrency 5</div>
+      <p>⏱ 总耗时只翻 2.25× 而非 N×3 → <b>cache 共享 + LLM batch scheduling 摊薄</b></p>
+      <p>📊 avg/rule 稳定在 63-68s 区间 (5 模板趋同)</p>
+      <p>🎯 <b>V=2 首次出现</b> (R203 M5 + R220 M2): 触发能力非零</p>
+    </div>
+  </div>
+
+  <h3>concurrency 选型建议</h3>
+  <div class="card">
+    <table>
+      <thead><tr><th>concurrency</th><th>规则数</th><th>预估耗时</th><th>风险</th><th>建议</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>1 (串行)</td>
+          <td>1-5 条</td>
+          <td>~80s/条</td>
+          <td>无</td>
+          <td>dry-run 单规则 sanity check</td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td>10-20 条</td>
+          <td>~3-5 min</td>
+          <td>无</td>
+          <td>开发期默认</td>
+        </tr>
+        <tr style="background:#d1fae5;">
+          <td><b>5</b></td>
+          <td>20-50 条</td>
+          <td>5-11 min</td>
+          <td>sglang 偶尔 timeout (重试可恢复)</td>
+          <td><b>生产推荐 ✅</b></td>
+        </tr>
+        <tr>
+          <td>>5</td>
+          <td>50+ 条</td>
+          <td>不可预测</td>
+          <td>sglang batch 调度饱和, timeout 增多</td>
+          <td>需 sglang 加 worker, 或拆 audit-run</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="font-size:12px;color:var(--muted);margin-top:8px;">
+      经验值: Qwen3.5-35B-A3B-GPTQ-Int4 + sglang 单 GPU (RTX 5880 Ada 48GB) 推荐 concurrency 2-5. 大于 5 偶尔触发 sglang 端 300s timeout (取决于服务端负载, 可重试).
+    </p>
+  </div>
+
+  <h3>缓存收益 (share-tool-cache)</h3>
+  <div class="card">
+    <p>跨规则共享 ToolExecutor 缓存. <code>note_diagnosis(J66252)</code> / <code>search_fees(category=手术类)</code> 等被多条规则同时调用时, 后续规则直接命中缓存.</p>
+    <p>组 F 在并发 3 + cache 下 <b>hit_rate 62.5%</b> 最高; 组 G/I/J 在并发 5 + 模板异构下 hit_rate 33-39% (因 M5 多 section search_notes 不易共享).</p>
+    <p>每次跑 audit-patient 前 cache reset; 同一 patient 跨 rule 共享, 跨 patient 重新预热.</p>
+  </div>
+</section>
+
+<!-- ========== TAB 5: 外部数据缺口 ========== -->
+<section class="tab-panel" id="datagap">
+  <h2>外部数据缺口 — 能尽快补上的</h2>
+  <p style="color:var(--muted);font-size:14px;">
+    17 条 P2 drafting + 12 条 M4 候选 + 约 50 条未 init 红区规则全部依赖以下外部数据/工具.
+    按 <b>解锁规则数 × 数据获取难度</b> 排序, 建议补充顺序如下:
+  </p>
+
+  <div class="card">
+    <table class="data-gap-table">
+      <thead>
+        <tr><th>数据/工具</th><th>解锁规则</th><th>难度</th><th>典型场景</th><th>change</th></tr>
+      </thead>
+      <tbody>
+        <tr class="urgent">
+          <td><b>🔴 诊疗目录 / 医保支付目录</b></td>
+          <td>~31 条 (R193/R196/R200/R201 P2 + 12 条 M4 + 19 条 E 红区)</td>
+          <td>低</td>
+          <td>"按计价单位收费" / "项目内涵" / "同切口两手术" 等</td>
+          <td><code>add-catalog-loader</code> + <code>m4-rollout</code></td>
+        </tr>
+        <tr class="urgent">
+          <td><b>🔴 药品说明书 + 医保限定支付</b></td>
+          <td>~10 条 (R007 + 红区超说明书药品)</td>
+          <td>中</td>
+          <td>"超说明书适应症" / "医保限定支付条件"</td>
+          <td><code>add-drug-catalog</code></td>
+        </tr>
+        <tr class="medium">
+          <td><b>🟡 跨患者文本/费用统计</b></td>
+          <td>~7 条 (R003 / R280 / R281 / R286 + R285 部分 + 红区 F)</td>
+          <td>中</td>
+          <td>"套模板病历" / "工时超临床实际" / "频次异常"</td>
+          <td><code>add-cross-patient-stats</code></td>
+        </tr>
+        <tr class="medium">
+          <td><b>🟡 采购侧数据 (药品/耗材进销存)</b></td>
+          <td>1 条 (R004) + 红区耗材类</td>
+          <td>高</td>
+          <td>"申请医保支付数量 &gt; 采购量"</td>
+          <td><code>add-procurement-data</code></td>
+        </tr>
+        <tr class="medium">
+          <td><b>🟡 DRG 分组器 + 历史病组数据</b></td>
+          <td>1 条 (R012) + 红区 DRG/DIP</td>
+          <td>高</td>
+          <td>"高编高套" / 分值权重作弊</td>
+          <td><code>add-drg-classifier</code></td>
+        </tr>
+        <tr class="medium">
+          <td><b>🟡 临床试验项目台账</b></td>
+          <td>1 条 (R135)</td>
+          <td>中</td>
+          <td>"临床试验检验费用不应进医保"</td>
+          <td><code>add-trial-registry</code></td>
+        </tr>
+        <tr class="medium">
+          <td><b>🟡 护理等级标准表</b></td>
+          <td>1 条 (R010) + 红区护理</td>
+          <td>低</td>
+          <td>"级别护理 vs 医保结算等级不符"</td>
+          <td><code>add-care-level-catalog</code></td>
+        </tr>
+        <tr class="low">
+          <td><b>🟢 身份核验 / 住院实际在院</b></td>
+          <td>1 条 (R284)</td>
+          <td>高</td>
+          <td>"挂床住院 / 冒名顶替"</td>
+          <td><code>add-identity-verification</code></td>
+        </tr>
+        <tr class="low">
+          <td><b>🟢 行为审计 (赠送/返利/转诊提成)</b></td>
+          <td>2 条 (R280 / R281)</td>
+          <td>高</td>
+          <td>"诱导住院 / 拉拢轻症"</td>
+          <td><code>audit-behavior</code></td>
+        </tr>
+        <tr class="low">
+          <td><b>🟢 ICD 编码篡改检测</b></td>
+          <td>1 条 (R283)</td>
+          <td>高</td>
+          <td>"虚增并发症 ICD vs 临床实际"</td>
+          <td><code>enhanced-diagnostic-check</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>性价比 Top-2 (建议先做)</h3>
+  <div class="grid-2">
+    <div class="case red">
+      <h4>🥇 诊疗目录 / 医保支付目录 — 解锁 31 条</h4>
+      <div class="meta">难度低 · 投入小 · 收益最大</div>
+      <p><b>来源</b>: 国家/省级医保局公开的医疗服务诊疗目录 (含项目编码 + 内涵 + 计价单位); 各省《医疗服务诊疗目录》通常 PDF/Excel 可下载.</p>
+      <p><b>工具设计</b>: <code>service_catalog(query: str)</code> 返回项目内涵 + 计价单位 + 同切口规则等. 集成方式类似现 <code>drug_indication</code> 表.</p>
+      <p><b>解锁规则</b>: M4 12 条 (R020/R063/R074/R165/R212/R250/R291/R292/R293 + 已 init R193/R196/R200), 加上 R201 串换 + 19 条红区 E.</p>
+      <p><b>预期工作量</b>: 1-2 周 (数据清洗 + 工具实装 + m4-rollout).</p>
+    </div>
+    <div class="case red">
+      <h4>🥈 药品说明书 + 医保限定支付 — 解锁 ~10 条</h4>
+      <div class="meta">难度中 · 数据已部分可得</div>
+      <p><b>来源</b>: 国家药监局药品说明书 API (公开); 医保药品目录 (年度更新, 含限定支付条件).</p>
+      <p><b>工具设计</b>: 扩展现有 <code>drug_indication</code>, 加 <code>get_drug_label(name)</code> 返回 (适应症 / 限定条件). 现有 51 种药品表可作 seed.</p>
+      <p><b>解锁规则</b>: R007 (超说明书) + 红区超说明书药品规则.</p>
+      <p><b>预期工作量</b>: 2-3 周 (说明书结构化清洗 + 限定条件解析).</p>
+    </div>
+  </div>
+
+  <h3>暂不建议补 (难度高, 解锁少)</h3>
+  <div class="card">
+    <ul style="font-size:13px;">
+      <li><b>身份核验</b> (R284, 仅 1 条): 需医院 HIS 系统对接 + 患者人脸/身份证, 涉及隐私合规, 投入产出比低</li>
+      <li><b>行为审计</b> (R280/R281): 需调监控/财务/电话记录, Javert 框架内做不了, 建议交给现场审计</li>
+      <li><b>ICD 编码篡改检测</b> (R283): 需大量历史病例 + ICD-10 主诊断逻辑, 学术难度高</li>
+      <li><b>DRG 分组器</b> (R012): 商业分组器 ¥20w+, 可考虑接 grouper service, 但需 ICD 完整链路</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ========== TAB 6: 下一步 ========== -->
+<section class="tab-panel" id="next">
+  <h2>Pilot v0.3 入口建议</h2>
+
+  <div class="grid-2">
+    <div class="case green">
+      <h4>🔥 最高: audit-non-pilot-patient</h4>
+      <div class="meta">不引入新数据, 跑非甲状腺患者验证模板触发能力</div>
+      <p>跑 <code>audit-patient J18906 --share-tool-cache --concurrency 5</code> (脑干非肿瘤) 和 <code>J13365</code> (骨科).</p>
+      <p><b>期望</b>: J13365 触发 R037 (胸腰椎骨折切开复位虚构) V; J18906 触发部分检验类 V; M3 (口腔) 仍全 CLEAN.</p>
+      <p><b>不需要</b>: 任何代码改动 / 新数据.</p>
+    </div>
+    <div class="case yellow">
+      <h4>🟡 中: base-prompt-inconclusive-bias</h4>
+      <div class="meta">解决 R220 verdict 漂移问题</div>
+      <p>改 <code>src/javert/audit/prompts/base.txt</code>: 强调 "证据不足优先 I conf 0.5-0.7 而非 V/C".</p>
+      <p><b>期望</b>: R220 等边界规则稳定输出 I, 不再 I↔V 漂移. 5 模板复跑组 J 看是否 V 减少 / I 增加.</p>
+      <p><b>风险</b>: 可能让 R203 等真 V 也变 I → false negative. 需 J18906/J13365 同时验证.</p>
+    </div>
+    <div class="case red">
+      <h4>🚀 中长期: add-catalog-loader + m4-rollout</h4>
+      <div class="meta">最大解锁: 31 条规则 (诊疗目录)</div>
+      <p>1. 引入诊疗目录数据 (省/国家医保局公开).</p>
+      <p>2. 实装 <code>service_catalog</code> 工具.</p>
+      <p>3. 写 M4 设计 doc + 装 M4.yaml.</p>
+      <p>4. m4-rollout 12 条超标准收费.</p>
+      <p>5. 联动 add-pending-rules-e-class 19 条红区 E.</p>
+      <p>结果: ready 从 65 → ~95+.</p>
+    </div>
+    <div class="case purple">
+      <h4>🟡 中: add-cross-patient-stats</h4>
+      <div class="meta">解锁 R003 R280 R281 R286 + 部分红区 F</div>
+      <p>实装跨患者批量分析能力, 检测模板病历 / 工时异常 / 频次离群点等.</p>
+      <p>需要从单 patient audit 扩展到 cohort audit.</p>
+    </div>
+  </div>
+
+  <h3>不建议短期内做</h3>
+  <div class="card">
+    <ul style="font-size:13px;">
+      <li><b>add-rule-routing</b>: 装完 prompt 后边际收益小, 当前 LLM 已不漫游</li>
+      <li><b>add-identity-verification</b>: 仅 1 条 (R284), 合规复杂</li>
+      <li><b>add-procurement-data</b>: 仅 1 条 (R004) + 数据获取难</li>
+      <li><b>audit-behavior</b>: 行为审计 (R280/R281) 不适合 LLM 框架</li>
+    </ul>
+  </div>
+
+  <h3>v0.3 计划 (建议)</h3>
+  <ol style="font-size:14px;">
+    <li><b>Sprint 1 (1 周)</b>: <code>audit-non-pilot-patient</code> (J18906 + J13365) + <code>base-prompt-inconclusive-bias</code> → 看 V 触发率是否合理</li>
+    <li><b>Sprint 2 (2 周)</b>: <code>add-catalog-loader</code> 引入诊疗目录 → <code>m4-rollout</code> 12 条超标准收费 ready</li>
+    <li><b>Sprint 3 (1 周)</b>: <code>add-drug-catalog</code> 解锁 R007 + 红区超说明书药品 ~10 条</li>
+    <li><b>Sprint 4 (2 周)</b>: <code>add-cross-patient-stats</code> 解锁 ~7 条 + 跨患者审计入口</li>
+  </ol>
+  <p style="font-size:13px;color:var(--muted);">
+    完成 v0.3 后, ready 数量预计 65 → 105+, 覆盖 163 条做不了的 ~65%. 剩余主要是 R284 R283 R280 R281 等单条特殊场景 + DRG/采购等深需求.
+  </p>
+</section>
+
+</main>
+
+<script>
+  const buttons = document.querySelectorAll('.tab-btn');
+  const panels = document.querySelectorAll('.tab-panel');
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      buttons.forEach(b => b.classList.remove('active'));
+      panels.forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab).classList.add('active');
+    });
+  });
+</script>
+
+</body>
+</html>

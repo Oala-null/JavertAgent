@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="onb-wrap">
+
+  <div class="onb-toolbar">
+    <h1 class="onb-title">数据接入工作室</h1>
+    <div class="onb-controls">
+      <label class="onb-hc">医院代码
+        <input id="hospital-code" value="ext" maxlength="32">
+      </label>
+      <label class="onb-hc">批次标签
+        <input id="batch-tag" placeholder="选填 如 v2.1" maxlength="32"
+               title="给这批审核打个批次标签 (写进 .loaded.env → 跑出的裁决都带此 tag, 工作台可按它筛选/排序)">
+      </label>
+      <label class="onb-toggle">
+        <input type="checkbox" id="normalize-dates" checked> 日期归一 ISO
+      </label>
+      <label class="onb-toggle" title="勾选: 裁决双写 142 + 上工作台前端 (部署默认); 取消: 仅本地 sqlite (排练用)">
+        <input type="checkbox" id="sync-142" checked> 同步到工作台
+      </label>
+      <button id="btn-declare" class="btn-ghost" type="button">+ 声明新表</button>
+      <button id="btn-reset" class="btn-ghost" type="button">重置映射</button>
+      <button id="btn-preflight" class="btn-ghost" type="button">连接预检</button>
+      <button id="btn-clear" class="btn-ghost btn-danger-ghost" type="button">清空全部</button>
+      <button id="btn-start" class="btn-primary" type="button" disabled
+              title="落映射 + 跑 ETL 生成可审计数据 (本页不跑 LLM 审核, 审核走终端 jv-go)">载入数据</button>
+    </div>
+  </div>
+
+  <!-- 投放区 -->
+  <div id="dropzone" class="dropzone">
+    <p>拖入或选择 CSV / TXT / XLSX 文件 — 系统自动认表并预填映射</p>
+    <input id="file-input" type="file" accept=".csv,.txt,.xls,.xlsx" multiple hidden>
+    <button class="btn-ghost" type="button" id="btn-pick">选择文件</button>
+  </div>
+
+  <div id="gate-hint" class="gate-hint"></div>
+
+  <!-- 结果卡区 (每 tabular 文件一张) -->
+  <section class="onb-cards" id="result-cards"></section>
+
+  <!-- 视图表说明 (麻醉/病理, 由文书/化验派生, 无需映射) -->
+  <div class="view-note-bar" id="view-note-bar" hidden></div>
+
+  <!-- 流向图: 我的文件 → Javert 表 -->
+  <section class="flow-wrap" id="flow-wrap" hidden>
+    <h2 class="flow-title">我的文件 → Javert 表 <span class="flow-sub">连线标签 = 实际映射的患者键列 · 可拖动节点 · 点连线看字段明细</span></h2>
+    <div class="flow-canvas" id="flow-canvas">
+      <svg class="flow-edges" id="flow-edges" aria-hidden="true"></svg>
+      <div class="flow-nodes" id="flow-nodes"></div>
+    </div>
+  </section>
+
+  <!-- 预检 / 载入结果面板 -->
+  <div id="preflight-panel" class="preflight-panel" hidden></div>
+  <!-- 桥表文件可选列表 (已上传文件) -->
+  <datalist id="upfiles-dl"></datalist>
+  <!-- 列剖析 popover -->
+  <div id="profile-pop" class="profile-pop" hidden></div>
+  <!-- 映射明细 popover (点流向图连线) -->
+  <div id="edge-pop" class="profile-pop" hidden></div>
+</div>
+
+<!-- 日期歧义确认 modal (设计 D8, 一次性) -->
+<div id="date-modal" class="onb-modal" hidden>
+  <div class="onb-modal-box">
+    <div class="onb-modal-head">确认日期格式 (D/M vs M/D)
+      <button class="onb-modal-x" type="button" data-close="date-modal">×</button></div>
+    <div class="onb-modal-body" id="date-modal-body"></div>
+    <div class="onb-modal-foot">
+      <button class="btn-ghost" type="button" data-close="date-modal">取消</button>
+      <button class="btn-primary" type="button" id="date-confirm">确认并继续</button>
+    </div>
+  </div>
+</div>
+
+<!-- 声明新表 modal (设计, 替 prompt()) -->
+<div id="declare-modal" class="onb-modal" hidden>
+  <div class="onb-modal-box">
+    <div class="onb-modal-head">声明新表 (manifest 未预声明)
+      <button class="onb-modal-x" type="button" data-close="declare-modal">×</button></div>
+    <div class="onb-modal-body" id="declare-modal-body"></div>
+    <div class="onb-modal-foot">
+      <button class="btn-ghost" type="button" data-close="declare-modal">取消</button>
+      <button class="btn-primary" type="button" id="declare-confirm">声明该表</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  window.ONBOARDING_SPOKES = {{ spokes|tojson }};
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/onboarding.js?v={{ asset_v }}"></script>
+{% endblock %}

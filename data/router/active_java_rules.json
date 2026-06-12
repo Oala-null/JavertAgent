@@ -1,0 +1,152 @@
+{
+  "RULE15": {
+    "rule_no": "RULE15",
+    "rule_name": "医用材料与项目不符",
+    "rule_remark": "材料使用前提需要匹配对应项目。",
+    "valid": "1",
+    "triggers": [
+      "item_name_match",
+      "paired_item_missing"
+    ],
+    "covered_categories": [
+      "药品不匹配"
+    ]
+  },
+  "RULE17": {
+    "rule_no": "RULE17",
+    "rule_name": "超限定频次",
+    "rule_remark": "限定诊疗项目在一个时间区间内的次数。",
+    "valid": "1",
+    "triggers": [
+      "item_name_match",
+      "frequency_window"
+    ],
+    "covered_categories": [
+      "医疗服务项目限定频次"
+    ]
+  },
+  "RULE19": {
+    "rule_no": "RULE19",
+    "rule_name": "重复收费",
+    "rule_remark": "审核同次诊疗过程中，重复使用或者重复收取费用的诊疗项目。",
+    "valid": "1",
+    "triggers": [
+      "item_a_match",
+      "item_b_match"
+    ],
+    "covered_categories": [
+      "药品重复收费",
+      "医疗服务项目重复收费"
+    ]
+  },
+  "RULE2": {
+    "rule_no": "RULE2",
+    "rule_name": "限定就医方式",
+    "rule_remark": "药品或项目仅限在特定的就医方式时使用。",
+    "valid": "1",
+    "triggers": [
+      "item_name_match",
+      "visit_type"
+    ],
+    "covered_categories": [
+      "药品限就医方式",
+      "医疗服务项目限就医方式"
+    ]
+  },
+  "RULE3": {
+    "rule_no": "RULE3",
+    "rule_name": "限性别用药",
+    "rule_remark": "审核限定性别使用的药品",
+    "valid": "1",
+    "triggers": [
+      "item_name_match",
+      "patient_gender"
+    ],
+    "covered_categories": [
+      "药品限性别使用",
+      "医疗服务项目区分性别使用"
+    ]
+  },
+  "RULE35": {
+    "rule_no": "RULE35",
+    "rule_name": "超限定支付疗程",
+    "rule_remark": "审核住院病人，某药品、耗材、治疗项目不得超过限定使用天数，按住院日期进行计算，一个日期就是一天",
+    "valid": "1",
+    "triggers": [
+      "item_name_match",
+      "cumulative_days"
+    ],
+    "covered_categories": [
+      "药品限定支付疗程",
+      "医疗服务项目限定支付疗程"
+    ]
+  },
+  "RULE36": {
+    "rule_no": "RULE36",
+    "rule_name": "非基本医疗保险目录",
+    "rule_remark": "限定基本医疗保险目录的范围。",
+    "valid": "1",
+    "triggers": [
+      "item_name_match",
+      "inscp_amt_gt_zero"
+    ],
+    "covered_categories": [
+      "药品医保不支付",
+      "医疗服务项目医保不支付"
+    ]
+  },
+  "RULE4": {
+    "rule_no": "RULE4",
+    "rule_name": "限定儿童",
+    "rule_remark": "限定子女统筹、儿童、新生儿使用的药品和项目",
+    "valid": "1",
+    "triggers": [
+      "item_name_match",
+      "patient_age"
+    ],
+    "covered_categories": [
+      "药品限儿童使用",
+      "医疗服务项目限儿童使用"
+    ]
+  },
+  "RULE5": {
+    "rule_no": "RULE5",
+    "rule_name": "限定医院类型级别",
+    "rule_remark": "限定报销药品或项目的适用医院级别和类型。美金刚限定三级医院使用",
+    "valid": "1",
+    "triggers": [
+      "item_name_match",
+      "hospital_level"
+    ],
+    "covered_categories": [
+      "药品限定医院类型级别",
+      "医疗服务项目限定医院类型级别"
+    ]
+  },
+  "RULE7": {
+    "rule_no": "RULE7",
+    "rule_name": "违反限定适应症(条件)用药",
+    "rule_remark": "对药品目录中有“限定支付”的适应症进行审核。",
+    "valid": "1",
+    "triggers": [
+      "item_name_match",
+      "diagnosis_in_set"
+    ],
+    "covered_categories": [
+      "药品限定诊断"
+    ]
+  },
+  "RULE9": {
+    "rule_no": "RULE9",
+    "rule_name": "中药饮片审核",
+    "rule_remark": "1、审核单味不支付的中药饮片：处方中仅有一味中药饮片且为单味不支付饮片。",
+    "valid": "1",
+    "triggers": [
+      "item_name_match",
+      "single_herb_only"
+    ],
+    "covered_categories": [
+      "中药饮片审核"
+    ]
+  }
+}

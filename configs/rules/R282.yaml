@@ -1,0 +1,13 @@
+rule_id: R282
+domain: 精神医学
+violation_type: 虚假诊断
+question: 将未伴发精神行为症状的脑梗后遗症、癫痫、智力障碍、阿尔兹海默症、酒精依赖等疾病，夸大病情、虚假诊断为重性精神疾病并收治住院。
+example: 示例：某医院将脑梗后遗症患者虚假诊断为“精神分裂症”并收治住院，实际患者无相关精神行为症状。
+status: drafting
+priority: P2
+prompt_addon: ''
+trigger_keywords: []
+suggested_tools: []
+expected_signal: ''
+notes: 虚假诊断 (夸大病情) 主观判断, 需对比真实临床表现 vs 文书诊断, 工具难. 留 enhanced-diagnostic-check change.
+derived_from_template: null

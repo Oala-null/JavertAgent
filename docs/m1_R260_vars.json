@@ -1,0 +1,36 @@
+{
+  "a_concept": "牙龈翻瓣术 / 牙周翻瓣手术",
+  "b_concept": "根面平整术 / 龈下刮治",
+  "catalog_basis": "按各省《医疗服务诊疗目录》, 牙龈翻瓣术项目内涵已含牙龈切开、翻瓣、刮治及根面平整、瓣的复位缝合, 单独再收根面平整术 = 重复收费.",
+  "fee_category": "手术类",
+  "a_class_label": "翻瓣术",
+  "b_class_label": "根面平整",
+  "a_class_items": [
+    "牙龈翻瓣术",
+    "翻瓣术",
+    "牙周翻瓣手术"
+  ],
+  "b_class_items": [
+    "根面平整术",
+    "根面平整",
+    "龈下刮治"
+  ],
+  "scan_action_term": "牙龈翻瓣术",
+  "aux_short_label": "根面平整费",
+  "notes_sections": ["口腔诊治记录", "手术记录"],
+  "third_party_clause": "分次进行 / 不同象限分别处理 (有独立诊次与象限记录)",
+  "violation_evidence": "翻瓣术笔数 + 根面平整笔数 + 价格 + 口腔记录象限 / 诊次描述",
+  "inconclusive_example": "费用项目仅写 '牙周治疗 ¥250', 无法判断是否包含独立刮治步骤",
+  "basic_diagnosis_subject": "牙周炎",
+  "basic_diagnosis_keywords": ["牙周炎", "慢性牙周炎", "重度牙周炎", "牙龈炎", "侵袭性牙周炎"],
+  "aux_keywords": [
+    "牙龈翻瓣术",
+    "翻瓣术",
+    "牙周翻瓣",
+    "根面平整术",
+    "根面平整",
+    "龈下刮治"
+  ],
+  "aux_tools": ["note_diagnosis", "search_fees", "search_notes"],
+  "aux_signal": "典型违规: 同次诊治 \"牙龈翻瓣术 ¥250\" + \"根面平整术 ¥120\" 同一象限同一日, 口腔记录未分次叙述.\n典型 CLEAN: 仅有翻瓣术单笔; 或口腔记录明确不同象限 / 不同诊次分别开展独立计费."
+}

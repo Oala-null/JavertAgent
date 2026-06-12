@@ -1,0 +1,97 @@
+template_id: M6
+name: 过度诊疗 (治疗超适应症)
+description: treatment 命中 + 文书无指征 / 排除指征命中
+master_prompt: |
+  本规则关注: 患者本次住院里, 是否被无指征收取了「{{treatment_desc}}」治疗/干预.
+  {{catalog_basis}}
+
+  审计步骤:
+  1. 用 search_fees(keyword=...) 查 fee 是否命中. 检索关键词: {% for kw in treatment_kw_list %}"{{kw}}"{% if not loop.last %} / {% endif %}{% endfor %}
+  2. 若 fee 无命中 → CLEAN (规则不适用, 患者未做该治疗).
+  3. 用 note_diagnosis 列出全部诊断{% if notes_evidence_section %}, 用 search_notes(section="{{notes_evidence_section}}") 查文书证据{% endif %}.
+  4. 检查是否含任一指征:
+     {% for dx in indication_dx_list %}- {{dx}}
+     {% endfor %}
+     若有任一指征 → CLEAN (有指征).
+  5. 检查是否含任一明确排除指征 (硬证据 V):
+     {% for dx in exclusion_dx_list %}- {{dx}}
+     {% endfor %}
+     若有任一排除指征命中 + treatment 命中 → VIOLATION (强证据, 治疗与诊断硬冲突).
+  6. 若指征不命中 + 排除指征也不命中 + treatment 命中 → VIOLATION (无指征过度).
+     evidence: 引诊断完整列表 + 该治疗项目名 + 价格.
+  7. 文书简略 / 诊断为"待查"/"疑似"等中间状态 → INCONCLUSIVE.{% if inconclusive_addendum %}
+  {{inconclusive_addendum}}{% endif %}
+  {% if notes_evidence_kw_list %}
+  特殊条件: 用 search_notes 查关键执行证据: {% for kw in notes_evidence_kw_list %}"{{kw}}"{% if not loop.last %} / {% endif %}{% endfor %}; 缺失加分判 V.
+  {% endif %}{% if special_notes %}
+  特殊注意:
+  {% for note in special_notes %}- {{note}}
+  {% endfor %}{% endif %}{% if pilot_caveat %}
+  注意: {{pilot_caveat}}{% endif %}
+keywords_template: |
+  {% for kw in aux_keywords %}- {{kw}}
+  {% endfor %}
+tools_template: |
+  {% for t in aux_tools %}- {{t}}
+  {% endfor %}
+signal_template: |
+  {{aux_signal}}
+fields:
+  - name: treatment_desc
+    type: str
+    desc: "被审计的治疗/干预项目描述 (例: 麻醉深度电生理监测)"
+    required: true
+  - name: treatment_kw_list
+    type: list[str]
+    desc: "search_fees 检索关键词 (2-5 个)"
+    required: true
+  - name: catalog_basis
+    type: str
+    desc: "治疗适应症 + 说明书要求基础 (1-3 句)"
+    required: true
+  - name: indication_dx_list
+    type: list[str]
+    desc: "合理诊断指征列表 (任一命中即 CLEAN, 3-10 项)"
+    required: true
+  - name: exclusion_dx_list
+    type: list[str]
+    desc: "明确排除指征 (任一命中即硬证据 VIOLATION, 例: 非全麻患者收 BIS; 0+ 项)"
+    required: false
+    default: []
+  - name: notes_evidence_section
+    type: str
+    desc: "重点检查的文书 section (例: 麻醉记录 / 重症监护记录; 空字符串表不限)"
+    required: false
+    default: ""
+  - name: notes_evidence_kw_list
+    type: list[str]
+    desc: "文书中应有的执行证据关键词 (0+ 项)"
+    required: false
+    default: []
+  - name: inconclusive_addendum
+    type: str
+    desc: "额外 INCONCLUSIVE 条款"
+    required: false
+    default: ""
+  - name: special_notes
+    type: list[str]
+    desc: "特殊注意条款 (0+ 条)"
+    required: false
+    default: []
+  - name: pilot_caveat
+    type: str
+    desc: "pilot 适用性说明"
+    required: false
+    default: ""
+  - name: aux_keywords
+    type: list[str]
+    desc: "trigger_keywords 列表 (5-10 项)"
+    required: true
+  - name: aux_tools
+    type: list[str]
+    desc: "suggested_tools 列表 (推荐 [search_fees, note_diagnosis, search_notes])"
+    required: true
+  - name: aux_signal
+    type: str
+    desc: "expected_signal 整段文本"
+    required: true

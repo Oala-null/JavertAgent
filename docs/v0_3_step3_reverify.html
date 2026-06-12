@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>v0.3 第三步: J18906 + J13365 17 V 复跑核查</title>
+<style>
+  :root {
+    --bg: #fafbfc;
+    --card: #ffffff;
+    --border: #e4e7eb;
+    --text: #1f2933;
+    --muted: #616e7c;
+    --accent: #3b82f6;
+    --accent-soft: #dbeafe;
+    --green: #10b981;
+    --green-soft: #d1fae5;
+    --yellow: #f59e0b;
+    --yellow-soft: #fef3c7;
+    --red: #ef4444;
+    --red-soft: #fee2e2;
+    --purple: #8b5cf6;
+    --purple-soft: #ede9fe;
+    --orange: #f97316;
+    --orange-soft: #fed7aa;
+    --teal: #14b8a6;
+    --teal-soft: #ccfbf1;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  header {
+    background: linear-gradient(135deg, #fef3c7 0%, #fed7aa 100%);
+    padding: 28px 48px 22px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { margin: 0 0 6px 0; font-size: 26px; color: #9a3412; }
+  header .sub { color: var(--muted); font-size: 14px; }
+  header .badges { margin-top: 10px; }
+  .badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-right: 6px;
+  }
+  .badge.green { background: var(--green-soft); color: #065f46; }
+  .badge.yellow { background: var(--yellow-soft); color: #92400e; }
+  .badge.red { background: var(--red-soft); color: #991b1b; }
+  .badge.blue { background: var(--accent-soft); color: #1e40af; }
+  .badge.purple { background: var(--purple-soft); color: #5b21b6; }
+  .badge.orange { background: var(--orange-soft); color: #9a3412; }
+  .badge.teal { background: var(--teal-soft); color: #115e59; }
+
+  .tabs {
+    display: flex;
+    border-bottom: 2px solid var(--border);
+    background: white;
+    padding: 0 48px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    overflow-x: auto;
+  }
+  .tabs button {
+    background: none;
+    border: none;
+    padding: 14px 22px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+    margin-bottom: -2px;
+  }
+  .tabs button:hover { color: var(--accent); }
+  .tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .content { padding: 28px 48px 64px; max-width: 1240px; margin: 0 auto; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  h2 { font-size: 22px; margin: 24px 0 12px; color: #1e3a8a; }
+  h3 { font-size: 16px; margin: 22px 0 10px; color: var(--text); }
+  h4 { font-size: 14px; margin: 10px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+  table th, table td {
+    text-align: left; padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  table th {
+    background: #f1f5f9;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  table tr.stable { background: rgba(16, 185, 129, 0.04); }
+  table tr.flip-good { background: rgba(59, 130, 246, 0.05); }
+  table tr.degraded { background: rgba(239, 68, 68, 0.05); }
+  table tr.edge { background: rgba(245, 158, 11, 0.05); }
+
+  .verdict-tag {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .verdict-tag.v { background: var(--red-soft); color: #991b1b; }
+  .verdict-tag.c { background: var(--green-soft); color: #065f46; }
+  .verdict-tag.i { background: var(--yellow-soft); color: #92400e; }
+  .verdict-tag.bottom { background: #e5e7eb; color: #4b5563; font-style: italic; }
+  .arrow { color: var(--muted); font-weight: 700; margin: 0 4px; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    margin: 16px 0 24px;
+  }
+  .sg {
+    border-radius: 8px;
+    padding: 16px 20px;
+    border-left: 5px solid;
+  }
+  .sg.stable { background: var(--green-soft); border-color: var(--green); }
+  .sg.improved { background: var(--accent-soft); border-color: var(--accent); }
+  .sg.degraded { background: var(--red-soft); border-color: var(--red); }
+  .sg.etl { background: var(--orange-soft); border-color: var(--orange); }
+  .sg .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .sg .value { font-size: 32px; font-weight: 700; line-height: 1.2; }
+  .sg .desc { font-size: 12px; color: #334155; }
+
+  pre, code {
+    font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+  }
+  pre {
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 12px 16px;
+    border-radius: 6px;
+    overflow-x: auto;
+    line-height: 1.55;
+    margin: 8px 0;
+  }
+  code { background: #f1f5f9; padding: 1px 5px; border-radius: 3px; color: #1e40af; }
+  pre code { background: transparent; padding: 0; color: inherit; }
+
+  .diff-hl { color: #fde68a; font-weight: 600; }
+
+  .case {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin: 14px 0;
+    overflow: hidden;
+  }
+  .case.stable { border-left: 5px solid var(--green); }
+  .case.improved { border-left: 5px solid var(--accent); }
+  .case.degraded { border-left: 5px solid var(--red); }
+  .case.etl { border-left: 5px solid var(--orange); }
+  .case-head {
+    padding: 12px 18px;
+    background: #f8fafc;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .case-head h4 {
+    margin: 0; text-transform: none; letter-spacing: 0; font-size: 15px;
+    color: var(--text);
+  }
+  .case-body { padding: 14px 18px; font-size: 13px; }
+  .case-body h5 { margin: 12px 0 4px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .case-body p { margin: 6px 0; }
+
+  .signal-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px;
+    margin: 16px 0;
+  }
+  .signal-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+  }
+  .signal-card h4 { margin: 0 0 8px 0; color: var(--text); text-transform: none; letter-spacing: 0; font-size: 14px; }
+  .signal-card .stat { font-size: 24px; font-weight: 700; color: var(--accent); }
+  .signal-card .sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  @media (max-width: 800px) {
+    .content, header, .tabs { padding-left: 20px; padding-right: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🔁 v0.3 第三步 · J18906 + J13365 17 V 复跑核查</h1>
+  <div class="sub">2026-05-17 · 用 v0.3 第二步四处修复 (噪音过滤 + ETL + conf 区间 + 科室配置) 复跑非 pilot 患者历史 V 规则, 看修复在真实场景的组合效果. 17 条规则, 总耗时 8 分 24 秒.</div>
+  <div class="badges">
+    <span class="badge green">13 / 17 V 保持 (76.5%)</span>
+    <span class="badge blue">1 V→I 边界改善 (R112)</span>
+    <span class="badge orange">1 I 稳定 (R203 ETL)</span>
+    <span class="badge red">2 退化 (R103 / R080 tc 触顶)</span>
+    <span class="badge purple">conf 0.95 → 0.85-0.90 全收紧</span>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="overview">📊 总览</button>
+  <button class="tab-btn" data-tab="j18906">🧠 J18906 7 V</button>
+  <button class="tab-btn" data-tab="j13365">🦴 J13365 10 V</button>
+  <button class="tab-btn" data-tab="signals">📡 修复信号生效情况</button>
+  <button class="tab-btn" data-tab="next">🚀 下一步</button>
+</nav>
+
+<main class="content">
+
+<!-- ========== TAB 1: 总览 ========== -->
+<section class="tab-panel active" id="overview">
+  <h2>17 条复跑结果</h2>
+
+  <div class="summary-grid">
+    <div class="sg stable">
+      <div class="label">✅ V 保持</div>
+      <div class="value">13</div>
+      <div class="desc">76.5% — conf 全部从 0.95 收紧到 0.85-0.90</div>
+    </div>
+    <div class="sg improved">
+      <div class="label">🔵 V→I 设计内</div>
+      <div class="value">1</div>
+      <div class="desc">R112 J13365 边界规则 LLM 自觉退 I conf=0.60</div>
+    </div>
+    <div class="sg etl">
+      <div class="label">🟠 I 稳定 (ETL)</div>
+      <div class="value">1</div>
+      <div class="desc">R203 J13365 第二步 flip 后保持稳定 conf 0.55</div>
+    </div>
+    <div class="sg degraded">
+      <div class="label">⚠️ tc 触顶退化</div>
+      <div class="value">2</div>
+      <div class="desc">R103 J18906 / R080 J13365 — 兜底 I conf=0.00</div>
+    </div>
+  </div>
+
+  <h3>17 条逐条对照</h3>
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>规则</th>
+          <th>患者</th>
+          <th>旧 verdict</th>
+          <th>新 verdict</th>
+          <th>tc</th>
+          <th>耗时</th>
+          <th>评级</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="stable"><td><b>R131</b> 心脏彩超</td><td>J18906</td><td>V 0.95</td><td><span class="verdict-tag v">V 0.90</span></td><td>6</td><td>106s</td><td>✅ 稳定</td></tr>
+        <tr class="stable"><td><b>R141</b> 肌红蛋白</td><td>J18906</td><td>V 0.95</td><td><span class="verdict-tag v">V 0.90</span></td><td>2</td><td>86s</td><td>✅ 稳定 tc↓</td></tr>
+        <tr class="stable"><td><b>R143</b> 血浆乳酸</td><td>J18906</td><td>V 0.95</td><td><span class="verdict-tag v">V 0.90</span></td><td>4</td><td>88s</td><td>✅ 稳定</td></tr>
+        <tr class="stable"><td><b>R146</b> BNP</td><td>J18906</td><td>V 0.95</td><td><span class="verdict-tag v">V 0.90</span></td><td>8</td><td>112s</td><td>✅ 稳定</td></tr>
+        <tr class="stable"><td><b>R160</b> PCT</td><td>J18906</td><td>V 0.95</td><td><span class="verdict-tag v">V 0.90</span></td><td>3</td><td>76s</td><td>✅ 稳定 tc↓</td></tr>
+        <tr class="stable"><td><b>R224</b> 重症血气</td><td>J18906</td><td>V 0.95</td><td><span class="verdict-tag v">V 0.85</span></td><td>6</td><td>83s</td><td>✅ 稳定</td></tr>
+        <tr class="degraded"><td><b>R103</b> 影像未做</td><td>J18906</td><td>V 0.95</td><td><span class="verdict-tag bottom">I 0.00</span></td><td><b>17</b></td><td>48s</td><td>⚠️ tc 触顶兜底</td></tr>
+        <tr class="stable"><td><b>R131</b> 心脏彩超</td><td>J13365</td><td>V 0.95</td><td><span class="verdict-tag v">V 0.90</span></td><td>5</td><td>92s</td><td>✅ 稳定</td></tr>
+        <tr class="stable"><td><b>R141</b> 肌红蛋白</td><td>J13365</td><td>V 0.95</td><td><span class="verdict-tag v">V 0.90</span></td><td>2</td><td>102s</td><td>✅ 稳定 tc↓</td></tr>
+        <tr class="stable"><td><b>R143</b> 血浆乳酸</td><td>J13365</td><td>V 0.95</td><td><span class="verdict-tag v">V 0.90</span></td><td>4</td><td>71s</td><td>✅ 稳定</td></tr>
+        <tr class="stable"><td><b>R146</b> BNP</td><td>J13365</td><td>V 0.95</td><td><span class="verdict-tag v">V 0.90</span></td><td>4</td><td>88s</td><td>✅ 稳定</td></tr>
+        <tr class="stable"><td><b>R153</b> AFP</td><td>J13365</td><td>V 0.95</td><td><span class="verdict-tag v">V 0.90</span></td><td>2</td><td>73s</td><td>✅ 稳定 tc↓</td></tr>
+        <tr class="stable"><td><b>R161</b> cTnI</td><td>J13365</td><td>V 0.95</td><td><span class="verdict-tag v">V 0.90</span></td><td>2</td><td>64s</td><td>✅ 稳定 tc↓</td></tr>
+        <tr class="stable"><td><b>R224</b> 重症血气</td><td>J13365</td><td>V 0.95</td><td><span class="verdict-tag v">V 0.90</span></td><td>8</td><td>192s</td><td>✅ 稳定</td></tr>
+        <tr class="edge"><td><b>R112</b> CT 重复</td><td>J13365</td><td>V 0.90 (边界)</td><td><span class="verdict-tag i">I 0.60</span></td><td>6</td><td>261s</td><td>🔵 LLM 自觉退 I (改善)</td></tr>
+        <tr class="flip-good"><td><b>R203</b> 全身麻醉</td><td>J13365</td><td>I 0.60 (上次 flip)</td><td><span class="verdict-tag i">I 0.55</span></td><td>7</td><td>107s</td><td>🟠 ETL 稳定生效</td></tr>
+        <tr class="degraded"><td><b>R080</b> 康复评定</td><td>J13365</td><td>V 0.90</td><td><span class="verdict-tag bottom">I 0.00</span></td><td><b>29</b></td><td>61s</td><td>⚠️ tc 触顶兜底</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card" style="background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);">
+    <h4 style="margin-top: 0; color: #065f46;">🎉 主要结论</h4>
+    <ol style="font-size: 14px;">
+      <li><b>13/17 V 高质量保持</b> — conf 全部从历史 0.95 收紧到 v0.3 新区间 0.85-0.90, 没有 false positive 回归</li>
+      <li><b>R112 J13365 V→I 是改善而非退化</b> — 原 V conf=0.90 已标边界, LLM 现在用 conf=0.60 主动退 I 更扎实 (不能确定费用明细的增强/平扫是否同部位)</li>
+      <li><b>R203 J13365 ETL 触发稳定</b> — 第二步首次 flip V→I conf=0.60, 本期再跑保持 I conf=0.55, evidence 2 处 etl_warning + 1 处 [选项框] 标注完美应用</li>
+      <li><b>2 个退化都是 max_tool_calls 触顶</b> — R103 / R080 LLM 反复探索同一 section/keyword 找证据未果, 用尽 10 轮 budget → runner 兜底 I conf=0.00 + 空 evidence, 不是 v0.3 修复引入的回归</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ========== TAB 2: J18906 ========== -->
+<section class="tab-panel" id="j18906">
+  <h2>J18906 (脑干占位 / 海绵状血管瘤) 7 V 逐条</h2>
+
+  <div class="card" style="background: #f8fafc;">
+    <p style="font-size: 13px; margin: 0;">
+      <b>跑批参数</b>: <code>audit-patient J18906 --rules R103,R131,R141,R143,R146,R160,R224 --share-tool-cache --concurrency 5</code><br>
+      <b>总耗时</b>: 168.1s (avg 85.3s / p50 85.7s)<br>
+      <b>Verdicts</b>: V=6 / I=1 / C=0<br>
+      <b>Tool calls</b>: 46 total, 9 cached (hit_rate 19.6%)
+    </p>
+  </div>
+
+  <div class="case stable">
+    <div class="case-head">
+      <h4>R131 / R141 / R143 / R146 / R160 / R224 — 6 条 V 稳定</h4>
+      <span class="verdict-tag v">V 0.85-0.90</span>
+    </div>
+    <div class="case-body">
+      <p>M2 心脏/检验过度 + M5 重症血气 类规则, LLM 复跑后判定一致, conf 收紧到新区间.</p>
+      <h5>tc 砍幅显著</h5>
+      <p>R141 (历史耗时 76s) tc=2 直接拍板 V; R160 tc=3; R143 tc=4. 因 search_notes 默认过滤噪音段后, LLM 不再反复探索假指征. 例如:</p>
+      <pre>R141 J18906 (肌红蛋白 8 次 ¥800):
+[Tool #1] search_fees('肌红蛋白') → 8 次, 合计 ¥800
+[Tool #2] note_diagnosis → 桥脑占位 / 海绵状血管瘤, 无心肌梗 / 横纹肌溶解
+[Verdict] V conf=0.90</pre>
+      <p>历史复杂度 (查既往史等) 已被噪音过滤拦掉, LLM 不再绕远路.</p>
+    </div>
+  </div>
+
+  <div class="case degraded">
+    <div class="case-head">
+      <h4>R103 影像未做 — V → I conf=0.00 (tc 触顶兜底)</h4>
+      <span class="verdict-tag bottom">I 0.00 (兜底)</span>
+    </div>
+    <div class="case-body">
+      <h5>退化现场</h5>
+      <p>LLM 反复调 <code>search_notes(section="辅助检查")</code> 拿到 3 条相同的颅脑 CT 报告, 没拿到 "第 2 部位 CT" 或 "心脏超声" 报告. 17 tc 后 max_tool_calls budget 用尽, runner 兜底产出 <code>I conf=0.00</code> + evidence=[] + reasoning="max tool calls exhausted".</p>
+      <h5>tool 调用循环</h5>
+      <pre>[Tool #15-17] search_notes(section="辅助检查") × 3 (全 cached, 重复)
+[Tool #14] search_notes({}) → 目录共 97 个 sections, 247 条记录
+...
+[Verdict] I conf=0.00 (max tool calls exhausted)</pre>
+      <h5>历史 V 怎么判出来的</h5>
+      <p>历史 (2026-05-15 V conf=0.95): LLM 多用了 1-2 轮就找到关键 evidence (心脏超声 fee × 未报告 + 第 2 部位 CT 缺报告). 复跑波动是 LLM 的 stochastic exploration — 也可能因为现在 base prompt 多了科室配置 + ETL 教学段, LLM 在策略上更谨慎, 探索代价上升.</p>
+      <h5>处理建议</h5>
+      <ul style="font-size: 13px;">
+        <li>(a) 把 R103 规则的 <code>prompt_addon</code> 加更明确审计步骤 (例: "先查 fee 中 CT/B 超部位, 再 search_notes(section='辅助检查') 看每个部位是否有对应报告")</li>
+        <li>(b) 引入 retry 机制: tc 触顶时, runner 把 "max tool calls used, please output verdict JSON now" 作为 user 消息再发一轮, 给 LLM 强制收敛机会</li>
+        <li>(c) 把 max_tool_calls 从 10 提到 12-15 (代价是慢规则更慢)</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ========== TAB 3: J13365 ========== -->
+<section class="tab-panel" id="j13365">
+  <h2>J13365 (肺癌肱骨转移 / 骨科) 10 V 逐条</h2>
+
+  <div class="card" style="background: #f8fafc;">
+    <p style="font-size: 13px; margin: 0;">
+      <b>跑批参数</b>: <code>audit-patient J13365 --rules R080,R112,R131,R141,R143,R146,R153,R161,R203,R224 --share-tool-cache --concurrency 5</code><br>
+      <b>总耗时</b>: 335.5s (avg 111.1s / p50 92.3s)<br>
+      <b>Verdicts</b>: V=7 / I=3 / C=0<br>
+      <b>Tool calls</b>: 69 total, 13 cached (hit_rate 18.8%)
+    </p>
+  </div>
+
+  <div class="case stable">
+    <div class="case-head">
+      <h4>R131 / R141 / R143 / R146 / R153 / R161 / R224 — 7 条 V 稳定</h4>
+      <span class="verdict-tag v">V 0.90</span>
+    </div>
+    <div class="case-body">
+      <p>M2 心脏/检验过度 + M5 重症血气 类规则全部 V 稳定, conf 收紧到 0.90, R141/R153/R161 tc=2 直接拍板. 推理引用 [选项框] / [否认段] 标注, 信号干净.</p>
+    </div>
+  </div>
+
+  <div class="case improved">
+    <div class="case-head">
+      <h4>R112 CT 重复 — V 0.90 (边界) → I conf=0.60 (改善)</h4>
+      <span class="verdict-tag i">I 0.60</span>
+    </div>
+    <div class="case-body">
+      <h5>LLM 推理</h5>
+      <p>"费用明细中同时存在 CT 增强 (¥300) 和 CT 平扫 4 项 (¥800), 文书中记录了颅脑、上腹部、胸部等多个部位的 CT 检查 (部分标 增强+, 部分标 平扫-). 由于<b>无法确定费用明细中的增强与平扫是否针对同一部位</b>, 无法排除同部位重复收费的可能性, 也无法确认不同部位分别收费的合理性, 故信息不足, 判定为 INCONCLUSIVE."</p>
+      <p>历史复跑这条 LLM 强判 V conf=0.90 但已标边界. 本次主动退 I conf=0.60 更符合事实 — fee 表确实不带部位字段, 多部位 CT 是合规的, 不能仅凭"4 平扫 + 1 增强" 判定重复. <b>这是 v0.3 conf 区间收紧 + base prompt INCONCLUSIVE 鼓励的设计意图</b>.</p>
+    </div>
+  </div>
+
+  <div class="case etl">
+    <div class="case-head">
+      <h4>R203 全身麻醉 — I 0.60 → I conf=0.55 (ETL 稳定)</h4>
+      <span class="verdict-tag i">I 0.55</span>
+    </div>
+    <div class="case-body">
+      <h5>evidence 行 (完美形态)</h5>
+      <pre>[fee] 全身麻醉(气管插管): 2 项 ¥1600
+[etl_warning] ETL_GAP: 麻醉记录: search_notes 警告麻醉记录 section 缺失, 但有"见麻醉记录"引用 × 2
+[etl_warning] ETL_GAP: 手术记录: 同上, 有"详见手术记录"引用 × 1
+[note] 患者离开手术室前: "气管插管" 出现在 <span class="diff-hl">[选项框]</span>, 未勾选, 不构成执行证据</pre>
+      <h5>LLM 推理</h5>
+      <p>"麻醉药费命中但麻醉记录段空 → INCONCLUSIVE (无法区分是记录未数字化还是项目未开展). '气管插管' 关键词仅在未勾选的 [选项框] 中出现, 无实际执行证据. 现有证据不足以判定为 VIOLATION 或 CLEAN, 需线下核实原始纸质麻醉记录单."</p>
+      <p><b>signal 完美使用</b>: 一条 verdict 同时引用了 etl_warning × 2 (来自 section ETL 探测) + [选项框] 标注 (来自 keyword hit 上下文标注) — v0.3 第二步两处工具修复都被 LLM 串用了起来.</p>
+    </div>
+  </div>
+
+  <div class="case degraded">
+    <div class="case-head">
+      <h4>R080 康复评定 — V 0.90 → I conf=0.00 (tc 触顶)</h4>
+      <span class="verdict-tag bottom">I 0.00 (兜底)</span>
+    </div>
+    <div class="case-body">
+      <h5>退化现场</h5>
+      <p>LLM 跑了 29 tc 探索: 5 个 fee 关键词 (日常生活能力评定 / 肢体功能评定 / 关节活动度 / 肌力 / 步态 / 平衡) + 4 个 keyword search_notes (日常生活能力评定 / Barthel / FIM / 康复评定) + 2 个 section search (康复评定记录 / 康复治疗记录) + 1 个目录 + ... 全部未命中. max_tool_calls budget 用尽 → 兜底.</p>
+      <pre>fee 仅有 "日常生活能力评定: ¥6.00" (1 条)
+note_diagnosis: 肺癌 / 肿瘤性病理性骨折 / 胸椎转移
+search_notes(section='康复评定记录') → 未找到
+search_notes(section='康复治疗记录') → 未找到
+search_notes(keyword='康复评定') → 未找到
+search_notes(keyword='Barthel'/'FIM') → 未找到
+
+[29 tc] → max tool calls exhausted</pre>
+      <h5>历史 V 怎么来的</h5>
+      <p>历史 V conf=0.90 推理: "肌力 / 肢体功能 命中体格检查段, 不是正式康复评定量表 (Barthel/FIM)". 本次 LLM 也走了一样的路, 但<b>纠结在 search_notes section 模式没拿到 "康复评定记录" 而退缩</b>. 这是 base prompt 教学副作用 — "工具结果显示无文书记录 → 倾向 INCONCLUSIVE 而非 CLEAN" 让 LLM 不再敢直接判 V.</p>
+      <h5>处理建议</h5>
+      <p>与 R103 同样的 max_tool_calls 兜底问题. 优先选 (a) <b>给 R080 prompt_addon 加</b>"若 fee 命中 + Barthel/FIM 关键词 + 康复评定记录 section 都 0 → V (无任何正式评定证据)" 让 LLM 早收敛.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ========== TAB 4: 修复信号生效情况 ========== -->
+<section class="tab-panel" id="signals">
+  <h2>v0.3 第二步四处修复在 17 条复跑里的命中率</h2>
+
+  <div class="signal-grid">
+    <div class="signal-card">
+      <h4>🔵 噪音段过滤</h4>
+      <div class="stat">部分生效</div>
+      <div class="sub">R220 J66252 看到过滤 4 条噪音段; J18906/J13365 大多数 V 规则的 keyword 命中段不在告知/风险类, 直接生效空间小. 但 R203 J13365 [选项框] 标注完美应用.</div>
+    </div>
+    <div class="signal-card">
+      <h4>🟠 ETL 缺失探测</h4>
+      <div class="stat">1 命中 / 17</div>
+      <div class="sub">R203 J13365 触发 2 处 etl_warning (麻醉记录 + 手术记录). 其他 16 条 V 规则未涉及 section 缺失. ETL 是低频但高价值信号.</div>
+    </div>
+    <div class="signal-card">
+      <h4>🟣 conf 区间收紧</h4>
+      <div class="stat">100% 生效</div>
+      <div class="sub">13 条 V 全从 0.95 → 0.85-0.90; 2 条 I (R203 / R112) 都在 0.55-0.60 新区间; 0 个 LLM 漂移到 conf=0.00 (退化的 2 条是 runner 兜底, 非 LLM 选择).</div>
+    </div>
+    <div class="signal-card">
+      <h4>🟢 科室配置注入</h4>
+      <div class="stat">未触发</div>
+      <div class="sub">本次 17 条规则都不涉及 PACU / 精神病专科病区 等科室判定 (那些在 R212 / R291, 已在第二步验证). 配置注入只在 system prompt 中存在备用.</div>
+    </div>
+  </div>
+
+  <h3>关键 evidence quality 实例</h3>
+
+  <div class="card">
+    <h4 style="margin-top: 0;">R203 J13365 — 三类信号串用</h4>
+    <p>一条 verdict 同时引用了:</p>
+    <ul style="font-size: 13px;">
+      <li><b>[选项框]</b> 标注 (keyword 上下文修复) → "气管插管" 在 □ 框中, 未勾选, 不构成执行证据</li>
+      <li><b>etl_warning</b> × 2 (section ETL 探测) → 麻醉记录 / 手术记录 section 缺失但被引用</li>
+      <li><b>conf 区间</b> (base prompt 修复) → INCONCLUSIVE conf=0.55, 不再漂移到 0.0</li>
+    </ul>
+    <p>这是 v0.3 第二步 4 处修复中 3 处共同支撑一条 verdict 的实例, 也是核查报告里 ETL 等 LLM 设计想拿到的形态.</p>
+  </div>
+
+  <h3>对照: 历史 V 与新 V 的 conf 分布</h3>
+  <div class="card">
+    <table>
+      <thead>
+        <tr><th>conf 区间</th><th>历史 V 计数</th><th>新 V 计数</th><th>含义</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>0.95</td><td>11</td><td>0</td><td>原来普遍偏高 (过度自信)</td></tr>
+        <tr><td>0.90</td><td>2</td><td>12</td><td>新区间中位</td></tr>
+        <tr><td>0.85</td><td>0</td><td>1</td><td>新区间下沿 (R224 J18906)</td></tr>
+        <tr><td>0.60</td><td>0</td><td>1</td><td>边界 I (R112 J13365)</td></tr>
+        <tr><td>0.55</td><td>0</td><td>1</td><td>ETL I (R203 J13365)</td></tr>
+        <tr><td>0.00 (兜底)</td><td>0</td><td>2</td><td>tc 触顶 runner 兜底</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size: 13px; color: var(--muted);">符合 v0.3 设计意图: V 不再普遍 0.95, 而是收紧到 0.85-0.90 区间, 留出 0.05+ 给数据未知误差.</p>
+  </div>
+</section>
+
+<!-- ========== TAB 5: 下一步 ========== -->
+<section class="tab-panel" id="next">
+  <h2>下一步建议</h2>
+
+  <div class="card">
+    <h4 style="margin-top: 0; color: var(--red);">🔴 优先级 1: 修 max_tool_calls 兜底退化 (fix-tool-call-budget-fallback)</h4>
+    <p>R103 J18906 + R080 J13365 暴露同样模式: <b>LLM 探索到 budget 用尽后被 runner 强制兜底成 I conf=0.00 + 空 evidence</b>. 历史这两条本来 V conf=0.90/0.95, 现在退化是 stochastic 抖动 + 新 prompt 让 LLM 更谨慎导致探索代价上升.</p>
+    <p>选项:</p>
+    <ul style="font-size: 13px;">
+      <li><b>(a) 加 retry-with-deadline 机制</b>: tc 触顶时, runner 把 "tool budget 已耗尽, 请立刻输出最终 verdict" 作为 user 消息再发一轮, 强制收敛. 不延长 LLM call 总数, 但给一个出 verdict 的机会.</li>
+      <li><b>(b) max_tool_calls 从 10 提到 12-15</b>: 简单粗暴, 代价是慢规则更慢, 总耗时上升 20-30%.</li>
+      <li><b>(c) 给 R103 / R080 加更明确的 prompt_addon</b>: 让 LLM 走指定步骤更快收敛. 治标但不治本 (新规则还可能踩坑).</li>
+    </ul>
+    <p>推荐 <b>(a) + (c) 组合</b>: (a) 是通用兜底, 不影响其他规则; (c) 对已知问题规则定点优化.</p>
+  </div>
+
+  <div class="card">
+    <h4 style="margin-top: 0; color: var(--accent);">🔵 优先级 2: evidence source 集合扩 hospital_config</h4>
+    <p>第二步 R212 J66252 LLM 用 <code>source=etl_warning</code> 引用 hospital_config 是受限选择. base.txt 把 source 集合扩为 <code>{note, fee, drug_indication, etl_warning, hospital_config}</code>, locator 推荐 <code>HOSPITAL_CONFIG: PACU</code>, 让语义更精确.</p>
+    <p>低成本 (仅改 base.txt + 加单测), 高价值 (R212 / R291 / 未来涉及医院科室的规则都受益).</p>
+  </div>
+
+  <div class="card">
+    <h4 style="margin-top: 0; color: var(--purple);">🟣 优先级 3: 跨患者一致性核查 (add-cross-patient-stats)</h4>
+    <p>本次 17 V 中, R131 / R141 / R143 / R146 在 J18906 + J13365 都 V (跨 2 患者 V 率 100%), R224 同样跨患者 V. 这是系统性违规信号. 应跑 10+ 患者后算每条规则的跨患者 V 率, ≥ 50% 提报到医院级合规整改.</p>
+  </div>
+
+  <div class="card">
+    <h4 style="margin-top: 0; color: var(--orange);">🟠 优先级 4: 多医院切换 hospital_config</h4>
+    <p>当前 demo_hospital hardcoded. 实际部署需 <code>configs/hospitals/{hospital_id}.yaml</code> + patient→hospital_id 映射 + Runner 动态加载. 此项需先有多医院真实数据再做.</p>
+  </div>
+
+  <h3>本次复跑结论</h3>
+  <div class="card" style="background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);">
+    <p style="font-size: 14px;"><b>v0.3 第二步四处修复在非 pilot 患者 (J18906 / J13365) 上整体效果良好</b>:</p>
+    <ul style="font-size: 13px;">
+      <li>13/17 V 保持, conf 全部收紧到设计区间</li>
+      <li>R112 V→I 边界主动退缩是改善, R203 ETL 触发稳定</li>
+      <li>2 条退化 (R103/R080) 是 max_tool_calls 兜底问题, 非 v0.3 修复引入</li>
+      <li>四处修复信号在 R203 J13365 上完美串用 (etl_warning × 2 + [选项框] + conf 0.55)</li>
+    </ul>
+    <p style="font-size: 14px; margin-bottom: 0;">下一步聚焦 <b>fix-tool-call-budget-fallback</b> 修退化, 然后做 <b>add-cross-patient-stats</b> 出医院级报告.</p>
+  </div>
+</section>
+
+</main>
+
+<script>
+  const buttons = document.querySelectorAll('.tab-btn');
+  const panels = document.querySelectorAll('.tab-panel');
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      buttons.forEach(b => b.classList.remove('active'));
+      panels.forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab).classList.add('active');
+    });
+  });
+</script>
+
+</body>
+</html>

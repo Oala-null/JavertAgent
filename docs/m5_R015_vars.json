@@ -1,0 +1,46 @@
+{
+  "service_desc": "有创性血流动力学监测 (床旁)",
+  "service_kw_list": [
+    "有创性血流动力学监测",
+    "床旁血流动力学",
+    "Swan-Ganz",
+    "漂浮导管",
+    "中心静脉压监测"
+  ],
+  "catalog_basis": "按医保政策, 有创性血流动力学监测 (床旁) 适用于心源性休克 / 严重心衰 / 大型心血管手术等高危患者, 文书应明确记录导管置入 + 数值监测时间序列. 未实际开展但收取该费用 = 虚构服务.",
+  "execution_evidence_kw_list": [
+    "漂浮导管置入",
+    "中心静脉穿刺",
+    "CVP",
+    "PCWP",
+    "心输出量监测"
+  ],
+  "notes_section_hints": [
+    "重症监护记录",
+    "麻醉记录",
+    "手术记录"
+  ],
+  "supporting_dx_kw_list": [
+    "心源性休克",
+    "严重心衰",
+    "大型心血管手术",
+    "围术期高危心脏"
+  ],
+  "dept_check": "重症医学科",
+  "special_notes": [],
+  "pilot_caveat": "甲状腺手术患者一般无血流动力学监测指征, 若 fee 命中需特别关注.",
+  "aux_keywords": [
+    "有创性血流动力学监测",
+    "床旁血流动力学",
+    "Swan-Ganz",
+    "中心静脉压",
+    "PCWP",
+    "心输出量监测"
+  ],
+  "aux_tools": [
+    "search_fees",
+    "search_notes",
+    "note_diagnosis"
+  ],
+  "aux_signal": "典型违规: 患者未做心导管, 费用列'有创性血流动力学监测', 重症监护记录无对应数值.\n典型 CLEAN: 心源性休克患者床旁 Swan-Ganz 监测, 重症记录有 CVP/PCWP 数值时间序列.\n典型 INCONCLUSIVE: 心衰患者有指征但重症记录段空."
+}

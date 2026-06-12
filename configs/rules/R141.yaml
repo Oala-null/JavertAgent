@@ -1,0 +1,50 @@
+rule_id: R141
+domain: 临床检验
+violation_type: 过度检查
+question: 医院部分科室将肌红蛋白测定作为入院患者的常规检查，对大量无相关疾病指征的患者开展检验。
+example: 示例：肌红蛋白测定可以反应心肌、骨骼肌损伤和肾功能等疾病的进展情况，某医院将血清肌红蛋白测定打包进心肌酶谱，对无指征患者普遍开展检查并收费，属于过度检查。
+status: ready
+priority: P0
+prompt_addon: |+
+  本规则关注: 患者本次住院里, 是否被无指征收取了「肌红蛋白测定 (Mb, Myoglobin)」检查/检验.
+  按诊疗规范, 肌红蛋白仅用于心肌损伤 / 横纹肌溶解 / 大面积创伤 / 急性肾损伤伴肌损伤的评估, 不应作为普通入院常规检测.
+
+  审计步骤:
+  1. 用 note_diagnosis 列出该患者全部诊断 (入院/出院/术前/术后/病理).
+  2. 用 search_fees(category="检查类") 或 search_fees(keyword=...) 查该检查是否做过, 记录出现次数 count.
+     检索关键词: "肌红蛋白" / "Myoglobin" / "Mb"
+  3. 若 count == 0 → CLEAN (规则不适用, 患者根本没做该检查).
+  4. 检查 note_diagnosis 中是否含以下指征任一:
+     - 急性心肌梗死 / 心肌损伤 / 心梗
+     - 横纹肌溶解
+     - 严重创伤 / 挤压伤 / 烧伤
+     - 长时间制动
+     - 急性肾损伤伴肌损伤
+     - 心搏骤停后 / 心肺复苏后
+     - 胸痛 / 心电图缺血改变 (与 cTnI 同 panel)
+     
+  5. 若有任一指征命中 → CLEAN (有指征).
+  6. 【判「无指征」前 MUST 执行】用 scan_progress_indications(patient_id, symptom_kw_list=["胸闷", "气短", "喘", "憋", "胸痛", "下肢水肿", "发热", "咳嗽", "心悸"]) 扫病程/查房 section 族的症状指征.
+     - 若命中**阳性**症状 (无 [否认段]/[选项框] 标注) → CLEAN (病程记录有指征, 不只看诊断).
+     - 仅当诊断无指征 **且** 病程症状 0 阳性命中时, 才可继续向 VIOLATION 推进.
+  7. 若无任一诊断指征命中 且病程症状 0 阳性命中, 且 count >= 1 → VIOLATION,
+     evidence: 引诊断完整列表 + 该检查项目名 × count.
+  8. 诊断为「待查」「疑似」「排除」等中间状态 → INCONCLUSIVE.
+
+trigger_keywords:
+  - 肌红蛋白
+  - 肌红蛋白测定
+  - Mb
+  - Myoglobin
+  - 心肌损伤标志物
+  - 心肌梗死
+  - 横纹肌溶解
+suggested_tools:
+  - note_diagnosis
+  - search_fees
+expected_signal: |
+  典型违规: 甲状腺癌患者收 "肌红蛋白测定 ¥35", 但诊断列表无心肌/横纹肌/创伤相关.
+  典型 CLEAN: 急性胸痛伴心电图 ST 改变患者收 Mb 测定, 用于 ACS 早期评估.
+  典型 INCONCLUSIVE: 诊断仅 "心律失常待查" 等中间状态.
+notes: ''
+derived_from_template: M2

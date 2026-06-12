@@ -1,0 +1,52 @@
+rule_id: R221
+domain: 麻醉
+violation_type: 过度诊疗
+question: 对不符合脑电双频指数监测适用范围（如非全麻、非儿童重症监护病房镇静镇痛、深度睡眠等）的患者，收取脑电双频指数监测费用。
+example: 示例：《全国医疗服务项目技术规范（2023版）》脑电双频指数监测：指用于麻醉深度监测指导治疗以及心肺复苏后神经系统预测，儿童重症监护病房镇静镇痛、深度睡眠等。某医院向非全麻患者开展“脑电双频指数监测”并收取费用，属于过度诊疗。
+status: ready
+priority: P0
+prompt_addon: |
+  本规则关注: 患者本次住院里, 是否被无指征收取了「脑电双频指数监测 (BIS, Bispectral Index)」治疗/干预.
+  按医保政策, BIS 监测仅用于全身麻醉 / 儿童 ICU 镇静 / 深度镇静 / ICU 镇静等场景. 一般病房非镇静患者收 BIS 监测费属过度诊疗.
+
+  审计步骤:
+  1. 用 search_fees(keyword=...) 查 fee 是否命中. 检索关键词: "脑电双频指数" / "BIS" / "Bispectral Index" / "脑电双频"
+  2. 若 fee 无命中 → CLEAN (规则不适用, 患者未做该治疗).
+  3. 用 note_diagnosis 列出全部诊断, 用 search_notes(section="麻醉记录") 查文书证据.
+  4. 检查是否含任一指征:
+     - 全身麻醉
+     - 儿童 ICU 镇静
+     - 深度镇静
+     - ICU 镇静
+     - 睡眠监测
+     
+     若有任一指征 → CLEAN (有指征).
+  5. 检查是否含任一明确排除指征 (硬证据 V):
+     - 局麻手术 (单独)
+     - 一般病房 (非镇静)
+     
+     若有任一排除指征命中 + treatment 命中 → VIOLATION (强证据, 治疗与诊断硬冲突).
+  6. 若指征不命中 + 排除指征也不命中 + treatment 命中 → VIOLATION (无指征过度).
+     evidence: 引诊断完整列表 + 该治疗项目名 + 价格.
+  7. 文书简略 / 诊断为"待查"/"疑似"等中间状态 → INCONCLUSIVE.
+
+  特殊条件: 用 search_notes 查关键执行证据: "BIS 值" / "麻醉深度" / "镇静评分"; 缺失加分判 V.
+
+  注意: 甲状腺手术全麻 + BIS 是合理配置, 应 CLEAN.
+trigger_keywords:
+  - 脑电双频指数
+  - BIS
+  - Bispectral Index
+  - 脑电双频
+  - 全麻
+  - 儿童 ICU
+suggested_tools:
+  - search_fees
+  - note_diagnosis
+  - search_notes
+expected_signal: |
+  典型违规: 局麻手术患者收 BIS 监测.
+  典型 CLEAN: 全麻患者 BIS 监测确保麻醉深度.
+  典型 INCONCLUSIVE: 麻醉记录段缺失.
+notes: ''
+derived_from_template: M6

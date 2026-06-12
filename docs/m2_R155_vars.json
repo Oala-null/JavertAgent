@@ -1,0 +1,35 @@
+{
+  "exam_concept_desc": "细胞因子谱 (白介素 IL-6/IL-2, 干扰素, 肿瘤坏死因子 TNF)",
+  "catalog_basis": "按诊疗规范, 细胞因子谱用于风湿免疫病 / 严重感染 / 噬血细胞综合征评估, 不应作为普通入院常规打包.",
+  "exam_kw_primary_list": ["白介素", "IL-6", "干扰素测定", "肿瘤坏死因子", "TNF", "细胞因子"],
+  "indication_dx_list": [
+    "类风湿关节炎 / 红斑狼疮 / 强直性脊柱炎",
+    "自身免疫病 / 风湿病",
+    "严重感染 / 脓毒症 / 重症肺炎",
+    "噬血细胞综合征 / 巨噬细胞活化综合征",
+    "不明原因发热 / FUO",
+    "免疫缺陷病",
+    "重症 COVID / 细胞因子风暴"
+  ],
+  "min_count": 1,
+  "inconclusive_addendum": "",
+  "drug_check": false,
+  "drug_kw_list": [],
+  "drug_concept_desc": "",
+  "special_notes": [
+    "打包开展 (IL-6 + IL-2 + 干扰素 + TNF 四项一起) 是核心违规模式; 单项 IL-6 在脓毒症监测仍可 CLEAN."
+  ],
+  "pilot_caveat": "",
+  "aux_keywords": [
+    "白介素",
+    "IL-6",
+    "IL-2",
+    "干扰素测定",
+    "TNF",
+    "肿瘤坏死因子",
+    "细胞因子谱",
+    "风湿免疫"
+  ],
+  "aux_tools": ["note_diagnosis", "search_fees"],
+  "aux_signal": "典型违规: 患者诊断为甲状腺结节, 收 IL-6 + TNF + 干扰素打包.\n典型 CLEAN: 红斑狼疮活动期患者监测 IL-6, 或脓毒症患者 IL-6 评估炎症.\n典型 INCONCLUSIVE: 诊断 \"发热待查\" / \"风湿待排\" 等中间状态."
+}

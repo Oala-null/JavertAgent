@@ -1,0 +1,32 @@
+{
+  "exam_concept_desc": "肌红蛋白测定 (Mb, Myoglobin)",
+  "catalog_basis": "按诊疗规范, 肌红蛋白仅用于心肌损伤 / 横纹肌溶解 / 大面积创伤 / 急性肾损伤伴肌损伤的评估, 不应作为普通入院常规检测.",
+  "exam_kw_primary_list": ["肌红蛋白", "Myoglobin", "Mb"],
+  "indication_dx_list": [
+    "急性心肌梗死 / 心肌损伤 / 心梗",
+    "横纹肌溶解",
+    "严重创伤 / 挤压伤 / 烧伤",
+    "长时间制动",
+    "急性肾损伤伴肌损伤",
+    "心搏骤停后 / 心肺复苏后",
+    "胸痛 / 心电图缺血改变 (与 cTnI 同 panel)"
+  ],
+  "min_count": 1,
+  "inconclusive_addendum": "",
+  "drug_check": false,
+  "drug_kw_list": [],
+  "drug_concept_desc": "",
+  "special_notes": [],
+  "pilot_caveat": "",
+  "aux_keywords": [
+    "肌红蛋白",
+    "肌红蛋白测定",
+    "Mb",
+    "Myoglobin",
+    "心肌损伤标志物",
+    "心肌梗死",
+    "横纹肌溶解"
+  ],
+  "aux_tools": ["note_diagnosis", "search_fees"],
+  "aux_signal": "典型违规: 甲状腺癌患者收 \"肌红蛋白测定 ¥35\", 但诊断列表无心肌/横纹肌/创伤相关.\n典型 CLEAN: 急性胸痛伴心电图 ST 改变患者收 Mb 测定, 用于 ACS 早期评估.\n典型 INCONCLUSIVE: 诊断仅 \"心律失常待查\" 等中间状态."
+}

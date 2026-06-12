@@ -1,0 +1,29 @@
+rule_id: R103
+domain: 医学影像
+violation_type: 虚构医药服务项目
+question: 未开展相关诊疗项目，但收取对应诊疗费用。
+example: 示例：某医院未对患者开展超声、CT等检查项目，但收取对应检查费用。
+status: ready
+priority: P0
+prompt_addon: "\U0001F6A8 v1.5 INCONCLUSIVE 硬规则:\n- fee 命中 + search_examinations 拉到部分报告但条数 < fee 笔数 → **INCONCLUSIVE conf 0.50**\n- 不要因为 \"差额无证据\" 就 V — 走 I (wangxin 标准)\n\n本规则关注: 患者本次住院里, 费用中有「影像检查 (超声/CT/MRI 等)」, 但文书中没有对应的\n执行记录, 即 \"虚构 影像检查 (超声/CT/MRI 等) 项目骗取医保基金\".\n按医保政策, 影像检查应有对应影像报告 (影像号 + 报告日期 + 影像所见). 收费但无影像报告 = 虚构.\n\n审计步骤:\n1. 用 search_fees 查 fee 是否命中. 检索关键词: \"超声检查\" / \"CT 检查\" / \"MRI 检查\" / \"胸部 CT\" / \"腹部超声\"\n2. 若 fee 无命中 → CLEAN (规则不适用, 患者未被收取该费用).\n3. **v0.7 重要新增** 用 search_examinations 拉影像报告 (这是最权威的执行证据):\n   - 默认无参数列举该患者所有检查记录 (看 checkType / checkItemName 分布)\n   - 按 fee 命中类型分别筛: check_type=\"放射\"/\"超声\"/\"磁共振\"/\"心超\"/\"内镜\" 等\n   - 关注: checkItemName (项目名), checkDate / reportDate (日期), checkConclusion (结论)\n   若 fee 的 N 笔影像收费 都能在 search_examinations 找到对应项 → CLEAN.\n   若 fee 数 > 报告数 → 进入步骤 5 比对差额.\n4. 仅当 search_examinations 无命中或不完整时, 回退查 search_notes(section=\"辅助检查\"/\"影像报告\" 或 keyword=\"影像号\"/\"阅片\"/\"报告日期\").\n5. 比对 fee 项目笔数 vs examination + notes 报告数:\n   - 报告数 ≥\
+  \ fee 笔数 → CLEAN.\n   - 报告数 < fee 笔数, 且差额无合理理由 → VIOLATION,\n     evidence: 引 fee 项目名 × count + 价格 + search_examinations 返回的 N 条 (注: 真实有N条<count)\n     + 标记差额 (count - N) 笔无对应报告.\n   - search_examinations 完全无命中 + search_notes 也无 → ETL 完全缺失, INCONCLUSIVE conf 0.5 + etl_warning.\n\n特殊条件: 若 search_examinations 0 命中 且 search_notes 影像段也空 但 fee 有具体项目 → 强 VIOLATION 信号 (检查报告本应存在但完全无).\n\n特殊注意:\n- search_examinations 是 v0.7 关键新工具, 优先级高于 search_notes 影像段 (因为 case_notes 影像段往往是文本摘要, 而 sy_patient_examination 是结构化报告).\n- 若 fee 列具体影像项目 (例: 胸部增强 CT) 而 search_examinations 找到对应 checkType + checkPosition 但 checkConclusion 模糊, 仍属 CLEAN (报告存在即可).\n\n\U0001F4CC 专家共识触发器 (v0.7, wangxin I, jiweihui/zhoulihong V, 加权 8V/5I/0C):\n\nINCONCLUSIVE 触发器 (wangxin 优先):\n- search_fees 命中影像项目 N 次 + search_examinations 拉到的影像报告数 < N + 文书无明确报告号/阅片记录 → **INCONCLUSIVE conf 0.5 + etl_warning**\n  → wangxin: \"未见医嘱单, 未见检查报告单, 病程记录无相关描述\"\n\nV 触发器 (反例):\n- search_examinations 完全 0 命中 + search_notes 影像段也 0 + 仅有具体影像费 → 强 V 信号\n\n**优先用\
+  \ search_examinations 工具 — 比 search_notes 影像段更权威**.\n"
+trigger_keywords:
+- 超声检查
+- CT 检查
+- MRI 检查
+- 影像报告
+- 影像号
+- 阅片
+suggested_tools:
+- search_fees
+- search_notes
+expected_signal: '典型违规: 费用列''胸部 CT × 2'', 但文书辅助检查段只有 1 份 CT 报告.
+
+  典型 CLEAN: 每项影像费都有对应报告号 + 阅片记录.
+
+  典型 INCONCLUSIVE: 报告号缺失或描述模糊.
+
+  '
+notes: ''
+derived_from_template: M5

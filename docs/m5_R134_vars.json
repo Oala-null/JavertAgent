@@ -1,0 +1,40 @@
+{
+  "service_desc": "临床检验 (血常规 / 尿常规 / 生化常规)",
+  "service_kw_list": [
+    "血常规",
+    "尿常规",
+    "大便常规",
+    "肝肾功能",
+    "电解质"
+  ],
+  "catalog_basis": "按医保政策, 临床检验应有对应检验报告 (检验单号 + 报告日期 + 检测数值). 收费但无检验报告 = 虚构.",
+  "execution_evidence_kw_list": [
+    "检验报告",
+    "检验单号",
+    "报告日期",
+    "检测数值"
+  ],
+  "notes_section_hints": [
+    "辅助检查",
+    "检验报告"
+  ],
+  "supporting_dx_kw_list": [],
+  "dept_check": "",
+  "special_notes": [
+    "医院对所有患者一律收某项检验但部分患者实际无该样本 (如无尿患者收尿常规), 强支持 VIOLATION."
+  ],
+  "pilot_caveat": "",
+  "aux_keywords": [
+    "血常规",
+    "尿常规",
+    "大便常规",
+    "肝肾功能",
+    "电解质",
+    "检验报告"
+  ],
+  "aux_tools": [
+    "search_fees",
+    "search_notes"
+  ],
+  "aux_signal": "典型违规: 费用列'尿常规 × 3', 文书检验报告段只有 1 份尿常规.\n典型 CLEAN: 每项检验都有对应报告 + 数值.\n典型 INCONCLUSIVE: 报告日期缺失或检测数值模糊."
+}

@@ -1,0 +1,116 @@
+template_id: M3
+name: 串换项目 (含口腔)
+description: 诊断仅 trivial + fee 见大手术 (G 类口腔强信号)
+master_prompt: |
+  本规则关注: 患者实际诊断仅为微小口腔病变 (普通拔牙 / 牙龈炎 / 牙髓炎 / 美容修复需求 等),
+  但费用中出现「{{hijacked_surgery_desc}}」类医保大手术 / 治疗项目, 即"非医保支付的牙齿
+  美容/普通诊治套用医保大手术编码"的骗保模式.
+  {{catalog_basis}}
+
+  审计步骤:{% if dental_dept_check %}
+  1. 确认本次住院/门诊涉及口腔科: 用 search_notes 看 section 是否含"口腔" 或 search_fees
+     看 dept 字段是否口腔. 若无口腔科介入 → CLEAN (规则不适用).{% endif %}
+  2. 用 note_diagnosis 列出该患者全部诊断 (入院/出院/术前/术后/病理).
+  3. 检查是否含任一支持「{{hijacked_surgery_desc}}」的重大诊断:
+     {% for dx in supporting_dx_kw_list %}- {{dx}}
+     {% endfor %}
+     若有任一支持诊断 → CLEAN (手术有适应症).
+  4. 用 search_fees 查是否做了该大手术. 检索关键词: {% for kw in hijacked_surgery_kw_list %}"{{kw}}"{% if not loop.last %} / {% endif %}{% endfor %}
+  5. 若 fee 无命中 → CLEAN (规则不适用).
+  6. 若诊断**全部**属于以下 trivial 范围:
+     {% for dx in trivial_dx_kw_list %}- {{dx}}
+     {% endfor %}
+     且 fee 命中「{{hijacked_surgery_desc}}」 → VIOLATION,
+     evidence:
+     - 诊断完整列表 (证明全是微小诊断)
+     - 「{{hijacked_surgery_desc}}」项目名 + 价格
+     - 该次口腔诊治总费用
+  7. 诊断只有"牙体疾病"/"口腔疾病"等无细化项 → INCONCLUSIVE.{% if inconclusive_addendum %}
+  {{inconclusive_addendum}}{% endif %}{% if self_pay_bonus_list %}
+
+  加分项 (强支持 VIOLATION):
+  - 若 fee 同时列出{% for sp in self_pay_bonus_list %}"{{sp}}"{% if not loop.last %} / {% endif %}{% endfor %}等自费项目 → 说明医院承认本质是美容修复, 拿大手术做医保套帽.{% endif %}{% if total_amount_threshold > 0 %}
+  - 同次诊治 fee 总额 >{{total_amount_threshold}} 但诊断只见 trivial → 强支持 VIOLATION.{% endif %}{% if special_notes %}
+
+  特殊注意:
+  {% for note in special_notes %}- {{note}}
+  {% endfor %}{% endif %}{% if pilot_caveat %}
+
+  注意: {{pilot_caveat}}{% endif %}
+keywords_template: |
+  {% for kw in aux_keywords %}- {{kw}}
+  {% endfor %}
+tools_template: |
+  {% for t in aux_tools %}- {{t}}
+  {% endfor %}
+signal_template: |
+  {{aux_signal}}
+fields:
+  - name: hijacked_surgery_desc
+    type: str
+    desc: "被冒充的医保大手术/治疗项目描述 (例: 口腔颌面软组织清创术)"
+    required: true
+  - name: hijacked_surgery_kw_list
+    type: list[str]
+    desc: "search_fees 检索关键词 (主词 + 简称变体, 2-5 个)"
+    required: true
+  - name: catalog_basis
+    type: str
+    desc: "适应症与冒充背景 (1-3 句; 例: 按医保政策, '口腔颌面软组织清创术' 适用于颌面外伤 / 软组织撕裂 / 火器伤 / 烫伤后组织清创等具体损伤场景, 而单纯拔牙后的常规创面处理已含在拔牙术内涵里.)"
+    required: true
+  - name: trivial_dx_kw_list
+    type: list[str]
+    desc: "实际诊断列表 (G-a 9 项: 龋齿/牙列拥挤/牙体缺损/牙根残留/美容修复需求等; G-b 7 项: 普通拔牙/阻生牙/牙龈炎/牙髓炎等). 用于判定 '全部 trivial'."
+    required: true
+  - name: supporting_dx_kw_list
+    type: list[str]
+    desc: "支持大手术的诊断 (任一命中即 CLEAN, 5-10 项, 含子类通用 + 该规则专属)"
+    required: true
+  - name: dental_dept_check
+    type: bool
+    desc: "是否要求口腔科 (默认 true; 设 false 时跳过口腔科前置确认)"
+    required: false
+    default: true
+  - name: self_pay_bonus_list
+    type: list[str]
+    desc: "自费项目并存加分关键词 (种植牙/烤瓷冠/正畸等; 命中加分判 V, 空列表表示不启用)"
+    required: false
+    default: []
+  - name: total_amount_threshold
+    type: int
+    desc: "同次诊治 fee 总额过高阈值 (>=阈值加分判 V; 0 表示不启用)"
+    required: false
+    default: 0
+  - name: inconclusive_addendum
+    type: str
+    desc: "额外 INCONCLUSIVE 条款"
+    required: false
+    default: ""
+  - name: special_notes
+    type: list[str]
+    desc: "特殊注意条款 (0+ 条)"
+    required: false
+    default: []
+  - name: pilot_caveat
+    type: str
+    desc: "pilot 适用性说明 (例: '甲状腺患者无口腔诊疗, 命中率近 0')"
+    required: false
+    default: ""
+  - name: subclass
+    type: enum
+    options: ["G-a", "G-b"]
+    desc: "子类标识 (元数据, 不参与 prompt 渲染; G-a 美容修复套医保大手术, G-b 普通诊治虚增手术)"
+    required: false
+    default: "G-a"
+  - name: aux_keywords
+    type: list[str]
+    desc: "trigger_keywords 列表 (5-12 项)"
+    required: true
+  - name: aux_tools
+    type: list[str]
+    desc: "suggested_tools 列表 (推荐 [note_diagnosis, search_fees, search_notes])"
+    required: true
+  - name: aux_signal
+    type: str
+    desc: "expected_signal 整段文本 (典型违规 / 典型 CLEAN / 典型 INCONCLUSIVE 描述)"
+    required: true

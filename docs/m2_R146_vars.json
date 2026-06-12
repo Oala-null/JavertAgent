@@ -1,0 +1,33 @@
+{
+  "exam_concept_desc": "BNP / NT-proBNP (B 型钠尿肽 / N 端 B 型钠尿肽前体)",
+  "catalog_basis": "按诊疗规范, BNP / NT-proBNP 用于心衰诊断 / 分级 / 监测疗效, 不应作为普通入院常规.",
+  "exam_kw_primary_list": ["BNP", "NT-proBNP", "B 型钠尿肽", "B 型尿钠肽"],
+  "indication_dx_list": [
+    "心力衰竭 / 心衰 / 心功能不全",
+    "急性失代偿性心衰",
+    "肺水肿",
+    "急性冠脉综合征 / ACS",
+    "心肌病 / 扩张型心肌病 / 肥厚型心肌病",
+    "呼吸困难待查 / 胸闷待查",
+    "肾衰竭伴心衰",
+    "瓣膜性心脏病"
+  ],
+  "min_count": 1,
+  "inconclusive_addendum": "",
+  "drug_check": false,
+  "drug_kw_list": [],
+  "drug_concept_desc": "",
+  "special_notes": [],
+  "pilot_caveat": "",
+  "aux_keywords": [
+    "BNP",
+    "NT-proBNP",
+    "B 型钠尿肽",
+    "N 端 B 型钠尿肽前体",
+    "心衰",
+    "心功能不全",
+    "心衰标志物"
+  ],
+  "aux_tools": ["note_diagnosis", "search_fees"],
+  "aux_signal": "典型违规: 患者诊断只有 \"甲状腺结节\", 收 NT-proBNP × 2 次.\n典型 CLEAN: 心衰患者多次 BNP 监测疗效.\n典型 INCONCLUSIVE: 诊断 \"胸闷待查\" / \"呼吸困难待查\" 等中间状态."
+}

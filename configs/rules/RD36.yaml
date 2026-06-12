@@ -1,0 +1,51 @@
+rule_id: RD36
+domain: 药品
+violation_type: 用药安全/禁忌
+question: 申请医保支付的「瑞舒伐他汀钙片」，用于存在该药说明书疾病禁忌的患者 (用药安全)。
+example: ''
+status: ready
+priority: P1
+prompt_addon: |+
+  本规则关注: 瑞舒伐他汀钙片 (禁忌症) 是否存在超出适应症 / 医保限定支付范围的用药.
+  本规则聚焦单一药品「瑞舒伐他汀钙片」.
+
+  ⚠️ on-label 误报闸 (本规则成败关键, 必须遵守):
+  命中知识库**不代表违规**. drug_audit_lookup 只做「该药在监管知识库」的确定性字典命中;
+  是否违规**取决于患者诊断是否落在依据范围内**:
+  - 患者诊断**命中**说明书疾病禁忌 → VIOLATION (反向逻辑, 属用药安全); 诊断不在禁忌内 → CLEAN.
+
+
+  诊断源 (重要): **优先采用 drug_audit_lookup 返回的「患者病案首页诊断 (shi_zd ground truth)」** (含主诊);
+  若该工具未返回病案首页诊断, 再用 note_diagnosis 取文书诊断兜底.
+
+  审计步骤:
+  1. drug_audit_lookup(patient_id, rule_type="禁忌症") 取该患者命中本类型的药品 + 各自依据原文 + 病案首页诊断.
+     重点确认「瑞舒伐他汀钙片」是否在命中列表; 若不在 → 患者没用该药 → CLEAN.
+  2. 若命中列表为空 → CLEAN (患者无该类型命中药, 规则不适用, 不必再调其他工具).
+  3. 逐条命中药做「诊断 × 依据」比对:
+       - 患者诊断是否符合该药「疾病禁忌」原文? 符合 → VIOLATION (用药安全/禁忌); 不符合 → CLEAN.
+  4. **同名异药 / 剂型复核** (防 stem 误命中): 看 drug_audit_lookup 回传的「原始 fee 名」.
+     若其剂型 / 给药途径与依据所指药品明显不同 (例: 依据写"口服肠溶胶囊限 IgA 肾病", fee 却是"吸入用混悬液"),
+     极可能是同名异药被 stem 匹配误纳 → 判 INCONCLUSIVE, **不判 VIOLATION**.
+  5. 诊断为「待查 / 疑似 / 排除」中间状态, 或病案首页 + 文书均无相关诊断 → INCONCLUSIVE.
+
+  ⏱ 收敛: drug_audit_lookup + note_diagnosis (或工具带出的病案首页诊断) 两步通常即可判定 —— 诊断与依据明确相关 → CLEAN, 明确无关 → V. 仅当诊断真模糊时再补 1-2 次 search_notes; **不要为"找不到逐字证据"反复检索**, 临床相关性已足够裁决.
+
+  verdict 输出:
+  - VIOLATION: evidence **聚焦最明确的 1-3 条违规药** (不罗列全部命中药), 每条三者对照 —— (a) 命中药通用名 + 原始 fee 名 (b) 相关诊断 (c) 该药依据原文,
+    说明「诊断不在依据内」/「诊断命中禁忌」; 其余违规药可在 reasoning 一句话概述.
+  - CLEAN: evidence 引用支持性诊断 (诊断落在依据内).
+  - INCONCLUSIVE: 诊断缺失 / 中间状态 / 剂型存疑.
+
+trigger_keywords:
+  - 瑞舒伐他汀钙片
+  - 瑞舒伐他汀钙
+suggested_tools:
+  - drug_audit_lookup
+  - note_diagnosis
+expected_signal: |+
+  典型违规: 患者诊断命中该药说明书疾病禁忌 (如哮喘患者用乙酰半胱氨酸). 典型 CLEAN: 诊断无禁忌项. 典型 INCONCLUSIVE: 诊断缺失.
+
+notes: 精选药品规则 (M8 禁忌症); 通用名「瑞舒伐他汀钙片」, router 触发词 ['瑞舒伐他汀钙片', '瑞舒伐他汀钙'].
+derived_from_template: M8
+drug_rule_type: 禁忌症

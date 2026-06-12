@@ -1,0 +1,259 @@
+# ============================================================
+# Javert 国标↔语义别名种子 (field_alias)
+# ============================================================
+# add-visual-schema-onboarding (设计 D8): 上传列名 fuzzy 命中 → /onboarding 自动预填.
+# 由 scripts/build_field_alias.py 反推生成 (_SEED + column_mapping.yaml), 改完重跑.
+# 结构: spoke → field_key → [别名...] (左侧真映射别名优先).
+# ============================================================
+diagnoses:
+  diag_code:
+  - diag_code
+  - inhosp_diag_code
+  - 诊断编码
+  - ICD编码
+  - 疾病诊断代码
+  diag_name:
+  - diag_name
+  - inhosp_diag_name
+  - 诊断名称
+  - 出院诊断
+  - ICD名称
+  - 疾病诊断名称
+  main_flag:
+  - maindiag_flag
+  - 主诊断标志
+  - 是否主诊断
+  patient_id:
+  - Patient_ID
+  - hsp_account_no
+  - ba_id
+  - 病案号
+  - 住院号
+examinations:
+  check_date:
+  - checkDate
+  - 检查日期
+  check_type:
+  - checkType
+  - 检查类型
+  - 检查大类
+  conclusion:
+  - checkConclusion
+  - 检查结论
+  - 诊断意见
+  department:
+  - department
+  - 检查科室
+  - 科室
+  describe:
+  - checkDescribe
+  - 检查所见
+  - 影像所见
+  item_name:
+  - checkItemName
+  - 检查项目
+  - 检查项名
+  patient_id:
+  - zyh
+  - 住院号
+  - 病案号
+  position:
+  - checkPosition
+  - 检查部位
+  report_date:
+  - reportDate
+  - 报告日期
+  - 报告时间
+fees:
+  amount:
+  - det_item_fee_sumamt
+  - 金额
+  - 总金额
+  - 明细项目费用总额
+  - 费用金额
+  - 金额（元）
+  category:
+  - med_chrgitm_type
+  - medins_chrgitm_type
+  - 费用类别
+  - 收费类别
+  - 医保收费项目类别
+  date:
+  - fee_ocur_time
+  - 收费日期
+  - 费用发生时间
+  - 记账时间
+  - 开单时间
+  dept_billing:
+  - bilg_dept_name
+  - 计费科室
+  - 执行科室
+  dept_order:
+  - acord_dept_name
+  - 开单科室
+  - 申请科室
+  doctor_billing:
+  - bilg_dr_name
+  - 计费医生
+  - 执行医生
+  doctor_order:
+  - orders_dr_name
+  - 开单医生
+  - 申请医生
+  item_code:
+  - medins_list_codg
+  - med_list_codg
+  - 项目编码
+  - 医保编码
+  - 院内编码
+  item_name:
+  - medins_list_name
+  - 项目名称
+  - 收费项目
+  - 收费项目名称
+  - 药品名称
+  - 明细项目名称
+  patient_id:
+  - Patient_ID
+  - hsp_account_no
+  - bah
+  - 患者ID
+  - 住院号
+  - 就诊流水号
+  - mdtrt_id
+  product_name:
+  - prodname
+  - 药品通用名
+  - 通用名
+  - 商品名
+  quantity:
+  - cnt
+  - 数量
+  - 数量（次）
+  spec:
+  - spec
+  - 规格
+  - 药品规格
+  - 耗材型号
+  unit_price:
+  - pric
+  - 单价
+  - 单价（元）
+labs:
+  department:
+  - department
+  - 送检科室
+  - 科室
+  inspection:
+  - inspectionName
+  - 检验类别
+  - 检验大类
+  item_code:
+  - rpt_itemcode
+  - 检验项代码
+  - 英文缩写
+  item_name:
+  - rpt_itemname
+  - 检验项目
+  - 检验项名
+  - 项目名称
+  patient_id:
+  - zyh
+  - 住院号
+  - 病案号
+  report_dt:
+  - report_dt
+  - 报告时间
+  - 报告日期
+  result:
+  - result
+  - 检验结果
+  - 结果值
+  result_flag:
+  - result_flag
+  - 异常标志
+  - 结果标志
+  result_ref:
+  - result_ref
+  - 参考范围
+  - 参考值
+  result_unit:
+  - result_unit
+  - 单位
+  specimen:
+  - specimen
+  - 样本
+  - 标本
+notes:
+  content:
+  - replace
+  - 内容
+  - 正文
+  - 文书内容
+  - 记录内容
+  doc_name:
+  - doc_name
+  - 文书标题
+  - 记录标题
+  patient_id:
+  - Patient_ID
+  - medcasno
+  - source_inpat_no
+  - inpat_id
+  - 住院号
+  - 病案号
+  - psn_no
+  section:
+  - record_name
+  - 文书名称
+  - 文书类型
+  - 记录名称
+  - 段落名称
+  time:
+  - record_date
+  - 文书时间
+  - 记录时间
+  - 书写时间
+surgeries:
+  anesthesia:
+  - anst_way
+  - anst_mtd_name
+  - 麻醉方式
+  - 麻醉方法
+  anesthesiologist:
+  - anst_dr_name
+  - 麻醉医师
+  level:
+  - oprn_lv_code
+  - oprn_lv_name
+  - 手术级别
+  main_flag:
+  - main_oprn_flag
+  - 主手术标志
+  - 是否主手术
+  patient_id:
+  - Patient_ID
+  - hsp_account_no
+  - ba_id
+  - 病案号
+  - 住院号
+  surgeon:
+  - oper_dr_name
+  - 手术医师
+  - 术者
+  surgery_code:
+  - opr_code
+  - oprn_oprt_code
+  - 手术编码
+  - 手术及操作代码
+  - ICD9编码
+  surgery_date:
+  - oprn_oprt_endtime
+  - oprn_oprt_date
+  - 手术日期
+  - 手术结束时间
+  surgery_name:
+  - opr_name
+  - oprn_oprt_name
+  - 手术名称
+  - 手术及操作名称

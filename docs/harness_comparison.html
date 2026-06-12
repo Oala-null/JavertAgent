@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>Agent Harness 架构对比 — Javert vs Hermes</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#161922; --panel2:#1d2230; --line:#2a3142;
+    --text:#e6e8ef; --muted:#9aa3b2; --accent:#5ad1c8; --accent2:#f6c177;
+    --javert:#7aa2f7; --hermes:#bb9af7;
+    --good:#7bd88f; --warn:#f7768e;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;line-height:1.55}
+  header{padding:28px 36px 12px 36px;border-bottom:1px solid var(--line)}
+  header h1{margin:0;font-size:22px;letter-spacing:.5px}
+  header p{margin:6px 0 0 0;color:var(--muted);font-size:13px}
+  .tabs{display:flex;gap:0;padding:0 36px;background:var(--panel);
+    border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
+  .tab{padding:14px 22px;cursor:pointer;color:var(--muted);
+    border-bottom:2px solid transparent;font-size:14px;font-weight:500;
+    transition:all .15s}
+  .tab:hover{color:var(--text)}
+  .tab.active{color:var(--text);border-bottom-color:var(--accent)}
+  .tab .badge{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:10px;
+    background:var(--panel2);color:var(--muted);font-size:11px;font-weight:400}
+  .tab.active .badge{background:var(--accent);color:#0f1115}
+  main{padding:28px 36px 64px 36px;max-width:1280px;margin:0 auto}
+  .pane{display:none}
+  .pane.active{display:block;animation:fade .25s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  h2{margin:0 0 12px 0;font-size:18px}
+  h3{margin:24px 0 10px 0;font-size:15px;color:var(--accent)}
+  .lede{color:var(--muted);font-size:13px;margin-bottom:18px;max-width:880px}
+
+  /* 架构图 */
+  .arch{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:22px;margin:14px 0 22px 0;overflow-x:auto}
+  .arch svg{display:block;max-width:100%;height:auto}
+
+  /* 信息卡片 */
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin:14px 0}
+  .grid.three{grid-template-columns:repeat(3,1fr)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    padding:14px 16px}
+  .card h4{margin:0 0 8px 0;font-size:13px;color:var(--accent2);
+    text-transform:uppercase;letter-spacing:.6px}
+  .card p,.card li{font-size:13px;color:var(--text)}
+  .card ul{margin:6px 0 0 0;padding-left:18px}
+
+  code,kbd{font-family:"SF Mono",Consolas,monospace;font-size:12.5px;
+    background:var(--panel2);padding:1px 6px;border-radius:4px;color:#c0caf5}
+  pre{background:var(--panel2);border:1px solid var(--line);border-radius:6px;
+    padding:12px 14px;overflow-x:auto;font-size:12.5px;line-height:1.5;
+    font-family:"SF Mono",Consolas,monospace;color:#c0caf5}
+
+  table{width:100%;border-collapse:collapse;margin:12px 0 18px 0;font-size:13px}
+  th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);
+    vertical-align:top}
+  th{background:var(--panel2);color:var(--accent);font-weight:600}
+  tr:hover td{background:rgba(255,255,255,.02)}
+
+  /* 对比表第三 tab */
+  .diff th:nth-child(2){color:var(--javert)}
+  .diff th:nth-child(3){color:var(--hermes)}
+  .diff td:nth-child(1){font-weight:600;color:var(--accent2)}
+
+  .pill{display:inline-block;padding:2px 9px;border-radius:11px;font-size:11px;
+    background:var(--panel2);color:var(--muted);margin-right:4px}
+  .pill.j{background:rgba(122,162,247,.15);color:var(--javert)}
+  .pill.h{background:rgba(187,154,247,.15);color:var(--hermes)}
+  .pill.good{background:rgba(123,216,143,.15);color:var(--good)}
+  .pill.warn{background:rgba(247,118,142,.15);color:var(--warn)}
+
+  .callout{background:linear-gradient(180deg,rgba(187,154,247,.08),transparent);
+    border-left:3px solid var(--hermes);padding:12px 16px;border-radius:0 6px 6px 0;
+    margin:14px 0;font-size:13.5px}
+  .callout.j{background:linear-gradient(180deg,rgba(122,162,247,.08),transparent);
+    border-left-color:var(--javert)}
+  .callout strong{color:var(--accent)}
+
+  /* svg 内部样式 */
+  .svg-box{fill:var(--panel2);stroke:var(--line);stroke-width:1.2}
+  .svg-box.j{stroke:var(--javert)}
+  .svg-box.h{stroke:var(--hermes)}
+  .svg-box.accent{stroke:var(--accent);fill:rgba(90,209,200,.06)}
+  .svg-label{fill:var(--text);font:600 12px -apple-system,sans-serif}
+  .svg-sub{fill:var(--muted);font:11px -apple-system,sans-serif}
+  .svg-arrow{stroke:var(--muted);stroke-width:1.4;fill:none;marker-end:url(#arrow)}
+  .svg-arrow.feedback{stroke:var(--accent2);stroke-dasharray:5 4}
+  .svg-title{fill:var(--accent);font:600 13px -apple-system,sans-serif}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Agent Harness 架构对比</h1>
+  <p>Javert (本项目当前实现) vs Hermes Agent (NousResearch) — 重点关注 <em>用户交互驱动的自我升级</em> 部分</p>
+</header>
+
+<div class="tabs">
+  <div class="tab active" data-pane="javert">Javert 当前架构 <span class="badge">现状</span></div>
+  <div class="tab" data-pane="hermes">Hermes Harness 架构 <span class="badge">目标参考</span></div>
+  <div class="tab" data-pane="diff">两者对比 + 迁移建议 <span class="badge">差异</span></div>
+</div>
+
+<main>
+
+<!-- ============ JAVERT PANE ============ -->
+<section class="pane active" id="javert">
+  <h2>Javert: 单次 (rule × patient) 的封闭审计回合</h2>
+  <p class="lede">Javert 当前 agent 模式是<strong>无状态、人工驱动迭代</strong>的: 每次 audit 都是一个独立的 LLM 回合, 跑完即结束. 规则(yaml) 是知识载体, 但<strong>由人手工编辑</strong> — agent 自己不会修改 yaml 也不会沉淀任何跨次记忆.</p>
+
+  <div class="arch">
+    <svg viewBox="0 0 1080 540" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#9aa3b2"/>
+        </marker>
+      </defs>
+
+      <text x="540" y="28" text-anchor="middle" class="svg-title">Javert Agent Loop (per rule, per patient)</text>
+
+      <!-- 左列: 输入 -->
+      <rect x="30" y="60" width="200" height="60" rx="6" class="svg-box j"/>
+      <text x="130" y="85" text-anchor="middle" class="svg-label">configs/rules/Rxxx.yaml</text>
+      <text x="130" y="103" text-anchor="middle" class="svg-sub">人工编辑的规则文件</text>
+
+      <rect x="30" y="140" width="200" height="50" rx="6" class="svg-box j"/>
+      <text x="130" y="163" text-anchor="middle" class="svg-label">prompts/base.txt</text>
+      <text x="130" y="180" text-anchor="middle" class="svg-sub">基础 system prompt</text>
+
+      <rect x="30" y="210" width="200" height="50" rx="6" class="svg-box j"/>
+      <text x="130" y="233" text-anchor="middle" class="svg-label">patient_id (CLI)</text>
+      <text x="130" y="250" text-anchor="middle" class="svg-sub">用户指定的住院号</text>
+
+      <!-- 中间: assembler -->
+      <rect x="290" y="120" width="180" height="80" rx="8" class="svg-box accent"/>
+      <text x="380" y="150" text-anchor="middle" class="svg-label">prompt_assembler</text>
+      <text x="380" y="170" text-anchor="middle" class="svg-sub">拼 system + user</text>
+      <text x="380" y="187" text-anchor="middle" class="svg-sub">注入工具描述</text>
+
+      <!-- Runner -->
+      <rect x="530" y="80" width="240" height="200" rx="10" class="svg-box accent"/>
+      <text x="650" y="110" text-anchor="middle" class="svg-title">Runner (audit/runner.py)</text>
+
+      <rect x="555" y="130" width="190" height="32" rx="4" class="svg-box"/>
+      <text x="650" y="151" text-anchor="middle" class="svg-sub">LLM chat (Qwen3.5 sglang)</text>
+
+      <rect x="555" y="172" width="190" height="32" rx="4" class="svg-box"/>
+      <text x="650" y="193" text-anchor="middle" class="svg-sub">parse &lt;tool_call&gt; 文本</text>
+
+      <rect x="555" y="214" width="190" height="32" rx="4" class="svg-box"/>
+      <text x="650" y="235" text-anchor="middle" class="svg-sub">parse fenced JSON verdict</text>
+
+      <text x="650" y="270" text-anchor="middle" class="svg-sub" style="fill:var(--warn)">max_tool_calls = N · 1 repair</text>
+
+      <!-- 右侧: 工具与数据 -->
+      <rect x="830" y="80" width="220" height="100" rx="8" class="svg-box j"/>
+      <text x="940" y="108" text-anchor="middle" class="svg-label">ToolExecutor</text>
+      <text x="940" y="128" text-anchor="middle" class="svg-sub">search_fees / search_notes</text>
+      <text x="940" y="145" text-anchor="middle" class="svg-sub">note_diagnosis / drug_indication</text>
+      <text x="940" y="166" text-anchor="middle" class="svg-sub" style="fill:var(--accent2)">_cache: per-audit, in-memory</text>
+
+      <rect x="830" y="195" width="220" height="60" rx="8" class="svg-box"/>
+      <text x="940" y="220" text-anchor="middle" class="svg-label">DataLoader (csv)</text>
+      <text x="940" y="240" text-anchor="middle" class="svg-sub">data/case_notes.csv / shi_fee.csv</text>
+
+      <!-- 输出 -->
+      <rect x="530" y="320" width="240" height="60" rx="8" class="svg-box accent"/>
+      <text x="650" y="345" text-anchor="middle" class="svg-label">AuditResult (一次性)</text>
+      <text x="650" y="364" text-anchor="middle" class="svg-sub">verdict / evidence / tool_calls</text>
+
+      <rect x="830" y="320" width="220" height="60" rx="8" class="svg-box"/>
+      <text x="940" y="345" text-anchor="middle" class="svg-label">SqliteStore</text>
+      <text x="940" y="364" text-anchor="middle" class="svg-sub">audit_runs 表 (只写不读回 LLM)</text>
+
+      <!-- 人工反馈环 -->
+      <rect x="290" y="410" width="480" height="80" rx="10" class="svg-box" style="stroke:var(--warn);stroke-dasharray:6 4"/>
+      <text x="530" y="438" text-anchor="middle" class="svg-label" style="fill:var(--warn)">人工反馈环 (out-of-band)</text>
+      <text x="530" y="458" text-anchor="middle" class="svg-sub">dry-run 看 trace → 工程师手动编辑 yaml 的 prompt_addon → 重跑</text>
+      <text x="530" y="476" text-anchor="middle" class="svg-sub" style="fill:var(--warn)">agent 自己不修改任何文件 · 不沉淀经验 · 下次跑同 rule 仍冷启动</text>
+
+      <!-- 连线 -->
+      <line x1="230" y1="90" x2="290" y2="150" class="svg-arrow"/>
+      <line x1="230" y1="165" x2="290" y2="160" class="svg-arrow"/>
+      <line x1="230" y1="235" x2="290" y2="170" class="svg-arrow"/>
+      <line x1="470" y1="160" x2="530" y2="160" class="svg-arrow"/>
+      <line x1="770" y1="160" x2="830" y2="130" class="svg-arrow"/>
+      <line x1="830" y1="150" x2="770" y2="180" class="svg-arrow"/>
+      <line x1="940" y1="180" x2="940" y2="195" class="svg-arrow"/>
+      <line x1="650" y1="280" x2="650" y2="320" class="svg-arrow"/>
+      <line x1="770" y1="350" x2="830" y2="350" class="svg-arrow"/>
+
+      <!-- 反馈虚线 -->
+      <path d="M 650 380 Q 650 420 530 440" class="svg-arrow feedback"/>
+      <path d="M 290 440 Q 130 440 130 130" class="svg-arrow feedback"/>
+      <text x="180" y="395" class="svg-sub" style="fill:var(--accent2)">人工 edit yaml ↺</text>
+    </svg>
+  </div>
+
+  <h3>核心组件</h3>
+  <div class="grid three">
+    <div class="card">
+      <h4>Runner</h4>
+      <p><code>src/javert/audit/runner.py</code></p>
+      <ul>
+        <li>组装 system + user message</li>
+        <li>循环: LLM chat → 解析 tool_call → 执行 → 反馈结果</li>
+        <li>无 tool 输出时尝试解析 verdict JSON</li>
+        <li>一次 repair 兜底, 再失败 → INCONCLUSIVE</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>ToolExecutor</h4>
+      <p><code>src/javert/tools/tool_executor.py</code></p>
+      <ul>
+        <li>文本协议: <code>&lt;tool_call&gt;{...}&lt;/tool_call&gt;</code></li>
+        <li>4 个工具静态注册</li>
+        <li>per-audit 内存缓存 <code>_cache</code></li>
+        <li><span class="pill warn">无原生 function calling</span></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Rule yaml</h4>
+      <p><code>configs/rules/Rxxx.yaml</code></p>
+      <ul>
+        <li>10 字段 pydantic 模型</li>
+        <li><code>prompt_addon</code> 是规则个性化关键字段</li>
+        <li><span class="pill j">人写, 不是 agent 写</span></li>
+        <li>git diff 即演进记录</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>"自我升级" 当前路径 (= 人在环中)</h3>
+  <div class="callout j">
+    <strong>真相</strong>: Javert 当前没有 agent 自我升级. 升级回路完全由<em>工程师手动闭环</em>:
+    <ol style="margin:8px 0 0 0;padding-left:22px">
+      <li><code>javert dry-run R191 --patient J66252</code> 看 trace</li>
+      <li>工程师肉眼判断 prompt 哪里弱 / 工具调用是否合理</li>
+      <li>手工 edit <code>configs/rules/R191.yaml</code> 的 <code>prompt_addon</code> / <code>evidence_required</code></li>
+      <li>再 dry-run → 满意后 <code>javert mark R191 --status ready</code></li>
+    </ol>
+    Agent 本身<strong>不写任何文件</strong>, 跑完一轮即遗忘. 唯一持久化是 <code>audit_runs</code> 表 (只写不读回 LLM, 用于 report).
+  </div>
+
+  <h3>关键文件清单</h3>
+  <table>
+    <tr><th>路径</th><th>角色</th></tr>
+    <tr><td><code>cli.py</code></td><td>Click 入口, <code>dry-run / run / audit-patient</code> 等 subcommand</td></tr>
+    <tr><td><code>audit/runner.py</code></td><td>核心 agent loop (~250 行)</td></tr>
+    <tr><td><code>audit/prompt_assembler.py</code></td><td>system/user prompt 装配</td></tr>
+    <tr><td><code>audit/prompts/base.txt</code></td><td>基础 system prompt (≥1 工具调用 + fenced JSON)</td></tr>
+    <tr><td><code>audit/rule.py</code></td><td>Rule pydantic 模型</td></tr>
+    <tr><td><code>tools/tool_executor.py</code></td><td>文本协议解析 + 4 工具调度</td></tr>
+    <tr><td><code>tools/llm_provider.py</code></td><td>Qwen3.5 sglang httpx 直连</td></tr>
+    <tr><td><code>store/schema.sql</code></td><td>audit_runs 表 + 2 索引</td></tr>
+  </table>
+</section>
+
+<!-- ============ HERMES PANE ============ -->
+<section class="pane" id="hermes">
+  <h2>Hermes: 持续学习的多端 Agent + 程序性记忆 (Skills)</h2>
+  <p class="lede">Hermes 是 NousResearch 开源的 agent harness, 核心创新是 <strong>agent 把自己学到的工作流当成 Skill 保存</strong>下来 — 下次用户提出类似任务时, 同样的"套路"自动加载. 这是<em>真正</em>的 agent-driven self-upgrade.</p>
+
+  <div class="arch">
+    <svg viewBox="0 0 1080 600" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrowH" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#9aa3b2"/>
+        </marker>
+      </defs>
+      <style>
+        .svg-arrow{marker-end:url(#arrowH)}
+      </style>
+
+      <text x="540" y="28" text-anchor="middle" class="svg-title">Hermes Agent Harness — closed learning loop</text>
+
+      <!-- 用户入口: 多通道 -->
+      <rect x="20" y="60" width="180" height="220" rx="10" class="svg-box h"/>
+      <text x="110" y="86" text-anchor="middle" class="svg-label">User Surfaces</text>
+      <text x="110" y="108" text-anchor="middle" class="svg-sub">Terminal CLI</text>
+      <text x="110" y="128" text-anchor="middle" class="svg-sub">Telegram / Discord</text>
+      <text x="110" y="148" text-anchor="middle" class="svg-sub">Slack / WhatsApp</text>
+      <text x="110" y="168" text-anchor="middle" class="svg-sub">Signal / Email</text>
+      <text x="110" y="188" text-anchor="middle" class="svg-sub">语音 (transcription)</text>
+      <text x="110" y="220" text-anchor="middle" class="svg-sub" style="fill:var(--accent2)">slash commands:</text>
+      <text x="110" y="238" text-anchor="middle" class="svg-sub">/plan /new /model</text>
+      <text x="110" y="256" text-anchor="middle" class="svg-sub">/skills /memory</text>
+
+      <!-- Gateway -->
+      <rect x="230" y="130" width="120" height="80" rx="8" class="svg-box"/>
+      <text x="290" y="160" text-anchor="middle" class="svg-label">Gateway</text>
+      <text x="290" y="180" text-anchor="middle" class="svg-sub">统一路由</text>
+      <text x="290" y="198" text-anchor="middle" class="svg-sub">多端会话归并</text>
+
+      <!-- AIAgent 核心 -->
+      <rect x="380" y="60" width="320" height="290" rx="12" class="svg-box accent"/>
+      <text x="540" y="86" text-anchor="middle" class="svg-title">AIAgent (run_agent.py)</text>
+
+      <rect x="400" y="105" width="280" height="36" rx="5" class="svg-box"/>
+      <text x="540" y="128" text-anchor="middle" class="svg-sub">prompt_builder.py · 拼接 SOUL/MEMORY/USER/skills</text>
+
+      <rect x="400" y="148" width="280" height="36" rx="5" class="svg-box"/>
+      <text x="540" y="171" text-anchor="middle" class="svg-sub">provider 解析 (Anthropic/Bedrock/Gemini adapter)</text>
+
+      <rect x="400" y="191" width="280" height="36" rx="5" class="svg-box"/>
+      <text x="540" y="214" text-anchor="middle" class="svg-sub">model_tools.py · 原生 function calling 调度</text>
+
+      <rect x="400" y="234" width="280" height="36" rx="5" class="svg-box"/>
+      <text x="540" y="257" text-anchor="middle" class="svg-sub">context_compressor 摘要 + prompt_caching 缓存</text>
+
+      <rect x="400" y="277" width="280" height="36" rx="5" class="svg-box" style="stroke:var(--accent2)"/>
+      <text x="540" y="300" text-anchor="middle" class="svg-label" style="fill:var(--accent2)">trajectory.py · 决策路径追踪</text>
+
+      <text x="540" y="333" text-anchor="middle" class="svg-sub">retries · fallback · callbacks · persistence</text>
+
+      <!-- 工具系统 -->
+      <rect x="730" y="60" width="320" height="130" rx="10" class="svg-box"/>
+      <text x="890" y="86" text-anchor="middle" class="svg-label">tools/registry.py</text>
+      <text x="890" y="105" text-anchor="middle" class="svg-sub">70+ tools · ~28 toolsets</text>
+      <text x="890" y="123" text-anchor="middle" class="svg-sub">import-time 自注册</text>
+      <text x="890" y="145" text-anchor="middle" class="svg-sub">terminal × 7 backends</text>
+      <text x="890" y="163" text-anchor="middle" class="svg-sub">(local/docker/ssh/modal/daytona...)</text>
+      <text x="890" y="183" text-anchor="middle" class="svg-sub" style="fill:var(--accent2)">MCP integration</text>
+
+      <!-- skill_manage 工具 (高亮) -->
+      <rect x="730" y="205" width="320" height="145" rx="10" class="svg-box h"/>
+      <text x="890" y="232" text-anchor="middle" class="svg-label" style="fill:var(--hermes)">⚡ skill_manage tool (key!)</text>
+      <text x="890" y="252" text-anchor="middle" class="svg-sub">create · patch · edit · delete</text>
+      <text x="890" y="270" text-anchor="middle" class="svg-sub">write_file · remove_file</text>
+      <text x="890" y="293" text-anchor="middle" class="svg-sub" style="fill:var(--accent2)">触发条件:</text>
+      <text x="890" y="310" text-anchor="middle" class="svg-sub">· 完成 5+ tool calls 复杂任务</text>
+      <text x="890" y="326" text-anchor="middle" class="svg-sub">· 用户纠正 → 学到新做法</text>
+      <text x="890" y="342" text-anchor="middle" class="svg-sub">· 排错后找到 working solution</text>
+
+      <!-- 记忆层 -->
+      <rect x="20" y="380" width="320" height="200" rx="10" class="svg-box h"/>
+      <text x="180" y="406" text-anchor="middle" class="svg-label">Memory Layers</text>
+
+      <rect x="35" y="420" width="290" height="32" rx="4" class="svg-box"/>
+      <text x="180" y="441" text-anchor="middle" class="svg-sub">SOUL.md · 人格 / 风格</text>
+
+      <rect x="35" y="458" width="290" height="32" rx="4" class="svg-box"/>
+      <text x="180" y="479" text-anchor="middle" class="svg-sub">MEMORY.md · agent-curated 长期事实</text>
+
+      <rect x="35" y="496" width="290" height="32" rx="4" class="svg-box"/>
+      <text x="180" y="517" text-anchor="middle" class="svg-sub">USER.md · 用户档案 (Honcho 对话建模)</text>
+
+      <rect x="35" y="534" width="290" height="32" rx="4" class="svg-box"/>
+      <text x="180" y="555" text-anchor="middle" class="svg-sub">hermes_state.py · SQLite + FTS5 会话检索</text>
+
+      <!-- Skills 存储 -->
+      <rect x="380" y="380" width="320" height="200" rx="10" class="svg-box h"/>
+      <text x="540" y="406" text-anchor="middle" class="svg-label">~/.hermes/skills/ (procedural memory)</text>
+      <text x="540" y="428" text-anchor="middle" class="svg-sub">每个 skill 一个目录, SKILL.md 主入口</text>
+      <text x="540" y="448" text-anchor="middle" class="svg-sub">支持 agentskills.io 开放标准</text>
+      <text x="540" y="470" text-anchor="middle" class="svg-sub" style="fill:var(--accent2)">三种来源, 同一存储:</text>
+      <text x="540" y="488" text-anchor="middle" class="svg-sub">· bundled (随安装)</text>
+      <text x="540" y="506" text-anchor="middle" class="svg-sub">· hub-installed (从 skills hub 拉)</text>
+      <text x="540" y="524" text-anchor="middle" class="svg-sub" style="fill:var(--hermes);font-weight:600">· agent-created (运行时自生成) ★</text>
+      <text x="540" y="554" text-anchor="middle" class="svg-sub">下轮对话由 prompt_builder 自动注入</text>
+
+      <!-- 输出 / 持久化 -->
+      <rect x="730" y="380" width="320" height="100" rx="10" class="svg-box"/>
+      <text x="890" y="406" text-anchor="middle" class="svg-label">Session Persistence</text>
+      <text x="890" y="426" text-anchor="middle" class="svg-sub">SQLite + FTS5 全文检索</text>
+      <text x="890" y="444" text-anchor="middle" class="svg-sub">compression 后保留 lineage</text>
+      <text x="890" y="462" text-anchor="middle" class="svg-sub">per-platform 会话隔离</text>
+
+      <rect x="730" y="498" width="320" height="80" rx="10" class="svg-box"/>
+      <text x="890" y="525" text-anchor="middle" class="svg-label">guardrails + error_classifier</text>
+      <text x="890" y="544" text-anchor="middle" class="svg-sub">tool_guardrails 安全约束</text>
+      <text x="890" y="562" text-anchor="middle" class="svg-sub">失败分类 → 反哺 trajectory</text>
+
+      <!-- 连线 -->
+      <line x1="200" y1="170" x2="230" y2="170" class="svg-arrow"/>
+      <line x1="350" y1="170" x2="380" y2="170" class="svg-arrow"/>
+      <line x1="700" y1="123" x2="730" y2="123" class="svg-arrow"/>
+      <line x1="730" y1="270" x2="700" y2="270" class="svg-arrow"/>
+
+      <!-- 学习反馈环 (高亮) -->
+      <path d="M 890 350 Q 890 380 700 460" class="svg-arrow feedback"/>
+      <text x="800" y="378" class="svg-sub" style="fill:var(--accent2)">写 Skill</text>
+
+      <path d="M 540 580 Q 540 600 380 360" class="svg-arrow feedback"/>
+      <text x="430" y="555" class="svg-sub" style="fill:var(--accent2)">下轮注入 prompt</text>
+
+      <path d="M 380 460 Q 340 380 340 350" class="svg-arrow feedback"/>
+      <text x="320" y="395" class="svg-sub" style="fill:var(--accent2)">载入 MEMORY/USER</text>
+    </svg>
+  </div>
+
+  <h3>自我升级核心: <code>skill_manage</code> 工具</h3>
+  <div class="callout">
+    <strong>关键洞察</strong>: Hermes 把"自我升级"实现成了<em>一个普通工具</em> — agent 在 tool_call 里发起 <code>skill_manage(action="create"|"patch"|"edit"|"delete")</code> 把当前学到的工作流持久化到磁盘. 下一次对话, <code>prompt_builder.py</code> 自动把相关 skill 注入 system prompt.
+    <br><br>
+    <strong>触发时机</strong> (来自 Hermes 文档):
+    <ul style="margin:8px 0 0 0">
+      <li>成功完成需要 5+ 次工具调用的复杂任务</li>
+      <li>报错后摸索出 working solution</li>
+      <li><strong>用户纠正了 agent 的做法</strong> ← 这正是你要的"通过用户交互升级"</li>
+      <li>发现非平凡的工作流</li>
+    </ul>
+  </div>
+
+  <h3>关键文件 / 模块</h3>
+  <table>
+    <tr><th>路径 / 组件</th><th>角色</th></tr>
+    <tr><td><code>run_agent.py</code> → <code>AIAgent</code></td><td>同步主循环, 编排 provider/prompt/tool/retry/compress/persist</td></tr>
+    <tr><td><code>prompt_builder.py</code></td><td>system prompt 装配; 读 SOUL.md/MEMORY.md/USER.md + 注入 skills + 工具描述</td></tr>
+    <tr><td><code>tools/registry.py</code></td><td>70+ tools 自注册, schema 汇总, 调度</td></tr>
+    <tr><td><code>skill_manage</code> (tool)</td><td><strong>self-upgrade 入口</strong>: create/patch/edit/delete + write_file/remove_file</td></tr>
+    <tr><td><code>trajectory.py</code></td><td>记录决策路径 — 失败回放和 skill 生成的数据源</td></tr>
+    <tr><td><code>context_engine.py</code> / <code>context_compressor.py</code></td><td>上下文流 + 超长压缩 (摘要保留 lineage)</td></tr>
+    <tr><td><code>memory_manager.py</code> / <code>memory_provider.py</code></td><td>持久 / 工作记忆抽象, Honcho 用户建模</td></tr>
+    <tr><td><code>hermes_state.py</code></td><td>SQLite + FTS5, 跨会话检索</td></tr>
+    <tr><td><code>error_classifier.py</code></td><td>失败分类 → 反哺 trajectory / 触发 skill 修补</td></tr>
+    <tr><td><code>tool_guardrails.py</code></td><td>工具执行前安全约束</td></tr>
+    <tr><td><code>~/.hermes/skills/</code></td><td>程序性记忆物理存储 (bundled / hub / agent-created 同处)</td></tr>
+  </table>
+
+  <h3>用户交互如何驱动升级 (lifecycle)</h3>
+  <pre>1. 用户 → Gateway → AIAgent  (新任务)
+2. prompt_builder 注入: SOUL + MEMORY + USER + 相关 skills
+3. AIAgent 调用 tools (registry) · trajectory 记录每一步
+4. 任务复杂 / 用户说 "不对, 应该这样" / 报错-恢复 → 触发条件命中
+5. AIAgent 主动发起 tool_call: skill_manage(action="create", ...)
+   ─ 把"做法"写成新的 SKILL.md 到 ~/.hermes/skills/
+   ─ 或 patch 已有 skill 修正错误路径
+6. session 摘要进 SQLite (FTS5) + MEMORY.md 增补长期事实
+7. 下次会话 → prompt_builder 自动加载新 skill, 跳过摸索</pre>
+</section>
+
+<!-- ============ DIFF PANE ============ -->
+<section class="pane" id="diff">
+  <h2>两者对比 + 给 Javert 的迁移建议</h2>
+  <p class="lede">把 Hermes 的"自我升级 + 用户交互"思想落到 Javert 项目上, 需要先看清两者哪些差异是<strong>本质的</strong>, 哪些只是<em>尺度</em>问题.</p>
+
+  <table class="diff">
+    <tr><th style="width:18%">维度</th><th>Javert (现状)</th><th>Hermes (目标)</th></tr>
+    <tr>
+      <td>定位</td>
+      <td>批量合规审计 — 固定规则集跑固定患者集</td>
+      <td>通用对话 agent — 开放任务空间</td>
+    </tr>
+    <tr>
+      <td>用户交互</td>
+      <td>CLI subcommand 一次性触发, 跑完即退</td>
+      <td>多端 (CLI/IM/语音), 长会话, slash command + 自然语言</td>
+    </tr>
+    <tr>
+      <td>知识载体</td>
+      <td><code>configs/rules/Rxxx.yaml</code> — 人工 git commit</td>
+      <td><code>~/.hermes/skills/*/SKILL.md</code> — agent 通过 <code>skill_manage</code> 自写</td>
+    </tr>
+    <tr>
+      <td>"升级"由谁触发</td>
+      <td><span class="pill warn">人</span> dry-run 看 trace → 手编 yaml</td>
+      <td><span class="pill good">agent 自己</span> 在 tool_call 里发 <code>skill_manage</code></td>
+    </tr>
+    <tr>
+      <td>跨次记忆</td>
+      <td>无 (ToolExecutor cache 只到单次 audit 边界)</td>
+      <td>MEMORY.md / USER.md + SQLite FTS5 全文检索</td>
+    </tr>
+    <tr>
+      <td>工具协议</td>
+      <td>文本 <code>&lt;tool_call&gt;</code> 标签, 自己 regex 解析</td>
+      <td>原生 function calling (Anthropic/Bedrock/Gemini adapter)</td>
+    </tr>
+    <tr>
+      <td>工具规模</td>
+      <td>4 个 (search_fees / search_notes / note_diagnosis / drug_indication)</td>
+      <td>70+ tools × ~28 toolsets, 自注册</td>
+    </tr>
+    <tr>
+      <td>反馈环</td>
+      <td>out-of-band: 人看 trace, 改 yaml, 再跑</td>
+      <td>in-band: 用户在对话里说 "不对" → agent 当场 patch skill</td>
+    </tr>
+    <tr>
+      <td>失败处理</td>
+      <td>1 次 repair turn → INCONCLUSIVE</td>
+      <td><code>error_classifier</code> 分类 + trajectory 回放 + skill patch</td>
+    </tr>
+    <tr>
+      <td>持久化</td>
+      <td>SQLite <code>audit_runs</code>, 写完不读回 LLM</td>
+      <td>SQLite + FTS5, prompt_builder 读回注入上下文</td>
+    </tr>
+  </table>
+
+  <h3>把 Hermes 思想移植到 Javert — 最小可行路径</h3>
+
+  <div class="grid">
+    <div class="card">
+      <h4>Step 1 · 让 agent 自己写 rule_addon</h4>
+      <p>新增一个工具 <code>propose_rule_patch(rule_id, addon_diff, reason)</code> — 让 Runner 在 audit 末尾、verdict 之外可选发起. 工具不直接 commit, 而是写入一张 <code>rule_patch_suggestions</code> 表给工程师审阅.</p>
+      <p><span class="pill h">对应 Hermes</span> <code>skill_manage(action="patch")</code> 的弱化版.</p>
+    </div>
+    <div class="card">
+      <h4>Step 2 · 引入用户在环修正</h4>
+      <p>新增 <code>javert chat R191 --patient J66252</code> 子命令: 让工程师在 dry-run 看完 trace 后, <em>直接对话纠正</em>, agent 把纠正落到 patch suggestion. 不必等再编辑 yaml.</p>
+      <p><span class="pill h">对应 Hermes</span> "user corrects approach → agent patches skill".</p>
+    </div>
+    <div class="card">
+      <h4>Step 3 · 跨次 trace 记忆</h4>
+      <p>建 <code>audit_traces</code> 表 (run_id, rule_id, tool_call 序列, verdict, 耗时). prompt_assembler 在下次跑同 rule 时, 拼入 "上次此 rule 的高效 tool 序列" 作为示范.</p>
+      <p><span class="pill h">对应 Hermes</span> MEMORY.md + FTS5 session search.</p>
+    </div>
+    <div class="card">
+      <h4>Step 4 · trajectory 回放</h4>
+      <p>把现在散在 emit 回调里的 trace 结构化成 trajectory 对象, 失败 audit 可一键复述给 LLM 让它自我归因. 这是 step 1 patch suggestion 的质量基础.</p>
+      <p><span class="pill h">对应 Hermes</span> <code>trajectory.py</code> + <code>error_classifier.py</code>.</p>
+    </div>
+  </div>
+
+  <div class="callout">
+    <strong>评估视角</strong>: 你目前已经在 CLAUDE.md 路线图里写到 <code>add-prompt-template-bulk-fit</code> (给 21 个骨架装 prompt) 和 <code>add-parallel-audit</code>. 引入 Hermes 风格的<em>自我升级</em>(上面 4 步) 应该排在它们<strong>之后</strong> — 先把 prompt 装满、并发跑通, 再让 agent 自己学会 patch prompt. 否则空骨架上的 self-upgrade 信号会非常嘈杂.
+  </div>
+
+  <h3>本质差异 / 不能直接照搬的部分</h3>
+  <ul>
+    <li><strong>Javert 是审计场景, verdict 是结构化输出</strong> — 不像 Hermes 的开放对话, 自我升级必须保留 "verdict 可复核" 这条红线. <code>propose_rule_patch</code> 只能产 suggestion, 不能让 agent 直接改 yaml.</li>
+    <li><strong>Javert 当前用 sglang Qwen3.5, 不走原生 function calling</strong> — 短期 skill 注入仍需走 system prompt 拼接, 不能像 Hermes 那样动态注册新 tool.</li>
+    <li><strong>合规场景对 false positive 极度敏感</strong> — Hermes 的 "5+ tool calls 就建 skill" 启发式不能直接搬, Javert 至少需要 N 次跨患者一致 verdict 才能信一条 patch.</li>
+  </ul>
+</section>
+
+</main>
+
+<script>
+  const tabs = document.querySelectorAll('.tab');
+  const panes = document.querySelectorAll('.pane');
+  tabs.forEach(t => t.addEventListener('click', () => {
+    tabs.forEach(x => x.classList.remove('active'));
+    panes.forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById(t.dataset.pane).classList.add('active');
+    window.scrollTo({top:0,behavior:'smooth'});
+  }));
+</script>
+</body>
+</html>

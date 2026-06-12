@@ -1,0 +1,54 @@
+# 医院科室配置 — Javert v0.3 (add-hospital-config)
+#
+# 作用: 由 prompt_assembler 注入到 system prompt, 让 LLM 据此判断
+#   "医院无 X 科室还收 X 费用" 类规则 (R212 PACU / R291 精神病专科病区 / etc.).
+#
+# 当前默认值: 演示三甲医院 (demo_hospital), 与 J66252 / J18906 / J13365 / K03341 等
+# pilot 患者一致. 实际部署时按医院情况覆盖.
+#
+# 字段约定:
+#   - hospital_id / hospital_name: 标识 (用于 evidence 引用).
+#   - departments: dict[科室名, bool]. true=有 / false=无.
+#     科室名按目录规范全名, LLM 在 prompt 中以中文名+简称双索引.
+#   - 配置缺失或值未定义时, LLM 应输出 INCONCLUSIVE (建议线下核实), 不强判 V/C.
+
+hospital_id: demo_hospital
+hospital_name: 演示三甲医院
+
+departments:
+  # === 麻醉 / 重症 监护类 ===
+  PACU: true                       # 麻醉后复苏监护室 (R212 直接判定依据)
+  ICU: true                        # 综合重症监护室
+  CCU: false                       # 冠心病监护室
+  NICU: false                      # 新生儿重症监护室
+  PICU: false                      # 儿童重症监护室
+  EICU: true                       # 急诊重症监护
+  烧伤监护室: false
+
+  # === 精神 / 神经 专科病区 ===
+  封闭式精神病专科病区: false        # R291 精神科监护项目内涵硬要求
+  精神医学科住院部: false
+  神经监护病区: true
+
+  # === 透析 / 净化 ===
+  血液净化中心: true
+  腹膜透析中心: true
+
+  # === 手术 / 介入 ===
+  介入手术室: true
+  日间手术病房: true
+  杂交手术室: false                  # Hybrid OR
+  机器人手术系统: false              # Da Vinci
+
+  # === 急救 / 创伤 ===
+  急诊抢救室: true
+  创伤中心: true                     # 国家创伤中心认证
+  胸痛中心: true                     # 国家胸痛中心认证
+  卒中中心: true                     # 国家卒中中心认证
+
+  # === 其他 ===
+  康复医学科: true
+  高压氧舱: false
+  PET-CT: true
+  伽马刀: false
+  质子重离子治疗: false

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="auth-card">
+  <h1>注册已关闭</h1>
+  <p>本工作台为内部审核工具, 账号由运维统一分配.</p>
+  <p class="auth-aux">如需账号, 请联系运维:</p>
+  <ul style="font-size:13px; color:var(--text-muted); margin: 8px 0 18px 22px;">
+    <li>提供你的姓名 + 联系方式</li>
+    <li>说明所属科室 / 角色</li>
+    <li>等候运维 <code>javert mssql-user</code> 创建后告知用户名 + 初始密码</li>
+  </ul>
+  <p><a href="/login" class="btn-link" style="display:inline-block; padding:6px 14px; border:1px solid var(--primary); color:var(--primary);">返回登录</a></p>
+</section>
+{% endblock %}

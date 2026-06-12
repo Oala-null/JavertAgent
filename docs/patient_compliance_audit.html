@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>合规审计报告 · J18906 + J13365</title>
+<style>
+  :root {
+    --bg: #fafbfc;
+    --card: #ffffff;
+    --border: #e4e7eb;
+    --text: #1f2933;
+    --muted: #616e7c;
+    --accent: #3b82f6;
+    --accent-soft: #dbeafe;
+    --green: #10b981;
+    --green-soft: #d1fae5;
+    --yellow: #f59e0b;
+    --yellow-soft: #fef3c7;
+    --red: #ef4444;
+    --red-soft: #fee2e2;
+    --purple: #8b5cf6;
+    --purple-soft: #ede9fe;
+    --orange: #f97316;
+    --orange-soft: #fed7aa;
+    --teal: #14b8a6;
+    --teal-soft: #ccfbf1;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  header {
+    background: linear-gradient(135deg, #fee2e2 0%, #fed7aa 100%);
+    padding: 28px 48px 22px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { margin: 0 0 6px 0; font-size: 26px; color: #9a3412; }
+  header .sub { color: var(--muted); font-size: 14px; }
+  header .badges { margin-top: 10px; }
+  .badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-right: 6px;
+  }
+  .badge.red { background: var(--red-soft); color: #991b1b; }
+  .badge.green { background: var(--green-soft); color: #065f46; }
+  .badge.yellow { background: var(--yellow-soft); color: #92400e; }
+  .badge.blue { background: var(--accent-soft); color: #1e40af; }
+  .badge.purple { background: var(--purple-soft); color: #5b21b6; }
+  .badge.orange { background: var(--orange-soft); color: #9a3412; }
+
+  .tabs {
+    display: flex;
+    border-bottom: 2px solid var(--border);
+    background: white;
+    padding: 0 48px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    overflow-x: auto;
+  }
+  .tabs button {
+    background: none;
+    border: none;
+    padding: 14px 22px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+    margin-bottom: -2px;
+  }
+  .tabs button:hover { color: var(--accent); }
+  .tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .content { padding: 28px 48px 64px; max-width: 1240px; margin: 0 auto; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  h2 { font-size: 22px; margin: 24px 0 12px; color: #1e3a8a; }
+  h3 { font-size: 16px; margin: 22px 0 10px; color: var(--text); }
+  h4 { font-size: 14px; margin: 10px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+  table th, table td {
+    text-align: left; padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  table th {
+    background: #f1f5f9;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .verdict-tag {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .verdict-tag.v { background: var(--red-soft); color: #991b1b; }
+  .verdict-tag.i { background: var(--yellow-soft); color: #92400e; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  .patient-hero {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin: 16px 0 24px;
+  }
+  .ph {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-left: 5px solid var(--red);
+    border-radius: 8px;
+    padding: 18px 22px;
+  }
+  .ph h3 { margin-top: 0; font-size: 18px; color: var(--text); }
+  .ph .meta {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    column-gap: 12px;
+    row-gap: 4px;
+    font-size: 13px;
+    margin: 8px 0;
+  }
+  .ph .meta dt { color: var(--muted); }
+  .ph .meta dd { margin: 0; font-weight: 600; }
+  .ph .stats {
+    display: flex;
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .ph .stats > div {
+    flex: 1;
+    background: #f8fafc;
+    border-radius: 6px;
+    padding: 8px 12px;
+    text-align: center;
+  }
+  .ph .stats .num { font-size: 22px; font-weight: 700; color: var(--red); }
+  .ph .stats .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+
+  .violation {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-left: 5px solid var(--red);
+    border-radius: 8px;
+    margin: 14px 0;
+    overflow: hidden;
+  }
+  .violation.inconclusive { border-left-color: var(--yellow); }
+  .violation-head {
+    padding: 12px 18px;
+    background: #fef9f7;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .violation.inconclusive .violation-head { background: #fffbeb; }
+  .violation-head h4 {
+    margin: 0; text-transform: none; letter-spacing: 0; font-size: 15px;
+    color: var(--text);
+  }
+  .violation-body { padding: 14px 18px; font-size: 13px; }
+  .violation-body h5 { margin: 12px 0 4px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .violation-body p { margin: 6px 0; }
+
+  .ev-list { list-style: none; padding: 0; margin: 6px 0; }
+  .ev-list li {
+    padding: 8px 12px;
+    margin: 4px 0;
+    background: #f8fafc;
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .ev-list .source {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--accent-soft);
+    color: #1e40af;
+    font-size: 10px;
+    font-weight: 700;
+    margin-right: 6px;
+    text-transform: uppercase;
+  }
+  .ev-list .source.fee { background: var(--red-soft); color: #991b1b; }
+  .ev-list .source.note { background: var(--accent-soft); color: #1e40af; }
+  .ev-list .source.etl_warning { background: var(--orange-soft); color: #9a3412; }
+  .ev-list .locator { font-weight: 600; color: var(--text); }
+
+  .reasoning {
+    background: #f0f9ff;
+    border-left: 3px solid var(--accent);
+    padding: 10px 14px;
+    margin: 8px 0;
+    font-size: 13px;
+    line-height: 1.7;
+  }
+
+  .pattern-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 14px;
+  }
+  .pattern-card h4 { margin: 0 0 8px 0; color: var(--text); text-transform: none; letter-spacing: 0; font-size: 14px; }
+
+  .severity {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .severity.high { background: var(--red); color: white; }
+  .severity.medium { background: var(--orange); color: white; }
+  .severity.low { background: var(--yellow); color: #78350f; }
+
+  @media (max-width: 800px) {
+    .content, header, .tabs { padding-left: 20px; padding-right: 20px; }
+    .patient-hero { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🩺 合规审计报告 · J18906 + J13365</h1>
+  <div class="sub">2026-05-17 · 基于 Javert v0.3 系统全量修复后, 对两位非 pilot 患者 57 条 P0 规则的实际审计结果. 视角: 院方合规审计员 / 医保稽核.</div>
+  <div class="badges">
+    <span class="badge red">14 条 VIOLATION 已确认</span>
+    <span class="badge yellow">3 条 INCONCLUSIVE 待核</span>
+    <span class="badge green">97 条 CLEAN</span>
+    <span class="badge orange">5 类系统性违规模式</span>
+    <span class="badge blue">两患者总费用 ¥264,740</span>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="overview">📊 总览</button>
+  <button class="tab-btn" data-tab="j18906">🧠 J18906 详细违规</button>
+  <button class="tab-btn" data-tab="j13365">🦴 J13365 详细违规</button>
+  <button class="tab-btn" data-tab="patterns">🔍 系统性违规模式</button>
+  <button class="tab-btn" data-tab="recommendation">📋 整改建议</button>
+</nav>
+
+<main class="content">
+
+<!-- ========== TAB 1: 总览 ========== -->
+<section class="tab-panel active" id="overview">
+  <h2>两位患者审计结果</h2>
+
+  <div class="patient-hero">
+    <div class="ph">
+      <h3>J18906 — 神经外科</h3>
+      <dl class="meta">
+        <dt>主要诊断</dt><dd>脑干占位性病变 (海绵状血管瘤?) + 蛛网膜下腔出血</dd>
+        <dt>主诉</dt><dd>头晕伴恶心呕吐 2 天</dd>
+        <dt>手术</dt><dd>脑干肿瘤切除术 (颅内手术)</dd>
+        <dt>住院总费用</dt><dd>¥96,129.85 (1235 项)</dd>
+        <dt>大额项目</dt><dd>可吸收硬脑(脊)膜补片 ¥13,000 / 脑干肿瘤切除术 ¥11,500</dd>
+      </dl>
+      <div class="stats">
+        <div><div class="num">7</div><div class="lbl">违规</div></div>
+        <div><div class="num">1</div><div class="lbl">待核</div></div>
+        <div><div class="num">49</div><div class="lbl">合规</div></div>
+      </div>
+    </div>
+
+    <div class="ph">
+      <h3>J13365 — 骨科 / 肿瘤</h3>
+      <dl class="meta">
+        <dt>主要诊断</dt><dd>肺恶性肿瘤 (cTxNxM) + 肿瘤性病理性骨折 + 胸椎/肱骨继发恶性肿瘤</dd>
+        <dt>主诉</dt><dd>骨痛 (转移灶)</dd>
+        <dt>手术</dt><dd>右侧肱骨病损切除 + 人工肱骨头置换术 (骨科大手术)</dd>
+        <dt>住院总费用</dt><dd>¥168,609.85 (1044 项)</dd>
+        <dt>大额项目</dt><dd>其它人工关节 ¥38,470 / 人工韧带及附件 ¥28,480 / PET/CT ¥7,000</dd>
+      </dl>
+      <div class="stats">
+        <div><div class="num">7</div><div class="lbl">违规</div></div>
+        <div><div class="num">2</div><div class="lbl">待核</div></div>
+        <div><div class="num">48</div><div class="lbl">合规</div></div>
+      </div>
+    </div>
+  </div>
+
+  <h3>17 条非 CLEAN 判定全表</h3>
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>患者</th>
+          <th>规则</th>
+          <th>违规类型</th>
+          <th>判定</th>
+          <th>核心证据</th>
+          <th>涉嫌金额</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>J18906</td><td>R103</td><td>影像未做却收费</td><td><span class="verdict-tag v">V 0.85</span></td><td>CT 收费 7 项 vs 文书仅 2 个 CT 报告</td><td>¥1,055</td></tr>
+        <tr><td>J18906</td><td>R131</td><td>心脏彩超过度</td><td><span class="verdict-tag v">V 0.90</span></td><td>神经外科患者无心脏指征</td><td>¥265</td></tr>
+        <tr><td>J18906</td><td>R141</td><td>肌红蛋白过度</td><td><span class="verdict-tag v">V 0.90</span></td><td>无心肌损伤 / 横纹肌溶解指征</td><td>¥800 (8×)</td></tr>
+        <tr><td>J18906</td><td>R143</td><td>血浆乳酸过度</td><td><span class="verdict-tag v">V 0.90</span></td><td>无休克 / 严重感染 / 呼吸衰竭指征</td><td>¥60 (6×)</td></tr>
+        <tr><td>J18906</td><td>R146</td><td>BNP 过度</td><td><span class="verdict-tag v">V 0.90</span></td><td>无心衰 / ACS / 肺水肿指征</td><td>¥1,808 (8×)</td></tr>
+        <tr><td>J18906</td><td>R160</td><td>PCT 过度</td><td><span class="verdict-tag v">V 0.90</span></td><td>无脓毒症 / 严重感染 / SIRS 指征</td><td>¥320 (4×)</td></tr>
+        <tr><td>J18906</td><td>R224</td><td>重症血气未开展</td><td><span class="verdict-tag v">V 0.85</span></td><td>血气 6× ¥270 vs 无重症监护记录</td><td>¥270 (6×)</td></tr>
+        <tr><td>J18906</td><td>R212</td><td>PACU 监护</td><td><span class="verdict-tag i">I 0.60</span></td><td>fee ¥300 + 文书无 PACU 描述 (待 hospital config 复跑)</td><td>¥300</td></tr>
+        <tr><td>J13365</td><td>R080</td><td>康复评定未开展</td><td><span class="verdict-tag v">V 0.85</span></td><td>无 Barthel / FIM 量表 + 无康复评定记录</td><td>¥6</td></tr>
+        <tr><td>J13365</td><td>R131</td><td>心脏彩超过度</td><td><span class="verdict-tag v">V 0.90</span></td><td>骨科肿瘤患者无心脏指征</td><td>¥265+</td></tr>
+        <tr><td>J13365</td><td>R141</td><td>肌红蛋白过度</td><td><span class="verdict-tag v">V 0.90</span></td><td>无心肌损伤 / 横纹肌溶解指征</td><td>¥800 (~8×)</td></tr>
+        <tr><td>J13365</td><td>R143</td><td>血浆乳酸过度</td><td><span class="verdict-tag v">V 0.90</span></td><td>无休克 / 严重感染指征</td><td>¥60+</td></tr>
+        <tr><td>J13365</td><td>R146</td><td>BNP 过度</td><td><span class="verdict-tag v">V 0.90</span></td><td>无心衰 / ACS 指征</td><td>¥1,808+</td></tr>
+        <tr><td>J13365</td><td>R153</td><td>AFP 过度</td><td><span class="verdict-tag v">V 0.90</span></td><td>肺癌患者无肝癌 / 肝硬化 / 妊娠指征</td><td>¥? (2×)</td></tr>
+        <tr><td>J13365</td><td>R161</td><td>cTnI 过度</td><td><span class="verdict-tag v">V 0.90</span></td><td>无 ACS / 心肌梗死指征</td><td>¥240 (2×)</td></tr>
+        <tr><td>J13365</td><td>R224</td><td>重症血气未开展</td><td><span class="verdict-tag v">V 0.90</span></td><td>fee ¥135 + 无重症监护记录</td><td>¥135</td></tr>
+        <tr><td>J13365</td><td>R203</td><td>全身麻醉记录缺</td><td><span class="verdict-tag i">I 0.55</span></td><td>fee ¥1600 + 麻醉记录单未数字化 (ETL)</td><td>¥1,600</td></tr>
+        <tr><td>J13365</td><td>R112</td><td>CT 同部位重复?</td><td><span class="verdict-tag i">I 0.60</span></td><td>多部位 CT 收费 + 文书无法区分平扫部位</td><td>不定</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card" style="background: linear-gradient(135deg, #fef3c7 0%, #fed7aa 100%);">
+    <h4 style="margin-top: 0; color: #9a3412;">⚠️ 核心发现</h4>
+    <ol style="font-size: 14px;">
+      <li><b>跨患者 100% 重合的 5 类违规</b>: R131 (心脏彩超) / R141 (肌红蛋白) / R143 (血浆乳酸) / R146 (BNP) / R224 (重症血气) — 两位完全不同科室 (神经外科 + 骨科肿瘤) 患者均触发, <b>强烈支持医院级系统性套餐式过度检查</b></li>
+      <li><b>"虚构服务"模式</b>: R103 (CT 影像无报告) / R080 (康复评定无量表) / R224 (血气无重症监护记录) — 患者只收费不出报告/记录, 涉嫌虚开</li>
+      <li><b>"无指征过度检查"模式</b>: R131 / R141 / R143 / R146 / R153 / R160 / R161 全是检验过度, 单一规则金额不大但<b>系统性发生 → 推算医院年化金额可观</b></li>
+      <li><b>2 例待核 (非违规)</b>: R203 ETL 缺失 (麻醉记录未数字化) + R112 CT 部位无法区分 — 两者都是<b>系统能力边界</b>, 非医院实际违规</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ========== TAB 2: J18906 ========== -->
+<section class="tab-panel" id="j18906">
+  <h2>🧠 J18906 — 神经外科患者 7 V + 1 待核</h2>
+
+  <div class="card" style="background: #f8fafc;">
+    <p style="font-size: 13px; margin: 0;">
+      <b>临床概况</b>: 主诊脑干占位性病变 (海绵状血管瘤?) + 海绵状血管畸形伴蛛网膜下腔出血. 主诉头晕伴恶心呕吐 2 天. 经神经外科手术行脑干肿瘤切除 (颅内手术 + 硬脑膜补片 + 人工骨修复). 住院总费用 <b>¥96,129.85</b>, 其中违规 / 待核费用合计 <b>¥4,878</b> (占 5.1%).
+    </p>
+  </div>
+
+  <div class="violation">
+    <div class="violation-head">
+      <h4>R103 · 影像收费 vs 文书报告缺失</h4>
+      <span class="verdict-tag v">VIOLATION conf=0.85</span>
+    </div>
+    <div class="violation-body">
+      <h5>规则</h5>
+      <p>未实际开展影像检查项目, 但收取对应费用 (即 "纸面 CT").</p>
+      <h5>核心证据 (来自系统审计)</h5>
+      <ul class="ev-list">
+        <li><span class="source fee">FEE</span><span class="locator">CT平扫（64层以上）</span>: 3 项 ¥600, CT平扫1（64层以下）¥170, 第2部位 CT 3 项 ¥285, 总计 ¥1,055</li>
+        <li><span class="source note">NOTE</span><span class="locator">辅助检查 / 病情及处理</span>: 文书仅记录 1 次 颅脑 CT (2024-08-15) + 1 次 胸部 CT 平扫 (2024.08.17). 未见与"3 次 64 层以上"、"第 2 部位 CT 3 项"对应的执行记录</li>
+      </ul>
+      <h5>系统推理</h5>
+      <div class="reasoning">费用项目数量 (至少 7 项) 远多于文书中明确记录的检查项目 (2 项), 且<b>缺乏关键执行证据 (影像报告号、阅片记录、影像所见描述)</b>, 构成明显的违规证据.</div>
+    </div>
+  </div>
+
+  <div class="violation">
+    <div class="violation-head">
+      <h4>R131 · 心脏彩超系列 — 神经外科患者无心脏指征</h4>
+      <span class="verdict-tag v">VIOLATION conf=0.90</span>
+    </div>
+    <div class="violation-body">
+      <h5>核心证据</h5>
+      <ul class="ev-list">
+        <li><span class="source fee">FEE</span><span class="locator">心脏彩色多普勒超声</span>: ¥170</li>
+        <li><span class="source fee">FEE</span><span class="locator">左心功能测定</span>: ¥55</li>
+        <li><span class="source fee">FEE</span><span class="locator">组织多普勒显象(TDI)</span>: ¥40</li>
+        <li><span class="source note">NOTE</span><span class="locator">出院诊断</span>: 脑干血管瘤 / 海绵状血管畸形 — 无冠心病 / 心衰 / 心律失常等心脏指征</li>
+      </ul>
+      <div class="reasoning">在无明确心脏指征的情况下开展心脏彩超系列 (心脏彩色多普勒 + 左心功能 + TDI) 三项检查, 属于无指征过度检查.</div>
+    </div>
+  </div>
+
+  <div class="violation">
+    <div class="violation-head">
+      <h4>R141 · 血清肌红蛋白 8 次 — 无心肌损伤 / 横纹肌溶解</h4>
+      <span class="verdict-tag v">VIOLATION conf=0.90</span>
+    </div>
+    <div class="violation-body">
+      <h5>核心证据</h5>
+      <ul class="ev-list">
+        <li><span class="source fee">FEE</span><span class="locator">血清肌红蛋白测定</span>: 8 次 ¥800 (定量, 干免疫学方法或化学发光法)</li>
+        <li><span class="source note">NOTE</span><span class="locator">出院诊断</span>: 脑干占位 / 海绵状血管畸形伴蛛网膜下腔出血 — 无急性心肌梗死 / 横纹肌溶解 / 严重创伤 / 急性肾损伤伴肌损伤</li>
+      </ul>
+      <div class="reasoning">规则 R141 规定肌红蛋白测定仅用于心肌损伤、横纹肌溶解、严重创伤或急性肾损伤伴肌损伤等指征. 患者诊断列表中完全不存在上述任何适应症.</div>
+    </div>
+  </div>
+
+  <div class="violation">
+    <div class="violation-head">
+      <h4>R143 · 血浆乳酸测定 6 次 — 无休克 / 严重感染 / 呼吸衰竭</h4>
+      <span class="verdict-tag v">VIOLATION conf=0.90</span>
+    </div>
+    <div class="violation-body">
+      <h5>核心证据</h5>
+      <ul class="ev-list">
+        <li><span class="source fee">FEE</span><span class="locator">血浆乳酸测定</span>: 6 次 ¥60</li>
+        <li><span class="source note">NOTE</span><span class="locator">出院诊断</span>: 脑干占位 / 蛛网膜下腔出血 / 头晕恶心 — 未见休克 / 严重感染 / 呼吸衰竭 / 严重创伤</li>
+      </ul>
+      <div class="reasoning">血浆乳酸测定适用于休克、严重感染、严重缺氧/呼吸衰竭、严重创伤等特定指征. 患者诊断中未包含上述任一指征.</div>
+    </div>
+  </div>
+
+  <div class="violation">
+    <div class="violation-head">
+      <h4>R146 · BNP/NT-proBNP 8 次 — 无心衰 / ACS / 肺水肿</h4>
+      <span class="verdict-tag v">VIOLATION conf=0.90</span>
+    </div>
+    <div class="violation-body">
+      <h5>核心证据</h5>
+      <ul class="ev-list">
+        <li><span class="source fee">FEE</span><span class="locator">B型钠尿肽前体（PRO-BNP）测定</span>: 8 次 ¥1,808</li>
+        <li><span class="source note">NOTE</span><span class="locator">出院诊断</span>: 脑干占位性病变 / 蛛网膜下腔出血 / 脑干血管瘤 — 未见心力衰竭、心功能不全、急性冠脉综合征、肺水肿等</li>
+        <li><span class="source note">NOTE</span><span class="locator">症状描述</span>: 仅主诉头晕伴恶心呕吐 2 天, 全文未检索到 心衰 / 呼吸困难 / 胸闷</li>
+      </ul>
+      <div class="reasoning">在无相关疾病指征的情况下 8 次开展 BNP 测定属于明显的过度检查. 单条规则金额 ¥1,808 为 J18906 全部违规中最高.</div>
+    </div>
+  </div>
+
+  <div class="violation">
+    <div class="violation-head">
+      <h4>R160 · 降钙素原 PCT 4 次 — 无脓毒症 / 严重感染 / SIRS</h4>
+      <span class="verdict-tag v">VIOLATION conf=0.90</span>
+    </div>
+    <div class="violation-body">
+      <h5>核心证据</h5>
+      <ul class="ev-list">
+        <li><span class="source fee">FEE</span><span class="locator">降钙素原检测</span>: 4 次 ¥320</li>
+        <li><span class="source note">NOTE</span><span class="locator">出院诊断</span>: 脑干占位 / 血管畸形 / 头晕呕吐 — 未发现脓毒症、败血症、严重感染、SIRS、感染性休克等</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="violation">
+    <div class="violation-head">
+      <h4>R224 · 重症血气分析 6 次 — 无重症监护记录</h4>
+      <span class="verdict-tag v">VIOLATION conf=0.85</span>
+    </div>
+    <div class="violation-body">
+      <h5>核心证据</h5>
+      <ul class="ev-list">
+        <li><span class="source fee">FEE</span><span class="locator">血气分析</span>: 6 项 ¥270</li>
+        <li><span class="source note">NOTE</span><span class="locator">重症监护记录</span>: 文书目录无该 section, 全文搜索 "血气分析" 也无命中</li>
+        <li><span class="source note">NOTE</span><span class="locator">诊断</span>: 脑干占位性病变 — 虽需监测但无对应检验执行记录</li>
+      </ul>
+      <div class="reasoning">医院虽有 ICU 科室配置, 但患者无对应 ICU 介入记录 + 血气分析无报告. 存在收费但无文书执行记录, 属于虚构医药服务项目.</div>
+    </div>
+  </div>
+
+  <div class="violation inconclusive">
+    <div class="violation-head">
+      <h4>R212 · PACU 监护 ¥300 (待核)</h4>
+      <span class="verdict-tag i">INCONCLUSIVE conf=0.60</span>
+    </div>
+    <div class="violation-body">
+      <p><b>状态</b>: 本规则审计时医院科室配置尚未注入, 留待医院级 PACU 配置确认后复跑. 由于 J66252 同规则已基于 hospital_config 注入判 <b>CLEAN conf=0.90</b> (PACU=true), 预期此条复跑后会一并 CLEAN.</p>
+      <h5>核心证据</h5>
+      <ul class="ev-list">
+        <li><span class="source fee">FEE</span><span class="locator">麻醉后复苏监护(PACU)</span>: ¥300</li>
+        <li><span class="source note">NOTE</span><span class="locator">全文检索</span>: 关键词 "麻醉恢复室", "PACU", "复苏监护" 均未在文书中找到</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ========== TAB 3: J13365 ========== -->
+<section class="tab-panel" id="j13365">
+  <h2>🦴 J13365 — 骨科肿瘤患者 7 V + 2 待核</h2>
+
+  <div class="card" style="background: #f8fafc;">
+    <p style="font-size: 13px; margin: 0;">
+      <b>临床概况</b>: 主诊肺恶性肿瘤 (cTxNxM) + 肿瘤性病理性骨折 + 胸椎 / 肱骨继发恶性肿瘤. 行右侧肱骨病损切除 + 人工肱骨头置换术 (骨科大手术). 住院总费用 <b>¥168,609.85</b>, 其中违规 / 待核费用合计 <b>~¥3,184+</b> (占 1.9%, 但跨规则验证医院系统性过度检查).
+    </p>
+  </div>
+
+  <div class="violation">
+    <div class="violation-head">
+      <h4>R080 · 日常生活能力评定 — 无任何评定执行记录</h4>
+      <span class="verdict-tag v">VIOLATION conf=0.85</span>
+    </div>
+    <div class="violation-body">
+      <h5>核心证据</h5>
+      <ul class="ev-list">
+        <li><span class="source fee">FEE</span><span class="locator">日常生活能力评定</span>: ¥6</li>
+        <li><span class="source note">NOTE</span><span class="locator">出院诊断</span>: 肺恶性肿瘤 + 肿瘤性病理性骨折 + 胸椎 / 肱骨继发恶性肿瘤 — 无偏瘫 / 截瘫 / 脑梗后遗症 / 关节置换术后等典型康复评定指征</li>
+        <li><span class="source note">NOTE</span><span class="locator">体格检查</span>: 仅记录 左上肢肌力 I 级 + 左下肢肌力 III 级, 未提及 Barthel / FIM 量表分数或具体评定执行记录</li>
+        <li><span class="source note">NOTE</span><span class="locator">康复评定记录 / 康复治疗记录</span>: 文书目录无该 section, 全文搜索 Barthel / FIM / 关节活动度 / 步态 / 平衡 / 日常生活能力 均 0 命中</li>
+      </ul>
+      <div class="reasoning">费用有收, 但<b>无执行证据 (无量表 / 无 section / 无关键词)</b>, 且无支持该服务的诊断指征, 符合"未开展相关诊疗项目但收取对应诊疗费用"的违规特征. 单价虽小 (¥6) 但属于"凭空收费"的硬证据.</div>
+    </div>
+  </div>
+
+  <div class="violation">
+    <div class="violation-head">
+      <h4>R131 · 心脏彩超过度 — 骨科肿瘤患者无心脏指征</h4>
+      <span class="verdict-tag v">VIOLATION conf=0.90</span>
+    </div>
+    <div class="violation-body">
+      <p>诊断为肺癌 / 肱骨肿瘤 / 病理性骨折, 与 J18906 同样无心脏指征却收心脏彩超系列检查.</p>
+    </div>
+  </div>
+
+  <div class="violation">
+    <div class="violation-head">
+      <h4>R141 / R143 / R146 / R161 · 心肌 / 心衰 / 急性损伤标志物全套</h4>
+      <span class="verdict-tag v">VIOLATION conf=0.90 × 4</span>
+    </div>
+    <div class="violation-body">
+      <p>骨科肿瘤患者 (肺癌骨转移) 同样无心肌损伤 / 心衰 / ACS 指征, 却开了 4 类检验:</p>
+      <ul class="ev-list">
+        <li><span class="source fee">FEE</span><span class="locator">血清肌红蛋白 (R141)</span>: 多次, 无心肌损伤指征</li>
+        <li><span class="source fee">FEE</span><span class="locator">血浆乳酸 (R143)</span>: 多次, 无休克 / 严重感染</li>
+        <li><span class="source fee">FEE</span><span class="locator">BNP (R146)</span>: 多次, 无心衰</li>
+        <li><span class="source fee">FEE</span><span class="locator">血清肌钙蛋白 cTnI (R161)</span>: 2 次 ¥240, 无 ACS</li>
+      </ul>
+      <p><b>这 4 条 + R131 心脏彩超 在 J18906 也全部触发 V, 跨患者 100% 重合 → 医院级套餐式开单嫌疑</b>.</p>
+    </div>
+  </div>
+
+  <div class="violation">
+    <div class="violation-head">
+      <h4>R153 · AFP 2 次 — 肺癌患者无肝癌 / 肝硬化 / 妊娠指征</h4>
+      <span class="verdict-tag v">VIOLATION conf=0.90</span>
+    </div>
+    <div class="violation-body">
+      <h5>核心证据</h5>
+      <ul class="ev-list">
+        <li><span class="source fee">FEE</span><span class="locator">甲胎蛋白测定 AFP + 甲胎蛋白异质体测定</span>: 2 项</li>
+        <li><span class="source note">NOTE</span><span class="locator">出院诊断</span>: 肺恶性肿瘤 + 骨转移 — 完全缺失 AFP 规则规定的指征 (原发性肝癌、肝硬化、病毒性肝炎、睾丸生殖细胞肿瘤、妊娠)</li>
+      </ul>
+      <div class="reasoning">肺恶性肿瘤并非 AFP 的常规筛查或随访指征. 属于无指征开展的过度检查.</div>
+    </div>
+  </div>
+
+  <div class="violation">
+    <div class="violation-head">
+      <h4>R224 · 重症血气分析 — 无重症监护记录</h4>
+      <span class="verdict-tag v">VIOLATION conf=0.90</span>
+    </div>
+    <div class="violation-body">
+      <h5>核心证据</h5>
+      <ul class="ev-list">
+        <li><span class="source fee">FEE</span><span class="locator">血气分析</span>: ¥135</li>
+        <li><span class="source note">NOTE</span><span class="locator">辅助检查</span>: 记录仅 CT 影像, 无血气分析或相关检验数值</li>
+        <li><span class="source note">NOTE</span><span class="locator">重症监护记录</span>: 文书目录无该 section, 全文搜索 "血气分析" 无命中</li>
+      </ul>
+      <div class="reasoning">患者诊断为肺恶性肿瘤及骨折, 无呼吸衰竭等必须行血气分析的危重指征, 且收费但无执行记录 — 同 J18906 R224 完全相同模式, 强支持医院级系统性虚开.</div>
+    </div>
+  </div>
+
+  <div class="violation inconclusive">
+    <div class="violation-head">
+      <h4>R203 · 全身麻醉 ¥1600 (ETL 数据缺失 / 不构成虚开)</h4>
+      <span class="verdict-tag i">INCONCLUSIVE conf=0.55</span>
+    </div>
+    <div class="violation-body">
+      <p><b>非违规</b>: 患者收取 2 项全身麻醉 (气管插管) ¥1600, 但<b>麻醉记录单原件存在</b> (其他文书有 "见麻醉记录" × 2 + "详见手术记录" × 1 引用), 只是<b>未数字化进入文书索引</b>. 这是医院 ETL 数据完整性问题, 不构成虚构服务.</p>
+      <h5>核心证据</h5>
+      <ul class="ev-list">
+        <li><span class="source fee">FEE</span><span class="locator">全身麻醉(气管插管)</span>: 2 项 ¥1,600</li>
+        <li><span class="source etl_warning">ETL_GAP</span><span class="locator">麻醉记录</span>: section 缺失, 但 "见麻醉记录" 引用 × 2 (来自手术经过段)</li>
+        <li><span class="source etl_warning">ETL_GAP</span><span class="locator">手术记录</span>: section 缺失, 但 "详见手术记录" 引用 × 1</li>
+        <li><span class="source note">NOTE</span><span class="locator">患者离开手术室前 [选项框]</span>: "气管插管" 出现在 □ 选项框中, 未勾选, 不构成执行证据</li>
+      </ul>
+      <div class="reasoning">根据规则指引, '麻醉药费命中但麻醉记录段空' 属于 INCONCLUSIVE — 无法区分是记录未数字化还是项目未开展. 建议医院补充麻醉记录单数字化录入, 而非按虚开处理.</div>
+    </div>
+  </div>
+
+  <div class="violation inconclusive">
+    <div class="violation-head">
+      <h4>R112 · CT 增强 + 平扫 是否同部位 (待核)</h4>
+      <span class="verdict-tag i">INCONCLUSIVE conf=0.60</span>
+    </div>
+    <div class="violation-body">
+      <p><b>边界规则</b>: 费用明细中 CT 增强 ¥300 + CT 平扫 4 项 ¥800. 文书有 多部位 CT 检查 (颅脑 / 上腹部 / 胸部), 但<b>费用表不带部位字段</b>, 无法机器判定是否同部位重复. 建议线下核实每次平扫是否独立部位.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ========== TAB 4: 系统性违规模式 ========== -->
+<section class="tab-panel" id="patterns">
+  <h2>🔍 跨患者系统性违规模式</h2>
+
+  <p style="font-size: 14px;">两位<b>完全不同科室</b>的患者 (神经外科 J18906 vs 骨科肿瘤 J13365) 触发的违规规则<b>高度重合</b>, 这强烈支持<b>医院级系统性 / 流水线化的违规行为</b>, 而非单一医生的孤立判断错误.</p>
+
+  <div class="card">
+    <h3 style="margin-top: 0;">5 类跨患者 100% 重合的违规</h3>
+    <table>
+      <thead>
+        <tr><th>规则</th><th>违规类型</th><th>J18906 (神外)</th><th>J13365 (骨肿)</th><th>风险等级</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><b>R131</b></td><td>心脏彩超系列无指征</td><td>V ¥265</td><td>V ¥265+</td><td><span class="severity high">高</span></td></tr>
+        <tr><td><b>R141</b></td><td>肌红蛋白无指征</td><td>V ¥800 (8×)</td><td>V ¥800+ (~8×)</td><td><span class="severity high">高</span></td></tr>
+        <tr><td><b>R143</b></td><td>血浆乳酸无指征</td><td>V ¥60 (6×)</td><td>V ¥60+</td><td><span class="severity medium">中</span></td></tr>
+        <tr><td><b>R146</b></td><td>BNP 无指征</td><td>V ¥1808 (8×)</td><td>V ¥1808+</td><td><span class="severity high">高</span></td></tr>
+        <tr><td><b>R224</b></td><td>血气未开展虚开</td><td>V ¥270 (6×)</td><td>V ¥135</td><td><span class="severity high">高</span></td></tr>
+      </tbody>
+    </table>
+    <p style="font-size: 13px;"><b>推论</b>: R131 + R141 + R143 + R146 看起来是<b>"心脏 / 心肌 / 危重检查捆绑套餐"</b> — 医院可能对住院患者无差别开单, 不论是否有心脏指征. R224 (血气分析虚开) 是另一类<b>"重症监护项目无文书"</b>问题. 这两类风险点最值得专项整改.</p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top: 0;">2 类患者特异性违规</h3>
+    <table>
+      <thead>
+        <tr><th>规则</th><th>违规类型</th><th>命中患者</th><th>未命中患者</th><th>说明</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>R103</td><td>影像收费 vs 文书报告缺失</td><td>J18906 V</td><td>J13365 C</td><td>J18906 多次 CT 但仅 2 个报告; J13365 影像执行记录完整</td></tr>
+        <tr><td>R160</td><td>PCT 无指征</td><td>J18906 V</td><td>J13365 (未跑该规则 V)</td><td>J18906 神外大手术后疑似预防性 PCT; J13365 不命中</td></tr>
+        <tr><td>R153</td><td>AFP 无指征</td><td>J13365 V (肺癌)</td><td>J18906 (未触发)</td><td>J13365 肿瘤患者疑似 "肿瘤标志物全套"; J18906 神外不命中</td></tr>
+        <tr><td>R161</td><td>cTnI 无指征</td><td>J13365 V</td><td>J18906 (未触发)</td><td>同 R141, J13365 加做了肌钙蛋白</td></tr>
+        <tr><td>R080</td><td>康复评定无量表</td><td>J13365 V (¥6)</td><td>J18906 不命中</td><td>J13365 骨折术后疑似自动开单; 金额小但违规模式硬</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top: 0;">医院级金额推算 (基于 2 患者样本)</h3>
+    <p style="font-size: 13px;">两患者样本 14 V 涉嫌违规总额约 <b>¥7,962</b>:</p>
+    <ul style="font-size: 13px;">
+      <li>J18906: ¥5,378 (R103/R131/R141/R143/R146/R160/R224)</li>
+      <li>J13365: ¥2,584+ (R080/R131/R141/R143/R146/R153/R161/R224)</li>
+    </ul>
+    <p style="font-size: 13px;"><b>外推</b>: 假设医院每年类似住院患者 5,000 例, 每例平均违规 ¥4,000 (取两患者均值), 则<b>年化违规金额约 ¥2,000 万级</b>. 需医保稽核 / 院内审计抽样扩大到 50-100 例 (跨科室) 后做更精确测算.</p>
+  </div>
+</section>
+
+<!-- ========== TAB 5: 整改建议 ========== -->
+<section class="tab-panel" id="recommendation">
+  <h2>📋 整改建议</h2>
+
+  <div class="pattern-card">
+    <h4>🔴 优先级 1: 心血管检验"捆绑套餐"专项审计</h4>
+    <p style="font-size: 13px;"><b>问题</b>: R131 (心脏彩超 + 左心功能 + TDI) / R141 (肌红蛋白) / R146 (BNP) / R161 (cTnI) / R143 (血浆乳酸) 在两位无心脏指征的患者均触发, 强烈提示医院在住院患者中存在<b>心血管检验"打包开单"惯例</b>.</p>
+    <p style="font-size: 13px;"><b>建议</b>:</p>
+    <ol style="font-size: 13px;">
+      <li>院内立即清查 LIS / HIS 中"心衰套餐"/"心肌损伤套餐"/"危重三项"等组合订单的开单规则, 增加适应症硬卡控 (如无心脏诊断 ICD 码不能开)</li>
+      <li>对全院 2024-2025 年神经外科 / 骨科 / 肿瘤科 / 普外科 / 妇产科住院患者抽样 100 例, 测算心血管套餐过度开单比例</li>
+      <li>若比例 > 30%, 应启动院内复核 + 退费机制</li>
+    </ol>
+  </div>
+
+  <div class="pattern-card">
+    <h4>🔴 优先级 2: "虚开"类规则专项核查</h4>
+    <p style="font-size: 13px;"><b>问题</b>: R103 (影像无报告) / R224 (血气无重症记录) / R080 (康复评定无量表) 等"收费但无执行证据"模式跨患者均出现, 这是医保稽核高风险点 (虚开属严重违规).</p>
+    <p style="font-size: 13px;"><b>建议</b>:</p>
+    <ol style="font-size: 13px;">
+      <li><b>R103 影像类</b>: 强制每个 CT/MR/B超 收费项绑定 PACS 报告号 (无报告号不允许结算)</li>
+      <li><b>R224 重症检验类</b>: 血气 / cTnI / 重症监护检验等仅在 ICU/CCU 病区收费有效, 否则系统提示</li>
+      <li><b>R080 康复评定类</b>: 收费必须挂载评定量表 (Barthel/FIM/MMSE 等) PDF, 否则不入账</li>
+    </ol>
+  </div>
+
+  <div class="pattern-card">
+    <h4>🟠 优先级 3: 肿瘤标志物开单规则梳理 (J13365 特异)</h4>
+    <p style="font-size: 13px;"><b>问题</b>: R153 (AFP) / R161 (cTnI) 在肺癌患者无肝癌 / ACS 指征却开单. 疑似医院对肿瘤患者无差别开"肿瘤标志物全套".</p>
+    <p style="font-size: 13px;"><b>建议</b>: 重新梳理 AFP / CA-125 / CEA / SCC / NSE 等肿瘤标志物的开单规则, 按肿瘤类型限定指征.</p>
+  </div>
+
+  <div class="pattern-card">
+    <h4>🟡 优先级 4: 麻醉记录单数字化 (R203 ETL 整改)</h4>
+    <p style="font-size: 13px;"><b>问题</b>: J13365 R203 全身麻醉 ¥1600 收费, 麻醉记录单<b>原件存在</b> ("见麻醉记录" × 2 引用) 但<b>未数字化录入文书系统</b>. 这不是虚开, 但影响审计可追溯性 + 未来 AI 审核效率.</p>
+    <p style="font-size: 13px;"><b>建议</b>: 推进麻醉科 / 手术科原始记录单的全量数字化 (扫描 + OCR 或电子录入), 关联到 HIS 病历系统.</p>
+  </div>
+
+  <div class="pattern-card">
+    <h4>🟡 优先级 5: CT 收费明细加部位字段 (R112 边界整改)</h4>
+    <p style="font-size: 13px;"><b>问题</b>: R112 (CT 增强 + 平扫是否同部位重复) 在 J13365 无法机器判定, 因费用表不带部位. 影响合规审计可机审化.</p>
+    <p style="font-size: 13px;"><b>建议</b>: HIS 收费明细中, CT/MR/B超 类项目<b>必须带部位标签</b> (颅脑 / 胸部 / 上腹部 / 全身等), 这样审计可自动判定多部位 vs 同部位重复.</p>
+  </div>
+
+  <div class="card" style="background: linear-gradient(135deg, #fef9c3 0%, #fed7aa 100%);">
+    <h4 style="margin-top: 0; color: #9a3412;">⏭️ 下一步合规审计延伸</h4>
+    <p style="font-size: 14px;">本次 2 患者 (神经外科 + 骨科肿瘤) 已暴露 5 类系统性违规模式. 建议:</p>
+    <ol style="font-size: 13px;">
+      <li><b>扩样本到 20-50 例</b> (覆盖更多科室: 心内 / 呼吸 / 消化 / 妇产 / 儿科), 验证心血管捆绑 / 虚开类模式的跨科室一致性</li>
+      <li><b>跨患者 V 率统计</b>: 跑完 50 例后, 对每条规则算"跨患者 V 率", ≥ 50% 的规则提报医保 / 卫健委</li>
+      <li><b>金额维度排序</b>: 把所有 V 按 (单例金额 × V 率) 排序, 锁定 Top 10 高风险规则做专项整改</li>
+      <li><b>R212 PACU / R291 精神科监护</b> 等依赖科室配置的规则: 与医院确认科室登记后再用全量数据复跑</li>
+    </ol>
+  </div>
+</section>
+
+</main>
+
+<script>
+  const buttons = document.querySelectorAll('.tab-btn');
+  const panels = document.querySelectorAll('.tab-panel');
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      buttons.forEach(b => b.classList.remove('active'));
+      panels.forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab).classList.add('active');
+    });
+  });
+</script>
+
+</body>
+</html>

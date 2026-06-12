@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="workbench-grid">
+  {% include "_sidebar.html" %}
+
+  <section class="detail-panel">
+    <div class="patient-header">
+      <h1>{{ active_patient }}</h1>
+      <span class="meta">{{ filter_label }} · 共 {{ runs|length }} 条</span>
+      <a class="btn-secondary"
+         href="/export?format=xlsx&scope=all&patient_id={{ active_patient }}"
+         title="导出 {{ active_patient }} 该病人的全部审核结果 (xlsx)">
+        ⬇ 导出此病人 (xlsx)
+      </a>
+      <button class="btn-secondary" type="button" onclick="showRawData('{{ active_patient }}')">查看原始病历</button>
+    </div>
+
+    {% if overview %}
+      {% include "_patient_overview.html" %}
+      <div class="overview-divider">
+        <span>↓ 以下为 AI 初判结果, 请逐条审核</span>
+      </div>
+    {% endif %}
+
+    {% if runs %}
+      {% set _rule_meta = rule_meta | default({}, true) %}
+      {# run_groups 由 route 按细类分组传入; 兜底 (直传 runs 的旧调用) 合成单组 #}
+      {% set _groups = run_groups if (run_groups is defined and run_groups) else [{
+          'vt': '', 'alias': '全部', 'anchor': 'vt-0',
+          'n_v': (runs | selectattr('verdict', 'equalto', 'VIOLATION') | list | length),
+          'n_i': (runs | selectattr('verdict', 'equalto', 'INCONCLUSIVE') | list | length),
+          'runs': runs }] %}
+
+      {# 顶部 sticky 细类导航 chip 行 + verdict 显隐 toggle (默认只看违规) #}
+      {% set _n_c = runs | selectattr('verdict', 'equalto', 'CLEAN') | list | length %}
+      <div class="vt-chip-row" id="vt-chip-row">
+        <div class="vt-chips">
+          {% for g in _groups %}
+          <button type="button" class="vt-chip" data-target="{{ g.anchor }}" onclick="scrollToGroup('{{ g.anchor }}')"
+                  title="{{ g.vt or '全部' }} — 点击跳到该组">
+            <span class="vt-chip-alias">{{ g.alias }}</span>
+            <span class="vt-chip-counts"><span class="c-v">{{ g.n_v }}</span>▪<span class="c-i">{{ g.n_i }}</span></span>
+          </button>
+          {% endfor %}
+        </div>
+        {# 默认只看违规: 不明 / 干净卡片默认隐藏, 勾选显示 (前端过滤, 不刷新; 偏好记住) #}
+        <label class="show-verdict-toggle" title="默认只看「违规」卡片; 勾选显示 AI 判为「不明」的卡片">
+          <input type="checkbox" id="show-inconclusive" onchange="toggleShowInconclusive(this)"> 显示不明
+        </label>
+        {% if _n_c %}
+        <label class="show-verdict-toggle" title="显示 AI 判为「干净」的卡片">
+          <input type="checkbox" id="show-clean" onchange="toggleShowClean(this)"> 显示干净 ({{ _n_c }})
+        </label>
+        {% endif %}
+        <label class="only-i-toggle" title="只看 AI 判为「不明」的卡片 (前端过滤, 不刷新)">
+          <input type="checkbox" onchange="toggleInconclusiveOnly(this)"> 只看不明
+        </label>
+        <label class="hide-missing-toggle" title="默认隐藏被 gate 判为「缺文书」的待线下核查项 (前端过滤, 可翻看)">
+          <input type="checkbox" id="hide-missing-doc" checked onchange="toggleHideMissingDoc(this)"> 隐藏缺文书
+        </label>
+      </div>
+
+      {% for g in _groups %}
+      <details class="vt-group" id="{{ g.anchor }}" data-has-i="{{ 1 if g.n_i else 0 }}" open>
+        <summary class="vt-group-header">
+          <span class="vt-group-title">{{ g.alias }}</span>
+          <span class="vt-group-counts">{{ g.n_v }} 违 · {{ g.n_i }} 不明 · 共 {{ g.runs|length }} 条</span>
+        </summary>
+
+      {% for run in g.runs %}
+      {% set meta = _rule_meta.get(run.rule_id) %}
+      <article id="run_{{ run.run_id }}" class="violation-card verdict-{{ run.verdict | verdict_color }}" data-run-id="{{ run.run_id }}" data-verdict="{{ run.verdict | verdict_color }}" data-gate-tag="{{ run.gate_tag or '' }}">
+        <div class="violation-head">
+          <span class="rule-id">{{ run.rule_id }}</span>
+          <span class="rule-subtitle-alias" title="{% if meta %}{{ meta.subtitle }}{% endif %}">{{ g.alias }}</span>
+          <span class="badge badge-{{ run.verdict | verdict_color }}">{{ run.verdict | verdict_label }}</span>
+          <span class="confidence">置信 {{ '%.2f' % (run.confidence or 0.0) }}</span>
+          {% if run.gate_tag %}<span class="gate-badge gate-{{ run.gate_tag }}" title="该裁决被确定性 gate 降级 ({{ run.gate_tag }}) — 详见下方推理">⚙ {{ run.gate_tag }}</span>{% endif %}
+          {% if run.batch_tag %}<span class="batch-badge batch-{{ run.batch_tag }}">{{ run.batch_tag }}</span>{% endif %}
+          {% if run.history %}<span class="history-hint" title="该规则之前跑过 {{ run.history|length }} 次, 末尾可展开看老 verdict + 当时批注">📜 +{{ run.history|length }}</span>{% endif %}
+        </div>
+        {% if meta %}
+        <div class="rule-question">{{ meta.question }}</div>
+        {% endif %}
+
+        {# 命中项目 (evidence-anchoring) — 仅 fee/drug; note 类收敛成「查阅文书原文」按钮 #}
+        {% set hits = (hits_by_run | default({}, true)).get(run.run_id, []) %}
+        {% set fd_hits = hits | selectattr('source', 'in', ['fee', 'drug']) | list %}
+        {% if fd_hits %}
+        <div class="hit-items">
+          <div class="hit-items-head">命中项目 ({{ fd_hits|length }})</div>
+          {% for h in fd_hits %}
+          <div class="hit-item hit-src-{{ h.source }}{% if h.anchor.unresolved %} hit-unresolved{% endif %}"
+               data-anchor='{{ h.anchor.model_dump() | tojson }}'
+               tabindex="0" role="button"
+               title="点击在右侧原文面板定位{% if h.anchor.unresolved %} (未能精确定位, 仅切到对应页){% endif %}">
+            <div class="hit-line">
+              {% if h.code_nat %}<code class="hit-code" title="{% if h.code_local %}院内码 {{ h.code_local }}{% else %}无院内码{% endif %}">{{ h.code_nat }}</code>{% endif %}
+              <span class="hit-name">{{ h.name }}</span>
+              {% if h.matched_fee_name and h.matched_fee_name != h.name %}<span class="hit-fee-name">· {{ h.matched_fee_name }}</span>{% endif %}
+            </div>
+            {% if h.restriction %}
+            <div class="hit-restriction">限定: {{ h.restriction }}{% if h.review_note %} <span class="hit-review">⚠ {{ h.review_note }}</span>{% endif %}</div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {# 检验/检查指征 (add-verdict-gate-layer) — lab/exam 来源不再静默丢弃 #}
+        {% set le_hits = hits | selectattr('source', 'in', ['lab', 'exam']) | list %}
+        {% if le_hits %}
+        <div class="hit-items hit-items-le">
+          <div class="hit-items-head">指征来源 · 检验/检查 ({{ le_hits|length }})</div>
+          {% for h in le_hits %}
+          <div class="hit-item hit-src-{{ h.source }}{% if h.anchor.unresolved %} hit-unresolved{% endif %}"
+               data-anchor='{{ h.anchor.model_dump() | tojson }}'
+               tabindex="0" role="button"
+               title="点击在右侧「检验记录」tab 定位{% if h.anchor.unresolved %} (未精确定位, 仅切到该页){% endif %}">
+            <div class="hit-line">
+              <span class="hit-kind-tag">{{ '检验' if h.source == 'lab' else '检查' }}</span>
+              <span class="hit-name">{{ h.name }}</span>
+              {% if h.matched_fee_name and h.matched_fee_name != h.name %}<span class="hit-fee-name">· {{ h.matched_fee_name }}</span>{% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {# note 类证据收敛: 查阅文书原文 (打开右侧文书 tab 顶部) #}
+        <div class="card-actions">
+          <button type="button" class="btn-source" onclick="openSourcePanel({tab:'notes'})">📄 查阅文书原文</button>
+        </div>
+
+        {# AI 推理 + 证据裸 dump → 默认展开 (专家逐条审核时直接可见, 不用每张卡片点开) #}
+        <details class="evidence-block" open>
+          <summary>🔎 AI 推理过程 + 证据</summary>
+          <div class="reasoning">{{ run.reasoning or '(无 reasoning)' }}</div>
+          {% if run.evidence_json %}<pre>{{ run.evidence_json }}</pre>{% endif %}
+        </details>
+
+        {# 当前 user 是否已审 — selectattr 走 Jinja2 selectattr → first | default(none) 避免 set 在 for 内的 scope 问题 #}
+        {% set my_reviews = run.reviews | selectattr('user_id', 'equalto', current_user.id) | list %}
+        {% set my_review = my_reviews[0] if my_reviews else none %}
+
+        {% if my_review %}
+        <div class="review-existing">
+          <div><span class="you">您的审核:</span>
+            <span class="badge badge-{{ my_review.review_verdict | verdict_color }}">{{ my_review.review_verdict | verdict_label }}</span>
+            <span class="muted">· {{ my_review.created_at | humanize_since }}</span>
+          </div>
+          {% if my_review.comment %}<div style="margin-top:6px;">{{ my_review.comment }}</div>{% endif %}
+          <button class="btn-secondary" type="button" onclick="showReviewForm('{{ run.run_id }}')" style="margin-top:8px;">修改</button>
+        </div>
+        {% endif %}
+
+        <form class="review-form {% if my_review %}hidden{% endif %}"
+              id="review-form-{{ run.run_id }}"
+              data-run-id="{{ run.run_id }}"
+              onsubmit="return submitReview(event)">
+          <div class="verdict-radios">
+            <label><input type="radio" name="verdict" value="V" {% if my_review and my_review.review_verdict == 'V' %}checked{% endif %}> 认同 (V)</label>
+            <label><input type="radio" name="verdict" value="I" {% if my_review and my_review.review_verdict == 'I' %}checked{% endif %}> 改判不明 (I)</label>
+            <label><input type="radio" name="verdict" value="C" {% if my_review and my_review.review_verdict == 'C' %}checked{% endif %}> 驳回 (C)</label>
+          </div>
+          <textarea name="comment" placeholder="评语 (可选)">{{ my_review.comment if my_review else '' }}</textarea>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">提交</button>
+            {% if my_review %}
+            <button type="button" class="btn-secondary" onclick="hideReviewForm('{{ run.run_id }}')">取消</button>
+            {% endif %}
+          </div>
+        </form>
+
+        {# 其他专家审核 #}
+        {% set others = run.reviews | rejectattr('user_id', 'equalto', current_user.id) | list %}
+        {% if others %}
+        <div class="others-reviews" id="others-{{ run.run_id }}">
+          <div style="font-weight:600; color:var(--text); margin-bottom:4px;">其他专家审核 ({{ others|length }})</div>
+          {% for rv in others %}
+          <div class="other-row" data-reviewer="{{ rv.reviewer_username }}">
+            <span class="badge badge-{{ rv.review_verdict | verdict_color }}">{{ rv.review_verdict | verdict_label }}</span>
+            <strong>{{ rv.reviewer_display_name or rv.reviewer_username }}</strong>:
+            <span class="other-comment"{% if rv.comment %} title="{{ rv.comment }}"{% endif %}>{{ (rv.comment or '')[:80] }}{% if rv.comment and rv.comment|length > 80 %}…{% endif %}</span>
+            <span class="muted">· {{ rv.created_at | humanize_since }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {# v0.7: 历史 (老 v1.0 verdict + 当时批注) #}
+        {% if run.history %}
+        <details class="history-runs">
+          <summary>📜 历史 {{ run.history|length }} 次 (含老 verdict + 当时专家批注 — latest 是上方的 {{ run.batch_tag or 'v1.0' }} 那条)</summary>
+          {% for h in run.history %}
+          <div class="history-run">
+            <div class="history-head">
+              <span class="badge badge-{{ h.verdict | verdict_color }}">{{ h.verdict | verdict_label }}</span>
+              <span class="confidence">conf {{ '%.2f' % h.confidence }}</span>
+              <span class="muted">{{ h.batch_tag or 'v1.0' }} · {{ h.created_at | humanize_since }}</span>
+            </div>
+            <div class="history-reasoning">{{ (h.reasoning or '(无 reasoning)')[:400] }}{% if h.reasoning and h.reasoning|length > 400 %}…{% endif %}</div>
+            {% if h.reviews %}
+            <div class="history-reviews">
+              <div style="font-weight:600; color:var(--text); margin:4px 0;">当时的专家批注:</div>
+              {% for rv in h.reviews %}
+              <div class="hist-review">
+                <span class="badge badge-{{ rv.review_verdict | verdict_color }}">{{ rv.review_verdict | verdict_label }}</span>
+                <strong>{{ rv.reviewer_display_name or rv.reviewer_username }}</strong>
+                <span class="muted">· {{ rv.created_at | humanize_since }}</span>
+                {% if rv.comment %}<div style="margin-top:2px;">{{ rv.comment }}</div>{% endif %}
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </details>
+        {% endif %}
+      </article>
+      {% endfor %}
+      </details>
+      {% endfor %}
+      <p class="all-hidden-hint muted" id="all-hidden-hint" hidden>
+        当前仅显示「违规」卡片 — 该病人在此视图下无违规项。
+        勾选上方 <strong>显示不明 / 显示干净</strong> 查看其余裁决。
+      </p>
+    {% else %}
+      <div class="detail-empty">
+        <p>该病人在 filter "{{ filter_label }}" 下无命中</p>
+        <p class="muted">试试 <a href="/workbench/{{ active_patient }}?filter=all">全部 (含干净)</a></p>
+      </div>
+    {% endif %}
+  </section>
+</div>
+
+<div id="modal-root"></div>
+<div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/app.js?v={{ asset_v }}" defer></script>
+{% endblock %}

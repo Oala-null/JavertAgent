@@ -1,0 +1,116 @@
+template_id: M2
+name: 过度检查
+description: 检查 fee 命中 + 诊断无指征 (+ 可选联查药品)
+master_prompt: |
+  本规则关注: 患者本次住院里, 是否被无指征收取了「{{exam_concept_desc}}」检查/检验.
+  {{catalog_basis}}
+
+  审计步骤:
+  1. 用 note_diagnosis 列出该患者全部诊断 (入院/出院/术前/术后/病理).
+  2. 用 search_fees(category="检查类") 或 search_fees(keyword=...) 查该检查是否做过, 记录出现次数 count.
+     检索关键词: {% for kw in exam_kw_primary_list %}"{{kw}}"{% if not loop.last %} / {% endif %}{% endfor %}
+  3. 若 count == 0 → CLEAN (规则不适用, 患者根本没做该检查).
+  4. 检查 note_diagnosis 中是否含以下指征任一:
+     {% for dx in indication_dx_list %}- {{dx}}
+     {% endfor %}
+  5. 若有任一指征命中 → CLEAN (有指征).
+  6. 【判「无指征」前 MUST 执行】用 scan_progress_indications(patient_id, symptom_kw_list=[{% for s in symptom_kw_list %}"{{s}}"{% if not loop.last %}, {% endif %}{% endfor %}]) 扫病程/查房 section 族的症状指征.
+     - 若命中**阳性**症状 (无 [否认段]/[选项框] 标注) → CLEAN (病程记录有指征, 不只看诊断).
+     - 仅当诊断无指征 **且** 病程症状 0 阳性命中时, 才可继续向 VIOLATION 推进.
+  7. 若无任一诊断指征命中 且病程症状 0 阳性命中, 且 count >= {{min_count}}{% if drug_check %} 且 search_fees(keyword 任一为 {% for d in drug_kw_list %}"{{d}}"{% if not loop.last %}/{% endif %}{% endfor %}) 无命中{% endif %} → VIOLATION,
+     evidence: 引诊断完整列表 + 该检查项目名 × count{% if drug_check %} + 用药列表{% endif %}.
+  8. 诊断为「待查」「疑似」「排除」等中间状态 → INCONCLUSIVE.{% if inconclusive_addendum %}
+  {{inconclusive_addendum}}{% endif %}
+  {% if drug_check %}
+  特殊条件: 若 search_fees(keyword 任一为 {% for d in drug_kw_list %}"{{d}}"{% if not loop.last %}/{% endif %}{% endfor %}) 命中, 说明患者实际用了{{drug_concept_desc}}, 即使诊断未明说也支持开展 {{exam_concept_desc}}, 应判 CLEAN.
+  {% endif %}{% if special_notes %}
+  特殊注意:
+  {% for note in special_notes %}- {{note}}
+  {% endfor %}{% endif %}{% if pilot_caveat %}
+  注意: {{pilot_caveat}}{% endif %}
+keywords_template: |
+  {% for kw in aux_keywords %}- {{kw}}
+  {% endfor %}
+tools_template: |
+  {% for t in aux_tools %}- {{t}}
+  {% endfor %}
+signal_template: |
+  {{aux_signal}}
+fields:
+  - name: exam_concept_desc
+    type: str
+    desc: "检查/检验项目类别描述 (例: 乙肝/丙肝抗体测定 (HBsAg, HBsAb, ...))"
+    required: true
+  - name: catalog_basis
+    type: str
+    desc: "适应症范围 + 依据来源 (1-3 句; 例: 按诊疗规范, 这些项目仅适用于肝炎/肝硬化/肝癌患者, 或术前/输血前/血制品使用前的常规筛查 (一次足够). 一次住院周期内对非肝炎患者**多次**测定 = 过度检查.)"
+    required: true
+  - name: exam_kw_primary_list
+    type: list[str]
+    desc: "search_fees keyword 主搜索词列表 (2-5 个, 用于步骤 2 的检索)"
+    required: true
+  - name: indication_dx_list
+    type: list[str]
+    desc: "诊断指征列表 (任一命中即视为有指征 → CLEAN, 5-16 项)"
+    required: true
+  - name: min_count
+    type: int
+    desc: "多次违规阈值 (默认 2 — 单次不再默认触发 V, add-verdict-gate-layer; 仍可显式覆盖)"
+    required: true
+    default: 2
+  - name: symptom_kw_list
+    type: list[str]
+    desc: "病程症状关键词列表 (scan_progress_indications 用; 判无指征前强制扫. 默认复用 experience.md 共识 7)"
+    required: false
+    default:
+      - 胸闷
+      - 气短
+      - 喘
+      - 憋
+      - 胸痛
+      - 下肢水肿
+      - 发热
+      - 咳嗽
+      - 心悸
+  - name: inconclusive_addendum
+    type: str
+    desc: "额外 INCONCLUSIVE 条款 (例: R151 '若 count == 1 且无指征 → INCONCLUSIVE (单次可能是术前/输血前筛查).')"
+    required: false
+    default: ""
+  - name: drug_check
+    type: bool
+    desc: "是否联查药品 (R219 肌松监测/R313 抗精神病药监测时为 true)"
+    required: false
+    default: false
+  - name: drug_kw_list
+    type: list[str]
+    desc: "药品关键词列表 (drug_check=true 时必填, 例: R219 [罗库溴铵, 维库溴铵, ...])"
+    required: false
+    default: []
+  - name: drug_concept_desc
+    type: str
+    desc: "药品类别简称 (drug_check=true 时必填, 例: 肌松药 / 抗精神病药)"
+    required: false
+    default: ""
+  - name: special_notes
+    type: list[str]
+    desc: "特殊注意条款 (0+ 条; 例: R156 [女性患者收 PSA 直接 VIOLATION], R311 [即使有诊断但稳定期仍 VIOLATION])"
+    required: false
+    default: []
+  - name: pilot_caveat
+    type: str
+    desc: "pilot 适用性说明 (例: '甲状腺癌髓样癌患者 CEA 有指征, 应判 CLEAN'; 空字符串表示无特殊 pilot caveat)"
+    required: false
+    default: ""
+  - name: aux_keywords
+    type: list[str]
+    desc: "trigger_keywords 列表 (5-12 项)"
+    required: true
+  - name: aux_tools
+    type: list[str]
+    desc: "suggested_tools 列表 (推荐 [note_diagnosis, search_fees]; drug_check=true 时可加 drug_indication)"
+    required: true
+  - name: aux_signal
+    type: str
+    desc: "expected_signal 整段文本 (典型违规 / 典型 CLEAN / 典型 INCONCLUSIVE 描述, 2-3 行)"
+    required: true

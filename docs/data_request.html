@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Javert 数据需求清单 — M2 + M4 待装规则</title>
+<style>
+  :root {
+    --bg: #fafbfc;
+    --card: #ffffff;
+    --border: #e4e7eb;
+    --text: #1f2933;
+    --muted: #616e7c;
+    --accent: #3b82f6;
+    --accent-soft: #dbeafe;
+    --green: #10b981;
+    --green-soft: #d1fae5;
+    --yellow: #f59e0b;
+    --yellow-soft: #fef3c7;
+    --red: #ef4444;
+    --red-soft: #fee2e2;
+    --purple: #8b5cf6;
+    --purple-soft: #ede9fe;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  header {
+    background: linear-gradient(135deg, #fef3c7 0%, #fed7aa 100%);
+    padding: 28px 48px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 {
+    margin: 0 0 6px 0;
+    font-size: 26px;
+    color: #92400e;
+  }
+  header .sub {
+    color: var(--muted);
+    font-size: 14px;
+  }
+  header .badges {
+    margin-top: 10px;
+  }
+  .badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-right: 6px;
+  }
+  .badge.green { background: var(--green-soft); color: #065f46; }
+  .badge.yellow { background: var(--yellow-soft); color: #92400e; }
+  .badge.red { background: var(--red-soft); color: #991b1b; }
+  .badge.blue { background: var(--accent-soft); color: #1e40af; }
+  .badge.purple { background: var(--purple-soft); color: #5b21b6; }
+
+  .tabs {
+    display: flex;
+    border-bottom: 2px solid var(--border);
+    background: white;
+    padding: 0 48px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    overflow-x: auto;
+  }
+  .tabs button {
+    background: none;
+    border: none;
+    padding: 14px 22px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+    margin-bottom: -2px;
+  }
+  .tabs button:hover { color: var(--accent); }
+  .tabs button.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .content {
+    padding: 28px 48px 64px;
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  h2 {
+    font-size: 22px;
+    margin: 24px 0 12px;
+    color: #1e3a8a;
+  }
+  h3 {
+    font-size: 16px;
+    margin: 22px 0 10px;
+    color: var(--text);
+  }
+
+  .summary-card {
+    background: linear-gradient(135deg, #dbeafe 0%, #ede9fe 100%);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin: 16px 0 24px;
+  }
+  .summary-card h3 { margin-top: 0; color: #1e3a8a; }
+  .summary-card ul { margin: 8px 0; }
+
+  /* 规则卡 */
+  .rule-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin: 16px 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .rule-card .rule-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .rule-card .rule-id {
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  .rule-card .rule-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    flex: 1;
+    margin: 0 12px;
+  }
+  .rule-card .rule-domain {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .rule-card h4 {
+    margin: 14px 0 6px;
+    font-size: 13px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .rule-card .quote {
+    background: #f8fafc;
+    border-left: 4px solid var(--accent);
+    padding: 10px 14px;
+    font-size: 13px;
+    color: #374151;
+    margin: 6px 0;
+    line-height: 1.7;
+  }
+  .rule-card .quote.example {
+    border-left-color: var(--yellow);
+    background: #fffbeb;
+  }
+  .rule-card .data-block {
+    background: #fef2f2;
+    border-left: 4px solid var(--red);
+    padding: 10px 14px;
+    margin: 6px 0;
+    font-size: 13px;
+    border-radius: 4px;
+  }
+  .rule-card .data-block.green {
+    background: #ecfdf5;
+    border-left-color: var(--green);
+  }
+  .rule-card .data-block.yellow {
+    background: #fffbeb;
+    border-left-color: var(--yellow);
+  }
+  .rule-card .data-block strong {
+    color: #991b1b;
+  }
+  .rule-card .data-block.green strong { color: #065f46; }
+  .rule-card .data-block.yellow strong { color: #92400e; }
+
+  /* 数据需求表 */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0;
+    font-size: 13px;
+  }
+  table th, table td {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  table th {
+    background: #f1f5f9;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  table td.mono { font-family: "SF Mono", Consolas, monospace; font-size: 12px; }
+
+  .schema {
+    background: #1e293b;
+    color: #e2e8f0;
+    border-radius: 6px;
+    padding: 14px 18px;
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    overflow-x: auto;
+    margin: 8px 0;
+  }
+  .schema .key { color: #93c5fd; }
+  .schema .str { color: #fcd34d; }
+  .schema .comment { color: #94a3b8; }
+
+  .priority-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-left: 6px;
+  }
+  .priority-tag.urgent { background: var(--red-soft); color: #991b1b; }
+  .priority-tag.high { background: var(--yellow-soft); color: #92400e; }
+  .priority-tag.med { background: var(--accent-soft); color: #1e40af; }
+
+  .checklist {
+    background: #f8fafc;
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 10px 0;
+  }
+  .checklist label {
+    display: block;
+    padding: 4px 0;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .checklist input[type="checkbox"] {
+    margin-right: 8px;
+  }
+
+  @media (max-width: 800px) {
+    .content, header, .tabs { padding-left: 20px; padding-right: 20px; }
+    .rule-card .rule-head { flex-direction: column; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📋 Javert 数据需求清单 — 跟同事要数据</h1>
+  <div class="sub">2026-05-14 · 16 条规则待补 (M2 4 条 + M4 12 条) · 按数据类型分组 · 含 schema 建议</div>
+  <div class="badges">
+    <span class="badge red">M4 12 条 — 必须有诊疗目录</span>
+    <span class="badge yellow">M2 4 条 — 已可装, 有数据更好</span>
+    <span class="badge blue">解锁后 ready: 65 → ~85</span>
+    <span class="badge green">5 大类数据可分别要</span>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="overview">📊 总览</button>
+  <button class="tab-btn" data-tab="m4-catalog">🔴 M4 / 诊疗目录 (12 条)</button>
+  <button class="tab-btn" data-tab="m2-rules">🟡 M2 / 待装 (4 条)</button>
+  <button class="tab-btn" data-tab="schemas">🗃️ 数据 schema 建议</button>
+  <button class="tab-btn" data-tab="checklist">✅ 索要清单</button>
+</nav>
+
+<main class="content">
+
+<!-- ========== TAB 1: 总览 ========== -->
+<section class="tab-panel active" id="overview">
+  <h2>需要补的 16 条规则一览</h2>
+
+  <div class="summary-card">
+    <h3>核心结论</h3>
+    <ul>
+      <li><b>M4 类 12 条</b> (超标准收费): 必须拿到<b>诊疗目录</b>才能装. 这是最大解锁项, 占数据缺口的 75%.</li>
+      <li><b>M2 类 4 条</b> (R108/R132/R278/R279): 用现有 4 工具<b>就能审</b>, 但同事可以提供<b>临床指征参考表</b>让 vars 更精准.</li>
+      <li>拿到诊疗目录 + 写好 vars 后, <b>ready 可从 65 → ~85</b> (新装 16 条), 覆盖 0325 表 ~52% 的"做不了"违规情形.</li>
+      <li>额外解锁: 诊疗目录还能联动解锁红区 E 类 19 条 (未 init), <b>潜在 ready 突破 100</b>.</li>
+    </ul>
+  </div>
+
+  <h3>16 条规则按数据类型分组</h3>
+  <div class="rule-card">
+    <table>
+      <thead>
+        <tr><th>数据类型</th><th>规则数</th><th>规则 ID</th><th>难度</th><th>谁可能有</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>🔴 诊疗目录</b> (各省/国家版)</td>
+          <td>11</td>
+          <td class="mono">R020 R063 R074 R165 R193 R196 R200 R250 R291 R292 R293</td>
+          <td>低</td>
+          <td>医保办 / 物价科 / 财务科</td>
+        </tr>
+        <tr>
+          <td><b>🟡 医院科室配置表</b></td>
+          <td>1</td>
+          <td class="mono">R212</td>
+          <td>低</td>
+          <td>院办 / 信息科</td>
+        </tr>
+        <tr>
+          <td><b>🟡 精神科项目立项指南 (2023)</b></td>
+          <td>2 (含 R291 R293)</td>
+          <td class="mono">R291 R293</td>
+          <td>低</td>
+          <td>精神科 / 物价科</td>
+        </tr>
+        <tr>
+          <td><b>🟢 临床诊疗规范 (可选辅助)</b></td>
+          <td>4</td>
+          <td class="mono">R108 R132 R278 R279</td>
+          <td>低</td>
+          <td>专科医生 / 学术办</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>三级紧急度排序</h3>
+  <div class="rule-card">
+    <table>
+      <thead><tr><th>紧急度</th><th>条数</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="priority-tag urgent">P0 必须要</span></td>
+          <td>11 条 (M4 全部)</td>
+          <td>没诊疗目录, M4 模板装不出来. R193 R196 R200 已 init 但骨架, 装不下 prompt</td>
+        </tr>
+        <tr>
+          <td><span class="priority-tag high">P1 建议要</span></td>
+          <td>1 条 (R212)</td>
+          <td>医院科室配置, 单条规则但答案确定 (是/否)</td>
+        </tr>
+        <tr>
+          <td><span class="priority-tag med">P2 辅助要</span></td>
+          <td>4 条 (M2)</td>
+          <td>不要也能装, 要了更精准. M2 模板 prompt 可以让 LLM 自己推, 但有"专科指征清单"减少误判</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ========== TAB 2: M4 诊疗目录 ========== -->
+<section class="tab-panel" id="m4-catalog">
+  <h2>🔴 M4 / 超标准收费 12 条 — 必需诊疗目录</h2>
+
+  <div class="summary-card">
+    <h3>核心需求</h3>
+    <p>所有 12 条 M4 规则都是 "<b>未按诊疗目录计价标准收费</b>" 模式. 没有诊疗目录 (即各省/国家版《医疗服务诊疗项目目录》), 模板没法装填 — 因为 LLM 不知道某项目的<b>计价单位 (次/疗程/例/小时/根)</b> 和<b>同切口加成规则</b>.</p>
+    <p>同事可以从 <b>医保办 / 物价科 / 财务科</b> 拿到该数据, 通常是 Excel / PDF 格式. 也可以从国家医保局/各省医保局公开页面下载.</p>
+  </div>
+
+  <!-- R020 -->
+  <div class="rule-card">
+    <div class="rule-head">
+      <span class="rule-id">R020</span>
+      <span class="rule-title">经血管介入项目, 扩张多支血管超出计价标准</span>
+      <span class="rule-domain">心血管内科 · 超标准收费</span>
+    </div>
+    <h4>📜 规则原文</h4>
+    <div class="quote">开展经血管介入项目, 扩张多支血管超出计价标准. 如: 定向冠脉内膜旋切术、经皮冠状动脉内支架置入术(STENT)、经皮冠状动脉腔内激光成形术(ELCA)、高速冠状动脉内膜旋磨术等.</div>
+    <h4>💡 示例</h4>
+    <div class="quote example">某省《诊疗目录》规定, 介入治疗原则上以经一根血管的介入治疗为起点, <b>每增加一根血管的治疗加收 20%</b>. 某医院为严重冠心病的患者行经皮冠状动脉腔内成形术, 扩张 3 支血管. 医院按全价收取 3 次 PTCA 费用, 其中 2 次应按全价的 20% 收取.</div>
+    <h4>🔴 缺什么</h4>
+    <div class="data-block">
+      <strong>诊疗目录 — 介入治疗类项目</strong> + <strong>多支血管加成规则</strong>:
+      <ul style="margin:4px 0 0 18px;font-size:12px;">
+        <li>项目编码 + 名称 (PTCA / STENT / ELCA / 旋磨术 等)</li>
+        <li>"每支血管" / "每增加一根血管加收 X%" 等加成条款</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- R063 -->
+  <div class="rule-card">
+    <div class="rule-head">
+      <span class="rule-id">R063</span>
+      <span class="rule-title">同一切口两手术, 次要手术未按计价标准收费</span>
+      <span class="rule-domain">骨科 · 超标准收费</span>
+    </div>
+    <h4>📜 规则原文</h4>
+    <div class="quote">经同一切口进行的两种不同疾病的手术, 次要手术未按照诊疗项目计价标准收费.</div>
+    <h4>💡 示例</h4>
+    <div class="quote example">某省《诊疗目录》规定, 经同一切口进行的两种及以上不同的手术, <b>其中第二及以后的手术按规定价格的 50% 计收</b>, 某医院实际按全价收费.</div>
+    <h4>🔴 缺什么</h4>
+    <div class="data-block">
+      <strong>诊疗目录 — 手术计价规则总则</strong>:
+      <ul style="margin:4px 0 0 18px;font-size:12px;">
+        <li>"同一切口" 加成规则 (通常第 2 手术 50%, 第 3+ 30%)</li>
+        <li>"不同切口" 加成规则 (通常 +20%)</li>
+        <li>判定 "切口数量" 的方法 (从手术记录提取 — Javert 已有 search_notes)</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- R074 -->
+  <div class="rule-card">
+    <div class="rule-head">
+      <span class="rule-id">R074</span>
+      <span class="rule-title">血液净化按次收费 vs 按治疗时长收费</span>
+      <span class="rule-domain">血液净化 · 超标准收费</span>
+    </div>
+    <h4>📜 规则原文</h4>
+    <div class="quote">按次收费的血液净化类诊疗项目 (如血液透析、血液灌流、血液滤过、血液透析滤过、血透监测等), 按治疗时长进行收费.</div>
+    <h4>💡 示例</h4>
+    <div class="quote example">某省《诊疗目录》中, 血液透析滤过单价 600 元, 计价单位为<b>次</b>. 某医院对慢性肾衰患者治疗时长 4 小时, 应收 1 次 600 元. 但医院以小时为单位收 4 次共 2400 元.</div>
+    <h4>🔴 缺什么</h4>
+    <div class="data-block">
+      <strong>诊疗目录 — 血液净化类项目计价单位</strong>:
+      <ul style="margin:4px 0 0 18px;font-size:12px;">
+        <li>血液透析 / 血液灌流 / 血液滤过 / 血液透析滤过 / 血透监测的计价单位 (应为 "次")</li>
+        <li>每次允许收费上限 (单次/单日)</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- R165 -->
+  <div class="rule-card">
+    <div class="rule-head">
+      <span class="rule-id">R165</span>
+      <span class="rule-title">全器官大切片检查 / 手术标本检查 未按计价单位收费</span>
+      <span class="rule-domain">临床检验 (组织学检查) · 超标准收费</span>
+    </div>
+    <h4>📜 规则原文</h4>
+    <div class="quote">开展全器官大切片检查与诊断、手术标本检查与诊断, 未按计价单位收费.</div>
+    <h4>💡 示例</h4>
+    <div class="quote example">某省《诊疗目录》中, <b>全器官大切片检查与诊断计费单位为"例"</b>. 某医院按每个标本分别计费, 属于超标准收费.</div>
+    <h4>🔴 缺什么</h4>
+    <div class="data-block">
+      <strong>诊疗目录 — 病理学/组织学检查项目</strong>:
+      <ul style="margin:4px 0 0 18px;font-size:12px;">
+        <li>全器官大切片检查 — 计价单位 "例" (整体送检)</li>
+        <li>手术标本检查 — 计价单位 (通常 "例" 或 "送检件")</li>
+        <li>同送检的多组织块加收规则</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- R193 -->
+  <div class="rule-card">
+    <div class="rule-head">
+      <span class="rule-id">R193</span>
+      <span class="rule-title">体表肿物切除术 同/不同切口计价</span>
+      <span class="rule-domain">肿瘤 · 超标准收费 · 已 init P2 drafting</span>
+    </div>
+    <h4>📜 规则原文</h4>
+    <div class="quote">开展体表肿物切除术等手术, 未按照同一切口、不同切口手术计价标准收费.</div>
+    <h4>💡 示例</h4>
+    <div class="quote example">某省《诊疗目录》规定, 同一手术项目中两个以上切口, <b>在原项目价格基础上加收 20%</b>. 某医院按肿物个数计费.</div>
+    <h4>🔴 缺什么</h4>
+    <div class="data-block">
+      <strong>诊疗目录 — 体表肿物切除术加成规则</strong>:
+      <ul style="margin:4px 0 0 18px;font-size:12px;">
+        <li>"同一切口多个肿物" → 不另加收 (只收 1 次)</li>
+        <li>"不同切口" → 第 2+ 切口加收 20%</li>
+        <li>"肿物个数 vs 切口数" 区分判定方法 (从手术记录提取)</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- R196 -->
+  <div class="rule-card">
+    <div class="rule-head">
+      <span class="rule-id">R196</span>
+      <span class="rule-title">高强度超声聚焦刀治疗 按瘤体直径分档计价</span>
+      <span class="rule-domain">肿瘤 · 超标准收费</span>
+    </div>
+    <h4>📜 规则原文</h4>
+    <div class="quote">高强度超声聚焦刀治疗, 未按计价标准收费.</div>
+    <h4>💡 示例</h4>
+    <div class="quote example">某省《诊疗目录》规定, 高强度超声聚焦刀治疗收费标准: <b>肿瘤直径 ≤3cm 收 8000 元; >5cm 或 ≤8cm 加收 3000 元; >8cm 加收 6000 元</b>. 某医院对所有患者按 17000 元/次的标准收费, 未根据瘤体直径分档.</div>
+    <h4>🔴 缺什么</h4>
+    <div class="data-block">
+      <strong>诊疗目录 — 高强度超声聚焦刀 (HIFU) 计价标准</strong>:
+      <ul style="margin:4px 0 0 18px;font-size:12px;">
+        <li>基础价格 + 分档加收规则 (按肿瘤直径)</li>
+        <li>瘤体直径阈值 (3 / 5 / 8 cm 等)</li>
+        <li>Javert 需从手术记录 / 影像报告提取 "肿瘤大小" 字段 (已有 search_notes)</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- R200 -->
+  <div class="rule-card">
+    <div class="rule-head">
+      <span class="rule-id">R200</span>
+      <span class="rule-title">放疗定位类项目 按疗程收费 vs 按次收费</span>
+      <span class="rule-domain">肿瘤 · 超标准收费 · 已 init P2 drafting</span>
+    </div>
+    <h4>📜 规则原文</h4>
+    <div class="quote">开展简易定位、专用 X 线机模拟定位、专用 X 线机复杂模拟定位等, 未按照计价单位收费.</div>
+    <h4>💡 示例</h4>
+    <div class="quote example">某省《诊疗目录》规定, "简易定位" "专用 X 线机模拟定位" "专用 X 线机复杂模拟定位" 计价单位均为 <b>"疗程"</b>. 某医院未按"疗程"计价, 收费次数大于实际疗程数.</div>
+    <h4>🔴 缺什么</h4>
+    <div class="data-block">
+      <strong>诊疗目录 — 放疗定位类项目</strong>:
+      <ul style="margin:4px 0 0 18px;font-size:12px;">
+        <li>简易定位 / 模拟定位 / 复杂模拟定位 的计价单位 (应为 "疗程")</li>
+        <li>"疗程" 的定义 (通常一次连续治疗的完整周期)</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- R212 -->
+  <div class="rule-card">
+    <div class="rule-head">
+      <span class="rule-id">R212</span>
+      <span class="rule-title">医院无麻醉恢复室, 收取麻醉恢复室监护费</span>
+      <span class="rule-domain">麻醉 · 超标准收费 · 单独类</span>
+    </div>
+    <h4>📜 规则原文</h4>
+    <div class="quote">医院无麻醉恢复室, 收取麻醉恢复室监护费用.</div>
+    <h4>💡 示例</h4>
+    <div class="quote example">某省《诊疗项目》规定, 麻醉恢复室监护是指<b>在麻醉恢复室内</b>监测患者心电图、血压等生命体征. 某医院无麻醉恢复室, 但收取了"麻醉恢复室监护"费用.</div>
+    <h4>🟡 缺什么 (简单)</h4>
+    <div class="data-block yellow">
+      <strong>该医院科室配置表 — 麻醉恢复室是否存在</strong>:
+      <ul style="margin:4px 0 0 18px;font-size:12px;">
+        <li>院办 / 信息科 / 设备科可提供</li>
+        <li>答: 是 / 否 (二选一即可)</li>
+        <li>若 "否", 所有患者收 "麻醉恢复室监护" 都是 V</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- R250 -->
+  <div class="rule-card">
+    <div class="rule-head">
+      <span class="rule-id">R250</span>
+      <span class="rule-title">口腔检查/治疗项目, 未按计价单位收费</span>
+      <span class="rule-domain">口腔 · 超标准收费</span>
+    </div>
+    <h4>📜 规则原文</h4>
+    <div class="quote">开展各种口腔检查或治疗项目, 未按照计价单位收费.</div>
+    <h4>💡 示例</h4>
+    <div class="quote example">将按 "次" 计费的口腔项目按 "牙" 收费; 将按 "牙" 计费的项目按 "根管" 或 "洞" 收费. <b>某省《诊疗目录》规定, 开髓引流术计价单位为"每牙"</b>, 某医院一次治疗实际开展 3 颗牙, 但按每根管共收 10 次费用.</div>
+    <h4>🔴 缺什么</h4>
+    <div class="data-block">
+      <strong>诊疗目录 — 口腔科项目计价单位明细</strong>:
+      <ul style="margin:4px 0 0 18px;font-size:12px;">
+        <li>各口腔项目的计价单位 (次 / 牙 / 根管 / 洞 / 节段)</li>
+        <li>常见项目: 开髓引流术 (牙)、根管充填 (根管)、龋齿修复 (洞) 等</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- R291 -->
+  <div class="rule-card">
+    <div class="rule-head">
+      <span class="rule-id">R291</span>
+      <span class="rule-title">精神科监护未严格按项目内涵规定</span>
+      <span class="rule-domain">精神医学 · 超标准收费</span>
+    </div>
+    <h4>📜 规则原文</h4>
+    <div class="quote">开展精神科监护, 未严格按照诊疗规范及项目内涵规定的适用对象、监护内容、病区环境、人员资质等要求提供服务, 仍按该项目标准收费.</div>
+    <h4>💡 示例 (出处)</h4>
+    <div class="quote example"><b>《全国诊疗服务项目目录规范 (2023版)》</b>规定, 精神科监护项目内涵: 由经过训练的专业人员对入住精神科患者, 存在急性、冲动、自杀、伤人、毁物、外走、妄想、幻觉、木僵的患者实施监护. <b>《精神治疗类医疗服务价格项目立项指南 (试行)》</b>进一步明确...</div>
+    <h4>🔴 缺什么</h4>
+    <div class="data-block">
+      <strong>《全国诊疗服务项目目录规范 (2023 版)》</strong> + <strong>《精神治疗类医疗服务价格项目立项指南 (试行)》</strong>:
+      <ul style="margin:4px 0 0 18px;font-size:12px;">
+        <li>精神科监护项目内涵 (适用对象 / 监护内容 / 病区环境 / 人员资质 4 维度)</li>
+        <li>各维度具体标准 (例: 病区环境要求 — 封闭式病区 + 监控系统)</li>
+        <li>判定 "是否严格按内涵提供" 的检查清单</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- R292 -->
+  <div class="rule-card">
+    <div class="rule-head">
+      <span class="rule-id">R292</span>
+      <span class="rule-title">首诊精神病检查多次收费</span>
+      <span class="rule-domain">精神医学 · 超标准收费</span>
+    </div>
+    <h4>📜 规则原文</h4>
+    <div class="quote">已诊断为精神疾病的住院患者, 多次收取首诊精神病费用.</div>
+    <h4>💡 示例</h4>
+    <div class="quote example">某省《诊疗目录》规定首诊精神病检查<b>仅限第一次就诊患者</b>. 某医院在患者第二次住院时仍收取该项目费用.</div>
+    <h4>🟡 缺什么 (中等)</h4>
+    <div class="data-block yellow">
+      <strong>诊疗目录 — "首诊"定义</strong> + <strong>患者历史就诊记录</strong>:
+      <ul style="margin:4px 0 0 18px;font-size:12px;">
+        <li>"首诊" 的官方定义 (该病种第一次就诊 / 该医院第一次)</li>
+        <li>患者历史就诊记录 (HIS 系统提取, 同患者历次就诊)</li>
+        <li>实现思路: search_fees 命中"首诊精神病" + HIS 显示非首次 → V</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- R293 -->
+  <div class="rule-card">
+    <div class="rule-head">
+      <span class="rule-id">R293</span>
+      <span class="rule-title">心理治疗/精神康复 加收时长未按标准</span>
+      <span class="rule-domain">精神医学 · 超标准收费</span>
+    </div>
+    <h4>📜 规则原文</h4>
+    <div class="quote">开展心理治疗、精神康复治疗等时, 未按照加收标准收费.</div>
+    <h4>💡 示例</h4>
+    <div class="quote example"><b>《精神治疗类医疗服务价格项目立项指南》</b>中精神康复治疗 (个人) 加收项为 "<b>每增加 10 分钟加收</b>". 某医院未按实际增加时间加收, 收取多笔基础费用.</div>
+    <h4>🔴 缺什么</h4>
+    <div class="data-block">
+      <strong>《精神治疗类医疗服务价格项目立项指南》</strong>:
+      <ul style="margin:4px 0 0 18px;font-size:12px;">
+        <li>心理治疗 / 精神康复治疗的基础时长 + 加收单位 (每 10 分钟)</li>
+        <li>实际时长记录 (从治疗记录文书提取, Javert 已有 search_notes)</li>
+        <li>判定: 时长 ≤ 基础 收 1 笔基础费; 超出 → 按 10 分钟加收</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ========== TAB 3: M2 待装 ========== -->
+<section class="tab-panel" id="m2-rules">
+  <h2>🟡 M2 / 过度检查 — 4 条待装</h2>
+
+  <div class="summary-card">
+    <h3>核心说明</h3>
+    <p>这 4 条规则用<b>现有 4 工具就能审</b>, 跟已 ready 的 R141 / R143 / R146 等同模式. 当前 MISSING 是因为没有装 prompt, 不是因为缺数据.</p>
+    <p>同事可以提供的 (<b>可选</b>): <b>专科临床指征清单</b> — 即"哪些诊断算该检查的合理指征", 让 vars 写得更精准. 不提供也能装, 我可以用通用医学知识填.</p>
+    <p>建议<b>先装这 4 条</b> (不依赖外部数据), 然后看实际触发情况, 再决定是否需要同事提供指征清单优化.</p>
+  </div>
+
+  <!-- R108 -->
+  <div class="rule-card">
+    <div class="rule-head">
+      <span class="rule-id">R108</span>
+      <span class="rule-title">胸 CT 无指征普查</span>
+      <span class="rule-domain">医学影像 · 过度检查</span>
+    </div>
+    <h4>📜 规则原文</h4>
+    <div class="quote">无指征为住院患者普通开展胸部 CT 检查并收取费用.</div>
+    <h4>💡 示例</h4>
+    <div class="quote example">某医院将胸部 CT 作为<b>无肺部疾患既往史的痔疮患者</b>入院必查项目, 属于过度检查.</div>
+    <h4>🟢 现有工具能审吗</h4>
+    <div class="data-block green">
+      <strong>能, 不需外部数据</strong> — 同 M2 模板:
+      <ul style="margin:4px 0 0 18px;font-size:12px;">
+        <li>search_fees(keyword="胸部 CT") 看 fee 命中</li>
+        <li>note_diagnosis() 看是否含肺部疾病/呼吸道相关诊断</li>
+        <li>无任何指征 + fee 命中 → V</li>
+      </ul>
+    </div>
+    <h4>🟡 同事可提供 (可选)</h4>
+    <div class="data-block yellow">
+      <strong>胸 CT 适应症清单</strong> (放射科/呼吸科共识):
+      <ul style="margin:4px 0 0 18px;font-size:12px;">
+        <li>急性: 肺炎 / 肺栓塞 / 气胸 / 胸部外伤</li>
+        <li>慢性: COPD / 肺纤维化 / 肺结节 / 肺癌随访</li>
+        <li>术前评估: ≥某年龄 (如 ≥60 岁) 全麻术前可加查</li>
+        <li>肿瘤分期: 颈胸交界 / 转移筛查</li>
+        <li>症状: 持续咳嗽 / 咯血 / 胸痛</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- R132 -->
+  <div class="rule-card">
+    <div class="rule-head">
+      <span class="rule-id">R132</span>
+      <span class="rule-title">内镜色素检查 强制捆绑套餐</span>
+      <span class="rule-domain">医学影像 · 过度检查</span>
+    </div>
+    <h4>📜 规则原文</h4>
+    <div class="quote">将内镜色素检查作为入院患者的常规检查, 普遍为无相关指征的患者开展检验并收费.</div>
+    <h4>💡 示例</h4>
+    <div class="quote example">内镜色素检查通过喷洒色素染料提高早期肿瘤等病变检出率, 适用于<b>特定高危人群或可疑病变的进一步筛查</b>. 某医院违反诊疗规范, 将内镜色素检查与电子胃十二指肠镜检查设置为<b>强制捆绑套餐</b>.</div>
+    <h4>🟢 现有工具能审吗</h4>
+    <div class="data-block green">
+      <strong>能, 不需外部数据</strong> — M2 模板, 与 R108 同模式:
+      <ul style="margin:4px 0 0 18px;font-size:12px;">
+        <li>search_fees(keyword="内镜色素检查" / "色素内镜" / "NBI" / "卢戈氏液")</li>
+        <li>note_diagnosis() 看是否含早期病变/高危人群指征</li>
+      </ul>
+    </div>
+    <h4>🟡 同事可提供 (可选)</h4>
+    <div class="data-block yellow">
+      <strong>内镜色素检查适应症</strong> (消化内科共识):
+      <ul style="margin:4px 0 0 18px;font-size:12px;">
+        <li>早期胃癌 / 早期食管癌 筛查</li>
+        <li>巴雷特食管 / 萎缩性胃炎伴肠化</li>
+        <li>不典型增生</li>
+        <li>家族史高危人群</li>
+        <li>常规胃镜见可疑病变 (需进一步染色)</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- R278 -->
+  <div class="rule-card">
+    <div class="rule-head">
+      <span class="rule-id">R278</span>
+      <span class="rule-title">内分泌检查打包普查 (TGAb/TMAb等)</span>
+      <span class="rule-domain">内分泌 · 过度检查</span>
+    </div>
+    <h4>📜 规则原文</h4>
+    <div class="quote">无指征为住院患者普遍打包开展肾上腺皮质激素、性腺激素、血清生长激素、抗甲状腺球蛋白抗体 (TGAb)、抗甲状腺微粒体抗体 (TMAb) 等多种内分泌相关检查并收费.</div>
+    <h4>💡 示例</h4>
+    <div class="quote example">某医院为患者开展入院检查时, <b>未依据患者病情需要, 无指征打包开展</b>肾上腺皮质激素、性腺激素、血清生长激素、TGAb、TMAb 等多项检查并收费.</div>
+    <h4>🟢 现有工具能审吗</h4>
+    <div class="data-block green">
+      <strong>能, 不需外部数据</strong>:
+      <ul style="margin:4px 0 0 18px;font-size:12px;">
+        <li>search_fees 多关键词命中 (肾上腺皮质激素 / 皮质醇 / 性腺激素 / FSH / LH / TGAb / TMAb 等)</li>
+        <li>note_diagnosis 查内分泌相关诊断</li>
+        <li>"打包" 模式: 一次性多项目命中 → 强支持 V</li>
+      </ul>
+    </div>
+    <h4>🟡 同事可提供 (可选)</h4>
+    <div class="data-block yellow">
+      <strong>内分泌检查指征对照表</strong> (内分泌科共识):
+      <ul style="margin:4px 0 0 18px;font-size:12px;">
+        <li>肾上腺皮质激素: 库欣综合征 / 肾上腺功能不全 / 嗜铬细胞瘤</li>
+        <li>性腺激素 (FSH/LH/雌二醇/孕酮/睾酮): 性早熟 / 性腺功能减退 / 不孕 / 闭经 / 多囊卵巢</li>
+        <li>生长激素: 巨人症 / 肢端肥大 / 垂体瘤</li>
+        <li>TGAb/TMAb: 桥本甲状腺炎 / Graves 病 / 自身免疫甲状腺病</li>
+      </ul>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-top:8px;">⚠️ 注意: 甲状腺癌患者<b>部分有 TGAb 指征</b> (评估桥本/自免甲状腺病). 但"打包 19 项"才是核心问题. 模板可用 special_notes 标注.</p>
+  </div>
+
+  <!-- R279 -->
+  <div class="rule-card">
+    <div class="rule-head">
+      <span class="rule-id">R279</span>
+      <span class="rule-title">甲功三项/五项 普查</span>
+      <span class="rule-domain">内分泌 · 过度检查</span>
+    </div>
+    <h4>📜 规则原文</h4>
+    <div class="quote">为住院患者无指征普遍开展"甲状腺功能三项"或"甲状腺功能五项"检查并收费.</div>
+    <h4>💡 示例</h4>
+    <div class="quote example">某医院为患者开展入院检查时, 未依据患者病情, 无指征为住院患者普遍开展"甲状腺功能三项"或"甲状腺功能五项"检查并收费.</div>
+    <h4>🟢 现有工具能审吗</h4>
+    <div class="data-block green">
+      <strong>能, 但有 pilot caveat</strong>:
+      <ul style="margin:4px 0 0 18px;font-size:12px;">
+        <li>search_fees(keyword="甲功" / "FT3" / "FT4" / "TSH") 看 fee 命中</li>
+        <li>note_diagnosis 查甲状腺相关诊断</li>
+      </ul>
+    </div>
+    <h4>⚠️ 重要 pilot 注意</h4>
+    <div class="data-block yellow">
+      <strong>对甲状腺 pilot 50 患者绝大多数有指征</strong> (CLEAN), 该规则应主要用于非甲状腺患者群体. 装好 prompt 但 priority 应标低, 等数据集切换后再用.
+    </div>
+    <h4>🟡 同事可提供 (可选)</h4>
+    <div class="data-block yellow">
+      <strong>甲功检查指征清单</strong> (内分泌科):
+      <ul style="margin:4px 0 0 18px;font-size:12px;">
+        <li>甲状腺相关疾病 (甲亢/甲减/甲状腺癌/结节/炎)</li>
+        <li>心律失常 (尤其房颤, 排查甲亢)</li>
+        <li>不明原因体重突变 / 怕冷怕热</li>
+        <li>月经紊乱 (排查甲减)</li>
+        <li>易激动 / 情绪波动</li>
+        <li>甲状腺手术后随访</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ========== TAB 4: Schema 建议 ========== -->
+<section class="tab-panel" id="schemas">
+  <h2>🗃️ 数据 schema 建议 — 同事按这个格式给</h2>
+
+  <h3>1. 诊疗目录 (M4 11 条必需)</h3>
+  <p style="font-size:13px;color:var(--muted);">从医保办 / 物价科 / 财务科要. Excel 或 CSV 均可. 字段尽可能全, 缺也没关系.</p>
+  <div class="schema">
+<span class="comment"># 文件: service_catalog.csv (UTF-8, 表头第一行)</span>
+<span class="key">item_code</span>,<span class="key">item_name</span>,<span class="key">price</span>,<span class="key">price_unit</span>,<span class="key">category</span>,<span class="key">item_content</span>,<span class="key">addon_rule</span>,<span class="key">department</span>
+
+<span class="comment"># 示例行</span>
+"331000028","<span class="str">血液透析滤过</span>",600.00,"<span class="str">次</span>","<span class="str">血液净化</span>","<span class="str">含一次性透析器/管路/置换液 (用于 R074)</span>","<span class="str">无</span>","<span class="str">血液净化</span>"
+"330700040","<span class="str">经皮冠状动脉腔内成形术(PTCA)</span>",2800.00,"<span class="str">支血管</span>","<span class="str">介入治疗</span>","<span class="str">每增加 1 支血管按 20% 加收 (用于 R020)</span>","<span class="str">+20% per extra vessel</span>","<span class="str">心血管内科</span>"
+"335000051","<span class="str">高强度超声聚焦刀治疗</span>",8000.00,"<span class="str">次</span>","<span class="str">肿瘤治疗</span>","<span class="str">基础价针对瘤径 ≤3cm; >5cm-8cm 加收 3000; >8cm 加收 6000 (R196)</span>","<span class="str">tier by tumor diameter</span>","<span class="str">肿瘤</span>"
+  </div>
+
+  <h3>2. 医院科室配置 (R212 必需)</h3>
+  <div class="schema">
+<span class="comment"># 文件: hospital_departments.csv 或直接告诉我答案即可</span>
+<span class="key">department_name</span>,<span class="key">exists</span>,<span class="key">notes</span>
+
+"<span class="str">麻醉恢复室 (PACU)</span>","<span class="str">是 / 否</span>","<span class="str">若是, 床位数?</span>"
+"<span class="str">重症医学科 (ICU)</span>","<span class="str">是</span>","<span class="str">10 张床</span>"
+"<span class="str">血液净化中心</span>","<span class="str">是</span>","<span class="str">-</span>"
+  </div>
+
+  <h3>3. 精神科项目立项指南 (R291 R293)</h3>
+  <p style="font-size:13px;color:var(--muted);">从精神科或物价科要. 直接给 PDF 也行, 我从里面提取关键内容.</p>
+  <div class="schema">
+<span class="comment"># 文件: psychiatric_project_guideline_2023.pdf 或转结构化:</span>
+<span class="comment"># psychiatric_items.csv</span>
+<span class="key">item_name</span>,<span class="key">applicable_patients</span>,<span class="key">required_personnel</span>,<span class="key">required_environment</span>,<span class="key">price_unit</span>,<span class="key">addon_per_minute</span>
+
+"<span class="str">精神科监护</span>","<span class="str">急性发作/自伤自杀/木僵/拒食拒治</span>","<span class="str">经过训练的专业人员</span>","<span class="str">封闭式病区 + 监控系统</span>","<span class="str">天</span>","<span class="str">-</span>"
+"<span class="str">心理治疗 (个人)</span>","<span class="str">心理障碍患者</span>","<span class="str">心理治疗师</span>","<span class="str">心理治疗室</span>","<span class="str">次 (40min)</span>","<span class="str">每增加 10min 加收 (R293)</span>"
+"<span class="str">精神康复治疗 (个人)</span>","<span class="str">康复期患者</span>","<span class="str">康复治疗师</span>","<span class="str">康复室</span>","<span class="str">次 (30min)</span>","<span class="str">每增加 10min 加收</span>"
+  </div>
+
+  <h3>4. 临床指征清单 (M2 4 条可选辅助)</h3>
+  <p style="font-size:13px;color:var(--muted);">不一定要 — 不要也能装. 提供后 vars 更精准. 找各专科 (放射 / 消化 / 内分泌).</p>
+  <div class="schema">
+<span class="comment"># 文件: clinical_indications.csv</span>
+<span class="key">exam_name</span>,<span class="key">indication_type</span>,<span class="key">indication_keyword</span>,<span class="key">department</span>,<span class="key">source</span>
+
+"<span class="str">胸部 CT</span>","<span class="str">急性</span>","<span class="str">肺炎</span>","<span class="str">放射科</span>","<span class="str">《放射学诊疗规范》</span>"
+"<span class="str">胸部 CT</span>","<span class="str">急性</span>","<span class="str">肺栓塞</span>","<span class="str">放射科</span>","<span class="str">同上</span>"
+"<span class="str">胸部 CT</span>","<span class="str">慢性</span>","<span class="str">肺结节</span>","<span class="str">放射科</span>","<span class="str">同上</span>"
+"<span class="str">胸部 CT</span>","<span class="str">术前评估</span>","<span class="str">全麻术前 ≥60 岁</span>","<span class="str">麻醉科</span>","<span class="str">同上</span>"
+"<span class="str">内镜色素检查</span>","<span class="str">高危人群</span>","<span class="str">早期胃癌家族史</span>","<span class="str">消化内科</span>","<span class="str">《消化内镜共识》</span>"
+"<span class="str">TGAb / TMAb</span>","<span class="str">疾病</span>","<span class="str">桥本甲状腺炎</span>","<span class="str">内分泌科</span>","<span class="str">《甲状腺疾病诊治指南》</span>"
+"<span class="str">甲功五项</span>","<span class="str">疾病</span>","<span class="str">甲亢</span>","<span class="str">内分泌科</span>","<span class="str">同上</span>"
+  </div>
+
+  <h3>5. (额外建议) 患者历史就诊记录 (R292)</h3>
+  <p style="font-size:13px;color:var(--muted);">从 HIS 系统提取. 用于"首诊"判定.</p>
+  <div class="schema">
+<span class="comment"># 文件: patient_visit_history.csv</span>
+<span class="key">patient_id</span>,<span class="key">visit_date</span>,<span class="key">diagnosis_first</span>,<span class="key">is_first_psychiatric_visit</span>
+
+"<span class="str">J66252</span>","<span class="str">2024-12-19</span>","<span class="str">甲状腺恶性肿瘤</span>","<span class="str">N/A</span>"
+"<span class="str">XXX</span>","<span class="str">2023-05-01</span>","<span class="str">精神分裂症</span>","<span class="str">是 (首诊)</span>"
+"<span class="str">XXX</span>","<span class="str">2024-08-15</span>","<span class="str">精神分裂症</span>","<span class="str">否 (复诊)</span>"
+  </div>
+</section>
+
+<!-- ========== TAB 5: 索要清单 ========== -->
+<section class="tab-panel" id="checklist">
+  <h2>✅ 跟同事索要 — 一张表搞定</h2>
+
+  <div class="summary-card">
+    <h3>给同事的话术建议</h3>
+    <p style="font-size:14px;">
+      "我们在做医保自查自纠 0325 表的自动审计系统, 已经覆盖 65 条规则, 还有 16 条等数据.
+      最重要的是<b>诊疗目录</b> (11 条规则要它), 其次是<b>麻醉恢复室是否存在</b> (1 条).
+      内分泌/影像的临床指征清单是锦上添花, 不要也行."
+    </p>
+  </div>
+
+  <h3>📋 数据请求清单 (可勾选)</h3>
+
+  <div class="rule-card">
+    <h4 style="margin-top:0;text-transform:none;letter-spacing:0;color:var(--text);">🔴 必须要 (Priority 0)</h4>
+    <div class="checklist">
+      <label>
+        <input type="checkbox">
+        <b>诊疗目录 — 介入治疗类</b> (PTCA / STENT / ELCA / 旋磨术) + 多支血管加成规则 — 解锁 <span class="badge red">R020</span>
+      </label>
+      <label>
+        <input type="checkbox">
+        <b>诊疗目录 — 手术计价总则</b> (同切口 / 不同切口加成%) — 解锁 <span class="badge red">R063</span> <span class="badge red">R193</span>
+      </label>
+      <label>
+        <input type="checkbox">
+        <b>诊疗目录 — 血液净化类</b> 计价单位 — 解锁 <span class="badge red">R074</span>
+      </label>
+      <label>
+        <input type="checkbox">
+        <b>诊疗目录 — 病理学检查</b> 全器官大切片 + 手术标本 计价 — 解锁 <span class="badge red">R165</span>
+      </label>
+      <label>
+        <input type="checkbox">
+        <b>诊疗目录 — 高强度超声聚焦刀 (HIFU)</b> 分档计价 — 解锁 <span class="badge red">R196</span>
+      </label>
+      <label>
+        <input type="checkbox">
+        <b>诊疗目录 — 放疗定位类</b> (简易/模拟/复杂模拟) 计价单位 — 解锁 <span class="badge red">R200</span>
+      </label>
+      <label>
+        <input type="checkbox">
+        <b>诊疗目录 — 口腔科</b> 项目计价单位 (次/牙/根管/洞) — 解锁 <span class="badge red">R250</span>
+      </label>
+      <label>
+        <input type="checkbox">
+        <b>《全国诊疗服务项目目录规范 (2023 版)》</b> 精神科监护项目内涵 — 解锁 <span class="badge red">R291</span>
+      </label>
+      <label>
+        <input type="checkbox">
+        <b>《精神治疗类医疗服务价格项目立项指南 (试行)》</b> — 解锁 <span class="badge red">R291</span> <span class="badge red">R293</span>
+      </label>
+      <label>
+        <input type="checkbox">
+        <b>"首诊"定义</b> + 患者历史就诊记录提取方法 — 解锁 <span class="badge red">R292</span>
+      </label>
+    </div>
+  </div>
+
+  <div class="rule-card">
+    <h4 style="margin-top:0;text-transform:none;letter-spacing:0;color:var(--text);">🟡 建议要 (Priority 1)</h4>
+    <div class="checklist">
+      <label>
+        <input type="checkbox">
+        <b>麻醉恢复室是否存在</b> (一句话答: 是/否) — 解锁 <span class="badge yellow">R212</span>
+      </label>
+    </div>
+  </div>
+
+  <div class="rule-card">
+    <h4 style="margin-top:0;text-transform:none;letter-spacing:0;color:var(--text);">🟢 可选 (Priority 2 — 锦上添花)</h4>
+    <div class="checklist">
+      <label>
+        <input type="checkbox">
+        <b>胸部 CT 临床指征清单</b> (放射科/呼吸科) — 优化 <span class="badge green">R108</span>
+      </label>
+      <label>
+        <input type="checkbox">
+        <b>内镜色素检查指征</b> (消化内科) — 优化 <span class="badge green">R132</span>
+      </label>
+      <label>
+        <input type="checkbox">
+        <b>内分泌检查指征对照表</b> (内分泌科) — 优化 <span class="badge green">R278</span>
+      </label>
+      <label>
+        <input type="checkbox">
+        <b>甲功检查指征清单</b> (内分泌科) — 优化 <span class="badge green">R279</span>
+      </label>
+    </div>
+  </div>
+
+  <h3>🎯 数据格式</h3>
+  <div class="rule-card">
+    <ul style="font-size:14px;">
+      <li><b>最理想</b>: Excel / CSV (UTF-8) 按本文档 "Schema 建议" tab 的格式</li>
+      <li><b>次优</b>: 原文 PDF (诊疗目录 / 立项指南), 我自己提取</li>
+      <li><b>最低标准</b>: 图片 / 截图 / 微信文字描述 (我手抄进 vars json)</li>
+    </ul>
+  </div>
+
+  <h3>🚀 拿到数据后能做什么</h3>
+  <div class="rule-card">
+    <ol style="font-size:14px;">
+      <li><b>1 周</b>: 拿到诊疗目录 → 写 M4 设计 doc + 装 M4.yaml 模板 + 装 11 条 prompt → ready 65 → 76</li>
+      <li><b>+ 1 天</b>: 麻醉恢复室答案 → 装 R212 → ready 76 → 77</li>
+      <li><b>+ 2 天</b>: 装 M2 待装 4 条 (R108 R132 R278 R279, 不依赖外部数据先做) → ready 77 → 81</li>
+      <li><b>+ 1 周</b>: 拿到精神科指南 → 装 R291 R293, 装 R292 (HIS 历史) → ready 81 → 84</li>
+      <li><b>总计 2-3 周</b>: ready 65 → ~84, 覆盖 0325 表 ~52% 的违规情形</li>
+    </ol>
+  </div>
+
+  <h3>📞 联系矩阵</h3>
+  <div class="rule-card">
+    <table>
+      <thead><tr><th>数据</th><th>找谁</th><th>形式</th><th>预期时间</th></tr></thead>
+      <tbody>
+        <tr><td>诊疗目录</td><td>医保办 / 物价科 / 财务科</td><td>Excel/PDF</td><td>1-3 天</td></tr>
+        <tr><td>麻醉恢复室?</td><td>院办 / 信息科 / 麻醉科</td><td>口头/邮件</td><td>当天</td></tr>
+        <tr><td>精神科指南</td><td>精神科主任 / 物价科</td><td>PDF</td><td>1-2 天</td></tr>
+        <tr><td>HIS 历史 (R292)</td><td>信息科</td><td>CSV 导出</td><td>3-5 天</td></tr>
+        <tr><td>临床指征清单</td><td>各专科主任 / 学术办</td><td>口头/Excel</td><td>1-2 天 / 科</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+</main>
+
+<script>
+  const buttons = document.querySelectorAll('.tab-btn');
+  const panels = document.querySelectorAll('.tab-panel');
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      buttons.forEach(b => b.classList.remove('active'));
+      panels.forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab).classList.add('active');
+    });
+  });
+</script>
+
+</body>
+</html>

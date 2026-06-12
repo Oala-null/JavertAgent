@@ -1,0 +1,41 @@
+{
+  "service_desc": "影像检查 (超声/CT/MRI 等)",
+  "service_kw_list": [
+    "超声检查",
+    "CT 检查",
+    "MRI 检查",
+    "胸部 CT",
+    "腹部超声"
+  ],
+  "catalog_basis": "按医保政策, 影像检查应有对应影像报告 (影像号 + 报告日期 + 影像所见). 收费但无影像报告 = 虚构.",
+  "execution_evidence_kw_list": [
+    "影像报告",
+    "影像号",
+    "阅片",
+    "报告日期",
+    "影像所见"
+  ],
+  "notes_section_hints": [
+    "辅助检查",
+    "影像报告"
+  ],
+  "supporting_dx_kw_list": [],
+  "dept_check": "影像科",
+  "special_notes": [
+    "若 fee 列具体影像项目 (例: 胸部增强 CT) 而文书仅模糊提'胸部 CT' 无报告号, 退 INCONCLUSIVE."
+  ],
+  "pilot_caveat": "",
+  "aux_keywords": [
+    "超声检查",
+    "CT 检查",
+    "MRI 检查",
+    "影像报告",
+    "影像号",
+    "阅片"
+  ],
+  "aux_tools": [
+    "search_fees",
+    "search_notes"
+  ],
+  "aux_signal": "典型违规: 费用列'胸部 CT × 2', 但文书辅助检查段只有 1 份 CT 报告.\n典型 CLEAN: 每项影像费都有对应报告号 + 阅片记录.\n典型 INCONCLUSIVE: 报告号缺失或描述模糊."
+}

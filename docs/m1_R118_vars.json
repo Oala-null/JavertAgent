@@ -1,0 +1,45 @@
+{
+  "a_concept": "临床操作的磁共振引导",
+  "b_concept": "磁共振扫描 / 平扫 / 增强 / 心脏功能 / 血管成象",
+  "catalog_basis": "按各省《医疗服务诊疗目录》, 影像引导是治疗 / 手术过程的辅助操作, 不应同时按检查收费; MRI 引导费已含术中扫描, 单独再收 MRI 扫描 / 平扫 / 增强 = 重复收费.",
+  "fee_category": "检查类",
+  "a_class_label": "MRI 引导",
+  "b_class_label": "MRI 检查",
+  "a_class_items": [
+    "磁共振引导",
+    "MRI 引导",
+    "磁共振引导穿刺",
+    "磁共振引导消融",
+    "临床操作的磁共振引导"
+  ],
+  "b_class_items": [
+    "MRI 扫描",
+    "MRI 平扫",
+    "MRI 增强",
+    "磁共振扫描",
+    "磁共振平扫",
+    "磁共振增强扫描",
+    "MRA",
+    "磁共振血管成象",
+    "磁共振心脏功能检查"
+  ],
+  "scan_action_term": "磁共振引导",
+  "aux_short_label": "MRI 检查费",
+  "notes_sections": ["手术记录", "操作记录", "影像报告"],
+  "third_party_clause": "术前评估独立时间窗的扫描 (有独立报告与时间戳)",
+  "violation_evidence": "引导笔数 + 扫描笔数 + 价格 + 操作记录时间戳",
+  "inconclusive_example": "费用项目命名只写 '磁共振操作 ¥1200', 无法判断属于引导还是检查",
+  "basic_diagnosis_subject": "需要 MRI 引导操作的临床指征",
+  "basic_diagnosis_keywords": ["肝癌", "肿瘤", "椎间盘", "子宫肌瘤", "占位"],
+  "aux_keywords": [
+    "磁共振引导",
+    "MRI 引导",
+    "MRI 扫描",
+    "MRI 平扫",
+    "MRI 增强",
+    "磁共振增强扫描",
+    "MRA"
+  ],
+  "aux_tools": ["note_diagnosis", "search_fees", "search_notes"],
+  "aux_signal": "典型违规: 同次治疗 \"磁共振引导穿刺活检 ¥800\" + \"磁共振增强扫描 ¥500\" 同时段, 操作记录未说明术前独立扫描.\n典型 CLEAN: 仅有引导单笔; 或影像报告明确术前 / 术后独立时间窗的扫描各自独立记录."
+}

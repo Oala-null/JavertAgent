@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 style="color:var(--primary); margin:0 0 16px;">仪表盘</h1>
+
+<div class="dashboard-grid">
+  <div class="stat-card">
+    <h3>总进度</h3>
+    <div class="stat-value">{{ stats.total_reviewed_runs }}/{{ stats.total_v_or_i }}</div>
+    <div class="muted">{{ stats.progress_pct }}% 已审</div>
+    <div class="progress-bar"><div class="fill" style="width:{{ stats.progress_pct }}%"></div></div>
+  </div>
+  <div class="stat-card">
+    <h3>Javert V → 专家 V 一致率</h3>
+    <div class="stat-value">{{ stats.agreement_v_pct }}%</div>
+    <div class="progress-bar"><div class="fill" style="width:{{ stats.agreement_v_pct }}%"></div></div>
+  </div>
+  <div class="stat-card">
+    <h3>专家审核条数 (总)</h3>
+    <div class="stat-value">{{ stats.reviewers | sum(attribute='latest_review_count') }}</div>
+    <div class="muted">{{ stats.reviewers|length }} 位专家</div>
+  </div>
+  <div class="stat-card">
+    <h3>待线下核查 <span class="gate-badge gate-缺文书" style="font-size:10px;">⚙ 缺文书</span></h3>
+    <div class="stat-value">{{ stats.pending_offline_check }}</div>
+    <div class="muted">gate 判文件缺失, 工作台默认隐藏</div>
+  </div>
+</div>
+
+<h2 style="font-size:16px; color:var(--text); margin:24px 0 10px;">专家 leaderboard <span class="muted" style="font-weight:400; font-size:13px;">— 点行查看该专家审过的明细</span></h2>
+<table class="data-table">
+  <thead><tr><th>用户</th><th>显示名</th><th class="tabular">最新审核数</th><th></th></tr></thead>
+  <tbody>
+    {% for r in stats.reviewers %}
+    <tr class="row-clickable {% if r.user_id == current_user.id %}highlight{% endif %}"
+        onclick="location.href='/dashboard/reviewer/{{ r.user_id }}'"
+        title="点击查看 {{ r.display_name or r.username }} 的审核明细">
+      <td>{{ r.username }}</td>
+      <td>{{ r.display_name or '—' }}</td>
+      <td class="tabular">{{ r.latest_review_count }}</td>
+      <td><a class="btn-link" href="/dashboard/reviewer/{{ r.user_id }}">详情 →</a></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="muted">尚无专家提交批复</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2 style="font-size:16px; color:var(--text); margin:24px 0 10px;">规则维度</h2>
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>rule_id</th>
+      <th class="tabular">Javert V</th>
+      <th class="tabular">Javert I</th>
+      <th class="tabular">专家认同</th>
+      <th class="tabular">专家反转</th>
+      <th class="tabular">未审</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for ru in stats.rules %}
+    <tr>
+      <td><strong>{{ ru.rule_id }}</strong></td>
+      <td class="tabular">{{ ru.v_count }}</td>
+      <td class="tabular">{{ ru.i_count }}</td>
+      <td class="tabular">{{ ru.expert_agreed }}</td>
+      <td class="tabular">{{ ru.expert_overturned }}</td>
+      <td class="tabular">{{ ru.expert_pending }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="muted">尚无规则统计</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div style="margin-top:24px;">
+  <a href="/export?format=xlsx&scope=v_and_i" class="btn-secondary">导出 V+I (xlsx)</a>
+  <a href="/export?format=xlsx&scope=all&include_history=true" class="btn-secondary">导出全部+历史 (xlsx)</a>
+  <a href="/export?format=csv&scope=v_and_i" class="btn-secondary">导出 V+I (csv)</a>
+</div>
+{% endblock %}

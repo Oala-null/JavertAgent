@@ -1,0 +1,49 @@
+{
+  "service_name": "经皮冠状动脉腔内成形术 (PTCA) / 冠状动脉内支架置入术 (STENT) / 经皮冠状动脉腔内激光成形术 (ELCA) / 高速冠状动脉内膜旋磨术",
+  "service_kw_list": [
+    "PTCA",
+    "STENT",
+    "ELCA",
+    "冠状动脉腔内成形",
+    "冠脉内膜旋磨",
+    "支架置入"
+  ],
+  "catalog_unit": "支血管",
+  "catalog_price": "",
+  "addon_rule_text": "介入治疗原则上以经一根血管的介入治疗为起点, 每增加一根血管的治疗加收 20%.",
+  "violation_pattern": "对扩张多支血管全部按全价 × N 支收费 (应该 1 + (N-1) × 20%)",
+  "actual_event_kw_list": [
+    "血管数",
+    "病变血管",
+    "支血管",
+    "LAD",
+    "LCX",
+    "RCA",
+    "OM",
+    "D1",
+    "S1",
+    "PDA"
+  ],
+  "notes_section": "手术记录",
+  "expected_calc_hint": "设第一根血管按全价 100%, 第 2 根 +20%, 第 3 根 +20%; 即 3 支血管应收 1.4 次全价 (1 + 0.2 + 0.2). 若实际收 3 次全价, 超 1.6 次价格.",
+  "pilot_caveat": "甲状腺患者无冠脉介入指征, J66252 应 CLEAN (fee 无命中). 该规则在心血管/胸痛中心患者群体高命中.",
+  "special_notes": [
+    "判定关键: 从手术记录提取实际扩张的血管支数 (LAD/LCX/RCA 等命名)",
+    "若 fee 命中 PTCA × N 次 (N≥2) + 文书描述多支血管, 强支持 V"
+  ],
+  "aux_keywords": [
+    "PTCA",
+    "STENT",
+    "ELCA",
+    "冠状动脉腔内成形",
+    "冠脉内膜旋磨",
+    "支架置入",
+    "多支血管"
+  ],
+  "aux_tools": [
+    "search_fees",
+    "search_notes",
+    "note_diagnosis"
+  ],
+  "aux_signal": "典型违规: 患者诊断严重冠心病, 手术记录扩张 3 支血管, 收 PTCA × 3 次全价.\n典型 CLEAN: 单支血管扩张 + 收 1 次, 或多支扩张但按 1+(N-1)×20% 收.\n典型 INCONCLUSIVE: 手术记录未明示扩张血管支数."
+}

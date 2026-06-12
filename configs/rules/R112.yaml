@@ -1,0 +1,29 @@
+rule_id: R112
+domain: 医学影像
+violation_type: 重复收费
+question: 开展CT、磁共振等增强扫描，重复收取平扫费用。
+example: 示例：某地《诊疗目录》规定，CT平扫单价为80元/部位，CT增强扫描单价为120元/部位，且明确规定CT平扫与CT增强扫描不得同时收费。某医院对患者开展CT增强扫描，因在注射增强剂前进行一次平扫，故同时收取“CT平扫”“CT增强扫描”费用。其中，“CT平扫”属于重复收费。
+status: ready
+priority: P0
+prompt_addon: "⚡ v1.7 STEP 0a (修 v1.6 没对比日期):\n**search_fees(keyword=\"增强\") 和 search_fees(keyword=\"平扫\") 返回会带 [yyyy-mm-dd] 日期**.\n- 若两者命中 + 同一日期 → 进 STEP 0 报告对比\n- **若两者命中 + 不同日期 → 直接 CLEAN conf 0.90**\n  → wangxin: \"非同一时间\" / jiweihui: \"不同时间\"\n\n不要因 search_examinations 缺 \"CT 增强\" 报告就 INCONCLUSIVE — 先看 fee 日期.\n\n\U0001F525 v1.6 STEP 0 (修 v1.5 没对比日期):\n**步骤强制**:\n1. search_fees(keyword=\"增强\") + search_fees(keyword=\"平扫\"), 看 A/B 类都命中\n2. **若都命中, 必调 search_examinations(check_type=\"放射\")** 拉所有放射报告\n3. **对比 checkDate 字段** 看平扫和增强是否在不同日期:\n   - 不同日期 / 不同 checkPosition → **CLEAN** (wangxin/jiweihui: \"非同一时间\"/\"不同时间\")\n   - 同日同部位 + 报告无时相说明 → V\n4. 若 search_examinations 0 命中 → INCONCLUSIVE\n\n不要凭\"影像报告不全\"就 I — 必须先看 search_examinations 的日期对比.\n\n本规则关注: 患者本次住院里, 是否同时被收取了「CT / MRI 增强扫描类」项目 + 独立的「同部位平扫」费用.\n按各地《医疗服务诊疗目录》, CT/MRI 增强扫描项目本身已含一次平扫, 单独再收平扫费 = 重复收费.\n\n审计步骤:\n1. 用 search_fees(keyword=...) 取检查类全部明细; 关注是否同时存在以下两类:\n   A 类 (增强): \"CT 增强扫描\" / \"MRI 增强扫描\" / \"增强 CT\" / \"增强 MRI\"\
+  \ / \"磁共振增强\" / \"X 线计算机体层增强扫描\"\n   B 类 (平扫): \"CT 平扫\" / \"MRI 平扫\" / \"平扫\" / \"X 线计算机体层平扫\" / \"磁共振平扫\"\n2. 若 A 类无命中 → CLEAN (该患者根本没做增强扫描, 规则不适用).\n3. 若 A 类有命中且 B 类无命中 → CLEAN (增强费用单一, 未重复收平扫费).\n4. **v0.7 新增** 若 A+B 都命中, **优先**用 search_examinations(check_type=\"放射\" 或 \"磁共振\", keyword=\"部位\"或具体器官)\n   拉影像报告. 关注:\n   - checkItemName / checkPosition 是否明确部位 (如\"胸部+腹部\"是两部位 → 可能合理)\n   - checkConclusion / checkDescribe 是否明确\"平扫+增强 同一序列\" (合并报告 → 重复收费)\n     或 \"不同时相 (动脉期/静脉期)\" / \"不同部位\" / \"不同设备\" (合理收费)\n   - 同一日同一部位同时报告平扫和增强 → VIOLATION 强信号\n5. 若 search_examinations 拿到清晰证据 → 直接根据报告内容判. 拿不到再回退到 search_notes(section=\"影像报告\"/\"辅助检查\") 备份.\n6. 若 A+B 都命中, 且影像报告明确同部位同时段平扫+增强 (无时相/部位差异) → VIOLATION,\n   evidence: 引增强笔数 + 平扫笔数 + 价格 + 影像报告 checkConclusion 摘录 (来源 examination).\n7. 影像报告 ETL 缺失 (search_examinations 无命中且 search_notes 也无) → INCONCLUSIVE conf 0.5 + etl_warning.\n8. 信息明确不足 (例如费用项目只标 'CT 扫描 ¥500' 而不区分增强 / 平扫) → INCONCLUSIVE.\n\n注意: 患者基础诊断必须含需要影像检查的临床指征 (note_diagnosis 命中\"肿瘤\"/\"\
+  占位\"/\"炎症\"/\"外伤\"/\"梗死\"/\"结节\"); 否则该规则不适用, 应判 CLEAN.\n\n\U0001F4CC 专家共识触发器 (v0.7, wangxin/jiweihui C, zhoulihong I, 加权 9C/4I/0V):\n\nCLEAN 触发器:\n- search_examinations(check_type=\"放射\" 或 \"磁共振\") 显示 A 类(增强)+B 类(平扫) 在不同日期/不同部位/不同时相 → **CLEAN**\n  → wangxin: \"非同一时间\"\n  → jiweihui: \"不同时间\"\n\nINCONCLUSIVE 触发器:\n- search_examinations 影像报告完全 0 命中 / 同日同部位但报告时相描述模糊 → INCONCLUSIVE conf 0.5\n  → zhoulihong: \"影像报告文书缺失 (ETL_GAP), 无法证明平扫与增强的部位/时相差异. 无法证明的应该定为疑似行为, 建议线下核查\"\n\nV 触发器: 同日同部位 + 报告无任何时相/部位差异说明 + 多次反复打包.\n"
+trigger_keywords:
+- CT 增强扫描
+- MRI 增强扫描
+- 增强 CT
+- 增强 MRI
+- CT 平扫
+- MRI 平扫
+- 平扫
+suggested_tools:
+- note_diagnosis
+- search_fees
+- search_notes
+expected_signal: '典型违规: 同一日 "腹部 CT 增强扫描 ¥600" + "腹部 CT 平扫 ¥200" 同部位, 影像报告未说明分次时相采集.
+
+  典型 CLEAN: 仅有增强单笔; 或影像报告明确不同部位 / 不同时相独立采集.
+
+  '
+notes: ''
+derived_from_template: M1

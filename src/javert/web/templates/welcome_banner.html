@@ -1,0 +1,33 @@
+{# partial: welcome banner, expects vars: banner_first_login, banner_stats, prev_last_login #}
+<div class="welcome-banner" id="welcome-banner">
+  <div class="left">
+    {% if banner_first_login %}
+      <h2>首次登录, 欢迎使用 Javert 审核工作台</h2>
+      <p class="stats">
+        当前工作区: {{ banner_stats.new_patients }} 病人 /
+        {{ banner_stats.new_violations }} 违规 /
+        {{ banner_stats.new_inconclusive }} 不明 待审
+      </p>
+    {% else %}
+      <h2>欢迎回来, {{ current_user.display_name or current_user.username }}</h2>
+      <p class="stats">
+        自上次登录 ({{ prev_last_login | humanize_since }}):
+        +{{ banner_stats.new_patients }} 病人 /
+        +{{ banner_stats.new_violations }} 违规 /
+        +{{ banner_stats.new_inconclusive }} 不明
+        <span style="margin-left:14px; opacity:.85;">
+          你上次提交批复:
+          {% if banner_stats.last_review_at %}
+            {{ banner_stats.last_review_at | humanize_since }}
+          {% else %}
+            尚未提交批复
+          {% endif %}
+        </span>
+      </p>
+    {% endif %}
+  </div>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <button type="button" class="btn-cta" onclick="document.querySelector('.patient-card')?.click();">立即开始审核</button>
+    <button type="button" class="dismiss" onclick="dismissBanner()" aria-label="关闭">✕</button>
+  </div>
+</div>
