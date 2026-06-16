@@ -28,7 +28,7 @@ class JavertConfig(BaseSettings):
 
     # LLM
     llm_endpoint: str = "http://192.168.31.62:30000/v1"
-    llm_model: str = "Qwen/Qwen3.5-35B-A3B-GPTQ-Int4"
+    llm_model: str = "Qwen/Qwen3.6-35B-A3B-FP8"
     llm_temperature: float = 0.0
     llm_max_tokens: int = 8192
     llm_timeout: int = 300
