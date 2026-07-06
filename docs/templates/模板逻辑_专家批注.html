@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Javert 8 大审计模板 · 逻辑流程图与专家批注</title>
+<style>
+  :root{
+    --primary:#1e40af; --primary-soft:#eff3ff; --ink:#1f2937; --muted:#6b7280;
+    --line:#e5e7eb; --bg:#f5f7fb;
+    --V:#b91c1c; --Vbg:#fef2f2; --I:#b45309; --Ibg:#fffbeb; --C:#047857; --Cbg:#ecfdf5;
+    --next:#1e40af; --nextbg:#eff6ff;
+    --p0:#b91c1c; --p1:#b45309; --p2:#6b7280;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Segoe UI,sans-serif;
+       color:var(--ink);background:var(--bg);font-size:14px;line-height:1.6}
+  header{position:sticky;top:0;z-index:20;background:var(--primary);color:#fff;padding:12px 20px;
+         display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+  header h1{font-size:16px;margin:0;font-weight:600;letter-spacing:.5px}
+  header .sub{font-size:12px;opacity:.85}
+  header .spacer{flex:1}
+  .btn{background:#fff;color:var(--primary);border:none;border-radius:6px;padding:6px 12px;font-size:13px;
+       cursor:pointer;font-weight:500}
+  .btn:hover{background:#e8eefc}
+  .btn.ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5)}
+  .btn.ghost:hover{background:rgba(255,255,255,.12)}
+  .btn.save{background:#065f46;color:#fff;font-weight:600}
+  .btn.save:hover{background:#047857}
+  #status{font-size:12px;opacity:.9}
+  .tabs{display:flex;gap:4px;flex-wrap:wrap;padding:10px 20px 0;background:#fff;border-bottom:1px solid var(--line);
+        position:sticky;top:52px;z-index:10}
+  .tab{padding:8px 14px;border:1px solid var(--line);border-bottom:none;border-radius:8px 8px 0 0;cursor:pointer;
+       background:#f3f4f6;color:var(--muted);font-size:13px;white-space:nowrap}
+  .tab .id{font-weight:700;color:var(--primary);margin-right:5px}
+  .tab.active{background:#fff;color:var(--ink);box-shadow:0 -2px 0 var(--primary) inset}
+  .tab .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--I);margin-left:6px;vertical-align:middle}
+  main{max-width:1100px;margin:0 auto;padding:20px}
+  .hidden{display:none}
+  /* 模板头 */
+  .thead{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:18px}
+  .thead h2{margin:0 0 4px;font-size:20px}
+  .thead h2 .id{color:var(--primary)}
+  .thead .subtitle{color:var(--muted);font-size:13px;margin-bottom:12px}
+  .thead .kv{margin:8px 0;padding:10px 12px;border-radius:8px;background:var(--primary-soft);font-size:13px}
+  .thead .kv b{color:var(--primary)}
+  .thead .warn{background:var(--Ibg);border:1px solid #fde68a}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:10px}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .pill{display:inline-block;padding:1px 8px;border-radius:20px;font-size:11px;font-weight:700;color:#fff}
+  .pill.V{background:var(--V)} .pill.I{background:var(--I)} .pill.C{background:var(--C)} .pill.NEXT{background:var(--next)}
+  /* 流程 */
+  .flow{margin:6px 0 26px}
+  .gate{background:#fff;border:1px solid var(--line);border-left:4px solid var(--primary);border-radius:10px;
+        padding:14px 16px;position:relative}
+  .gate .step{display:inline-block;background:var(--primary);color:#fff;font-size:11px;font-weight:700;
+              border-radius:5px;padding:2px 8px;margin-right:8px}
+  .gate .qt{font-weight:600;font-size:14.5px}
+  .gate .why{color:var(--muted);font-size:12.5px;margin-top:5px;padding-left:2px;border-left:2px solid var(--line);padding-left:8px}
+  .outs{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+  .out{display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:8px;border:1px solid var(--line)}
+  .out.V{background:var(--Vbg);border-color:#fecaca} .out.I{background:var(--Ibg);border-color:#fde68a}
+  .out.C{background:var(--Cbg);border-color:#a7f3d0} .out.NEXT{background:var(--nextbg);border-color:#bfdbfe}
+  .out .cond{flex:1}
+  .out .cond .ct{font-weight:600}
+  .out .cond .cd{color:var(--muted);font-size:12.5px}
+  .out .verdict{font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;color:#fff;white-space:nowrap;margin-top:1px}
+  .out.V .verdict{background:var(--V)} .out.I .verdict{background:var(--I)}
+  .out.C .verdict{background:var(--C)} .out.NEXT .verdict{background:var(--next)}
+  .connector{height:22px;width:2px;background:var(--line);margin:0 auto;position:relative}
+  .connector::after{content:"▼";position:absolute;left:-5px;bottom:-4px;color:var(--line);font-size:11px}
+  /* 批注 */
+  .notebtn{position:absolute;top:12px;right:12px;background:#f3f4f6;border:1px solid var(--line);border-radius:6px;
+           font-size:12px;padding:3px 9px;cursor:pointer;color:var(--muted)}
+  .notebtn.has{background:#fef9c3;border-color:#fde047;color:#854d0e}
+  .notewrap{margin-top:10px}
+  textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:13px;font-family:inherit;
+           resize:vertical;line-height:1.5;background:#fffef7}
+  textarea:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 2px var(--primary-soft)}
+  .note-label{font-size:12px;color:#854d0e;margin-bottom:4px;font-weight:600}
+  /* 总评 */
+  .summary{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:22px 0}
+  .summary h3{margin:0 0 10px;font-size:15px}
+  .summary h3 .ic{color:var(--primary)}
+  /* 规则表 */
+  .rules{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .rules h3{margin:0 0 12px;font-size:15px}
+  .rules h3 .cnt{color:var(--muted);font-weight:400;font-size:13px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#f9fafb;color:var(--muted);font-weight:600;font-size:12px;position:sticky}
+  td.rid{font-weight:700;color:var(--primary);white-space:nowrap}
+  td.q{color:var(--ink)}
+  .prio{display:inline-block;padding:1px 7px;border-radius:5px;font-size:11px;font-weight:700;color:#fff}
+  .prio.P0{background:var(--p0)} .prio.P1{background:var(--p1)} .prio.P2{background:var(--p2)}
+  .rnote-toggle{cursor:pointer;color:var(--primary);font-size:12px;white-space:nowrap;user-select:none}
+  .rnote-toggle.has{color:#854d0e;font-weight:700}
+  tr.rnote-row td{background:#fffef7}
+  @media print{
+    header,.tabs,.notebtn,.rnote-toggle,#status{display:none!important}
+    .panel{display:block!important;page-break-after:always}
+    textarea{border:1px solid #ccc;background:#fff}
+    body{background:#fff}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>⚖️ Javert 8 大审计模板</h1>
+  <span class="sub">逻辑流程图 · 医学专家批注</span>
+  <span class="spacer"></span>
+  <span id="status">批注自动保存于本浏览器</span>
+  <button class="btn save" onclick="saveHTML()">💾 保存</button>
+  <button class="btn" onclick="exportJSON()">⬇ 导出JSON</button>
+  <button class="btn" onclick="document.getElementById('imp').click()">⬆ 导入JSON</button>
+  <input id="imp" type="file" accept=".json" class="hidden" onchange="importJSON(this)">
+  <button class="btn ghost" onclick="window.print()">🖨 打印 / PDF</button>
+  <button class="btn ghost" onclick="clearTab()">🗑 清空本模板</button>
+</header>
+<div class="tabs" id="tabs"></div>
+<main id="main"></main>
+
+<script>
+window.DATA = {"order": ["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8"], "flows": {"M1": {"name": "重复收费", "sub": "主项费用 + 附属费用并存 + 文书无反证", "focus": "患者本次住院，是否同时被收取「主检查项目」+ 独立的「人工/图文报告」等附属费用（附属费本已包含在主项目内）。", "basis": "依据：按各省《医疗服务诊疗目录》，主项目内涵已包含报告/附属费，单独再收 = 重复收费。", "premise": "适用前提 —— 患者基础诊断须含对应主病（如肿瘤命中「癌 / 瘤」）；否则规则不适用，直接判合规。", "gates": [{"t": "查费用明细：是否同时出现 A 类「主项目 / 扫描」与 B 类「附属 / 报告费」两类费用？", "outs": [{"c": "A 类无命中", "v": "C", "d": "患者根本没做该项目，规则不适用"}, {"c": "A 类命中，但 B 类无命中", "v": "C", "d": "主项目费用单一，未重复收附属费"}, {"c": "A、B 两类都命中", "v": "NEXT", "d": "进入文书核查"}, {"c": "项目名模糊，无法区分 A / B", "v": "I", "d": "信息不足，存疑"}]}, {"t": "查文书：是否说明该附属报告由第三方独立出具（非本院重复计费）？", "outs": [{"c": "文书有第三方出具说明", "v": "C", "d": "附属来源外部，不算重复收费"}, {"c": "文书无任何第三方说明", "v": "V", "d": "重复收费。取证：两笔费用项目名 + 价格"}]}], "rules": [{"rule_id": "R045", "tmpl": "M1", "domain": "骨科", "vtype": "重复收费", "priority": "P0", "status": "ready", "question": "开展肩锁关节脱位切开复位内固定术，重复收取韧带重建术费用。"}, {"rule_id": "R047", "tmpl": "M1", "domain": "骨科", "vtype": "重复收费", "priority": "P0", "status": "ready", "question": "开展关节镜下半月板修整术、韧带重建术、骨折复位固定术、滑膜切除术等，重复收取关节镜加收费用。"}, {"rule_id": "R069", "tmpl": "M1", "domain": "血液净化", "vtype": "重复收费", "priority": "P0", "status": "ready", "question": "将血液透析、血液灌流、血液滤过等项目中不能单独收费的一次性耗材进行额外收费。"}, {"rule_id": "R077", "tmpl": "M1", "domain": "血液净化", "vtype": "重复收费", "priority": "P0", "status": "ready", "question": "开展血液透析或血液透析滤过治疗时，将测量血压或一般生命体征测量，按照血透监测收费。"}, {"rule_id": "R112", "tmpl": "M1", "domain": "医学影像", "vtype": "重复收费", "priority": "P0", "status": "ready", "question": "开展CT、磁共振等增强扫描，重复收取平扫费用。"}, {"rule_id": "R116", "tmpl": "M1", "domain": "医学影像", "vtype": "重复收费", "priority": "P0", "status": "ready", "question": "收取超声计算机图文报告同时收取彩色打印照片、彩色胶片照相费用"}, {"rule_id": "R118", "tmpl": "M1", "domain": "医学影像", "vtype": "重复收费", "priority": "P0", "status": "ready", "question": "开展临床操作的磁共振引导，收取引导费用时，重复收取磁共振扫描(MRI)、磁共振平扫、磁共振增强扫描、磁共振心脏功能检查、磁共振血管成象(MRA)等检查费用。"}, {"rule_id": "R119", "tmpl": "M1", "domain": "医学影像", "vtype": "重复收费", "priority": "P0", "status": "ready", "question": "开展临床操作的CT引导，收取引导费用时，重复收取X线计算机体层(CT)扫描、X线计算机体层(CT)平扫、X线计算机体层(CT)增强扫描、X线计算机体层(CT)成象等检查费用。"}, {"rule_id": "R185", "tmpl": "M1", "domain": "肿瘤", "vtype": "重复收费", "priority": "P0", "status": "ready", "question": "开展根治性宫颈切除术，重复收取卵巢动静脉高位结扎术。"}, {"rule_id": "R191", "tmpl": "M1", "domain": "肿瘤", "vtype": "重复收费", "priority": "P0", "status": "ready", "question": "开展肿瘤全身断层显像，重复收取人工报告费用。"}, {"rule_id": "R208", "tmpl": "M1", "domain": "麻醉", "vtype": "重复收费", "priority": "P0", "status": "ready", "question": "开展基础麻醉，重复收取强化麻醉费用。"}, {"rule_id": "R226", "tmpl": "M1", "domain": "重症医学", "vtype": "重复收费", "priority": "P0", "status": "ready", "question": "开展静脉高营养治疗，重复收取静脉用药集中配置费用。"}, {"rule_id": "R228", "tmpl": "M1", "domain": "重症医学", "vtype": "重复收费", "priority": "P0", "status": "ready", "question": "医院开展重症监护等并对应收费，重复收取口腔护理、皮肤护理、会阴护理、肛周护理、心理护理、动静脉置管护理等费用。"}, {"rule_id": "R260", "tmpl": "M1", "domain": "口腔", "vtype": "重复收费", "priority": "P0", "status": "ready", "question": "开展牙龈翻瓣术，重复收取根面平整术费用。"}, {"rule_id": "R300", "tmpl": "M1", "domain": "精神医学", "vtype": "重复收费", "priority": "P0", "status": "ready", "question": "开展精神科监护，重复收取抗精神病药物治疗监测费用"}, {"rule_id": "R018", "tmpl": "M1", "domain": "心血管内科", "vtype": "重复收费", "priority": "P1", "status": "ready", "question": "开展冠脉内局部放射治疗，重复收取同位素放射源及放疗装置的使用费用。"}, {"rule_id": "R115", "tmpl": "M1", "domain": "医学影像", "vtype": "重复收费", "priority": "P1", "status": "ready", "question": "开展非超声检查项目并收费，重复收取属于超声检查项目类别下的图象记录费用。"}, {"rule_id": "R117", "tmpl": "M1", "domain": "医学影像", "vtype": "重复收费", "priority": "P1", "status": "ready", "question": "开展床旁检查（如X线透视检查、超声检查等）并收费，同时重复收取同类常规检查费用。"}, {"rule_id": "R303", "tmpl": "M1", "domain": "康复", "vtype": "重复收费", "priority": "P1", "status": "ready", "question": "开展精神障碍、身体功能障碍、辅助器具等各类作业疗法训练时，同时收取日常生活动作训练费用。"}, {"rule_id": "R304", "tmpl": "M1", "domain": "精神医学", "vtype": "重复收费", "priority": "P1", "status": "ready", "question": "开展精神障碍作业疗法训练，重复收取日常生活动作训练费用。"}, {"rule_id": "R305", "tmpl": "M1", "domain": "精神医学", "vtype": "重复收费", "priority": "P1", "status": "ready", "question": "开展康复治疗，收取身体功能障碍、辅助器具等各种作业疗法训练费用，同时重复收取日常生活动作训练费用。"}, {"rule_id": "R023", "tmpl": "M1", "domain": "心血管内科", "vtype": "分解收费", "priority": "P2", "status": "ready", "question": "将常规心电图检查(×通道加收)，分解为多个较少通道加收（如十二通道加收、三通道加收）项目收费。"}]}, "M2": {"name": "过度检查", "sub": "检查 fee 命中 + 诊断无指征 (+ 可选联查药品)", "focus": "患者本次住院，是否被无指征收取某项检查 / 检验（含无指征的多次重复检查）。", "basis": "依据：按诊疗规范，这些检查仅适用于特定诊断，或术前 / 输血前的常规一次筛查；对无指征患者（多次）测定 = 过度检查。", "premise": "", "gates": [{"t": "列出全部诊断（入院 / 出院 / 术前 / 术后 / 病理），并查该检查做过几次 count", "outs": [{"c": "count = 0（没做该检查）", "v": "C", "d": "规则不适用"}, {"c": "count ≥ 1", "v": "NEXT", "d": "继续核查指征"}]}, {"t": "诊断中是否含任一「合理指征」？", "outs": [{"c": "命中任一诊断指征", "v": "C", "d": "有指征，合理"}, {"c": "无任何诊断指征", "v": "NEXT", "d": "强制进入病程症状核查"}]}, {"t": "（判「无指征」前必做）扫病程 / 查房记录：是否有阳性症状指征？", "why": "不能只看诊断 —— 病程记录里的症状也是指征来源。", "outs": [{"c": "命中阳性症状（非「否认段」/ 非「选项框」）", "v": "C", "d": "病程记录有指征"}, {"c": "病程 0 条阳性症状", "v": "NEXT", "d": "方可向违规推进"}]}, {"t": "诊断无指征 + 病程 0 阳性 + 次数 ≥ 阈值（默认 2）（如联查药品：且无相关用药命中）", "outs": [{"c": "全部满足", "v": "V", "d": "过度检查。取证：完整诊断列表 + 检查项目名 × count"}, {"c": "诊断为「待查 / 疑似 / 排除」中间状态", "v": "I", "d": "存疑"}, {"c": "（联查场景）命中相关药品", "v": "C", "d": "实际用药支持开展该检查"}]}], "rules": [{"rule_id": "R109", "tmpl": "M2", "domain": "医学影像", "vtype": "过度检查", "priority": "P0", "status": "ready", "question": "将X线计算机体层(CT)扫描使用心电或呼吸门控加收），作为常规检查，向大多数患者普遍开展并收费。"}, {"rule_id": "R129", "tmpl": "M2", "domain": "医学影像", "vtype": "过度检查", "priority": "P0", "status": "ready", "question": "为住院患者开展彩色腹部多普勒超声常规检查时，普遍无指征开展妇科、泌尿系多普勒超声常规检查并收取费用。"}, {"rule_id": "R130", "tmpl": "M2", "domain": "医学影像", "vtype": "过度检查", "priority": "P0", "status": "ready", "question": "为住院患者，普遍无指征开展血管彩色多普勒超声检查并收取费用。"}, {"rule_id": "R131", "tmpl": "M2", "domain": "医学影像", "vtype": "过度检查", "priority": "P0", "status": "ready", "question": "无指征为住院患者普遍开展心脏彩色多普勒超声、左心功能测定、室壁运动分析、组织多普勒显象(TDI)等检查并收费。"}, {"rule_id": "R141", "tmpl": "M2", "domain": "临床检验", "vtype": "过度检查", "priority": "P0", "status": "ready", "question": "医院部分科室将肌红蛋白测定作为入院患者的常规检查，对大量无相关疾病指征的患者开展检验。"}, {"rule_id": "R143", "tmpl": "M2", "domain": "临床检验", "vtype": "过度检查", "priority": "P0", "status": "ready", "question": "医院部分科室将血浆乳酸测定作为入院患者的常规检查，对大量无相关疾病指征的患者开展检验。"}, {"rule_id": "R146", "tmpl": "M2", "domain": "临床检验", "vtype": "过度检查", "priority": "P0", "status": "ready", "question": "医院部分科室将B型钠尿肽、B型钠尿肽前体等测定作为入院患者的常规检查，对大量无相关疾病指征的患者开展检验。"}, {"rule_id": "R151", "tmpl": "M2", "domain": "临床检验", "vtype": "过度检查", "priority": "P0", "status": "ready", "question": "非肝炎患者，住院期间多次测定乙肝、丙肝抗体。"}, {"rule_id": "R153", "tmpl": "M2", "domain": "临床检验", "vtype": "过度检查", "priority": "P0", "status": "ready", "question": "将甲胎蛋白测定作为入院患者的常规检查，对大量无相关疾病指征的患者开展检验并收费。"}, {"rule_id": "R156", "tmpl": "M2", "domain": "临床检验", "vtype": "过度检查", "priority": "P0", "status": "ready", "question": "将前列腺特异性抗原作为普通人群入院常规检查，对大量非前列腺相关疾病的患者开展检测并收费。"}, {"rule_id": "R160", "tmpl": "M2", "domain": "临床检验", "vtype": "过度检查", "priority": "P0", "status": "ready", "question": "将降钙素原检测（PCT）作为入院患者的常规检查，对大量无相关疾病指征的患者开展检验并收费。"}, {"rule_id": "R161", "tmpl": "M2", "domain": "临床检验", "vtype": "过度检查", "priority": "P0", "status": "ready", "question": "将血清肌钙蛋白Ⅰ测定作为入院患者的常规检查，对大量无相关指征的患者开展检验并收费。"}, {"rule_id": "R219", "tmpl": "M2", "domain": "麻醉", "vtype": "过度诊疗", "priority": "P0", "status": "ready", "question": "对未使用肌肉松弛药物的全身麻醉患者，开展麻醉中肌松监测并收费。"}, {"rule_id": "R220", "tmpl": "M2", "domain": "麻醉", "vtype": "虚构医药服务项目或过度诊疗", "priority": "P0", "status": "ready", "question": "对不符合控制性降压适用范围（如不能耐受、非保护重要脏器氧供等）的患者，收取控制性降压费用。"}, {"rule_id": "R313", "tmpl": "M2", "domain": "精神医学", "vtype": "过度诊疗", "priority": "P0", "status": "ready", "question": "违反诊疗规范将抗精神病药物治疗监测普遍为无相关指征的患者开展并收费。"}, {"rule_id": "R108", "tmpl": "M2", "domain": "医学影像", "vtype": "过度检查", "priority": "P1", "status": "ready", "question": "无指征为住院患者普通开展胸部CT检查并收取费用。"}, {"rule_id": "R132", "tmpl": "M2", "domain": "医学影像", "vtype": "过度检查", "priority": "P1", "status": "ready", "question": "将内镜色素检查作为入院患者的常规检查，普遍为无相关指征的患者开展检验并收费。"}, {"rule_id": "R154", "tmpl": "M2", "domain": "临床检验", "vtype": "过度检查", "priority": "P1", "status": "ready", "question": "将癌胚抗原、糖类抗原作为入院患者的常规检查，对大量无相关疾病指征的患者开展检验并收费。"}, {"rule_id": "R155", "tmpl": "M2", "domain": "临床检验", "vtype": "过度检查", "priority": "P1", "status": "ready", "question": "将各种白介素测定、干扰素测定、肿瘤坏死因素测定等作为入院患者的常规检查，对大量无相关疾病指征的患者开展检验并收费。"}, {"rule_id": "R162", "tmpl": "M2", "domain": "临床检验", "vtype": "过度检查", "priority": "P1", "status": "ready", "question": "将细菌抗体测定作为入院患者的常规检查，对大量无相关疾病指征的患者开展检验并收费。"}, {"rule_id": "R278", "tmpl": "M2", "domain": "内分泌", "vtype": "过度检查", "priority": "P1", "status": "ready", "question": "无指征为住院患者普遍打包开展肾上腺皮质激素、性腺激素、血清生长激素、抗甲状腺球蛋白抗体(TGAb)、抗甲状腺微粒体抗体(TMAb)等多种内分泌相关检查并收费。"}, {"rule_id": "R279", "tmpl": "M2", "domain": "内分泌", "vtype": "过度检查", "priority": "P1", "status": "ready", "question": "为住院患者无指征普遍开展\"甲状腺功能三项\"或\"甲状腺功能五项\"检查并收费。"}]}, "M3": {"name": "串换项目（含口腔）", "sub": "诊断仅 trivial + fee 见大手术 (口腔强信号)", "focus": "实际仅为微小口腔病变（普通拔牙 / 牙龈炎 / 牙髓炎 / 美容修复需求），却套用医保「大手术」编码收费的骗保模式。", "basis": "依据：大手术（如口腔颌面软组织清创术）仅适用于外伤 / 撕裂 / 烫伤后清创等具体损伤场景；普通拔牙后的常规创面处理已含在拔牙术内涵里。", "premise": "", "gates": [{"t": "（可选前置）本次住院 / 门诊是否涉及口腔科？", "outs": [{"c": "无口腔科介入", "v": "C", "d": "规则不适用"}, {"c": "涉及口腔科", "v": "NEXT", "d": "继续"}]}, {"t": "诊断中是否有支持该大手术的「重大诊断」？", "outs": [{"c": "有支持诊断", "v": "C", "d": "手术有适应症"}, {"c": "无支持诊断", "v": "NEXT", "d": "继续"}]}, {"t": "费用里是否做了该医保大手术？", "outs": [{"c": "费用无命中", "v": "C", "d": "规则不适用"}, {"c": "费用命中大手术", "v": "NEXT", "d": "继续"}]}, {"t": "诊断是否「全部」属于 trivial 微小范围（龋齿 / 普通拔牙 / 牙龈炎 / 美容修复等）？", "outs": [{"c": "全部 trivial + 费用命中大手术", "v": "V", "d": "串换。取证：完整诊断列表 + 大手术项目名 / 价格 + 总费用。并存自费美容项 / 总额过高 = 强支持"}, {"c": "诊断仅笼统「牙体疾病」无细化", "v": "I", "d": "存疑"}]}], "rules": [{"rule_id": "R233", "tmpl": "M3", "domain": "口腔", "vtype": "虚构医药服务项目或以骗保为目的串换项目", "priority": "P1", "status": "ready", "question": "将牙齿美容修复类（如种植牙、烤瓷/全瓷冠、正畸等）非医保支付项目，套用串换为口腔颌面部软组织缺损局部组织瓣修复术等口腔手术项目纳入医保结算，虚构诊疗服务，骗取医保基金。"}, {"rule_id": "R234", "tmpl": "M3", "domain": "口腔", "vtype": "虚构医药服务项目或以骗保为目的串换项目", "priority": "P1", "status": "ready", "question": "将牙齿美容修复类（如种植牙、烤瓷/全瓷冠、正畸等）非医保支付项目，套用串换为口腔颌面部巨大血管瘤淋巴管瘤切除术等口腔手术项目纳入医保结算，虚构诊疗服务，骗取医保基金。"}, {"rule_id": "R235", "tmpl": "M3", "domain": "口腔", "vtype": "虚构医药服务项目或以骗保为目的串换项目", "priority": "P1", "status": "ready", "question": "将牙齿美容修复类（如种植牙、烤瓷/全瓷冠、正畸等）非医保支付项目，套用串换为口腔颌面部骨缺损游离骨瓣移植修复术等口腔手术项目纳入医保结算，虚构诊疗服务，骗取医保基金。"}, {"rule_id": "R236", "tmpl": "M3", "domain": "口腔", "vtype": "虚构医药服务项目或以骗保为目的串换项目", "priority": "P1", "status": "ready", "question": "将牙齿美容修复类（如种植牙、烤瓷/全瓷冠、正畸等）非医保支付项目，套用串换为带血管游离骨移植颌骨重建术等口腔手术项目纳入医保结算，虚构诊疗服务，骗取医保基金。"}, {"rule_id": "R237", "tmpl": "M3", "domain": "口腔", "vtype": "虚构医药服务项目或以骗保为目的串换项目", "priority": "P1", "status": "ready", "question": "将牙齿美容修复类（如种植牙、烤瓷/全瓷冠、正畸等）非医保支付项目，套用串换为牙周组织瓣移植术等口腔手术项目纳入医保结算，虚构诊疗服务，骗取医保基金。"}, {"rule_id": "R238", "tmpl": "M3", "domain": "口腔", "vtype": "虚构医药服务项目或以骗保为目的串换项目", "priority": "P1", "status": "ready", "question": "将牙齿美容修复类（如种植牙、烤瓷/全瓷冠、正畸等）非医保支付项目，套用串换为显微根管治疗术等口腔治疗项目上传医保结算，虚构诊疗服务，骗取医保基金。"}, {"rule_id": "R239", "tmpl": "M3", "domain": "口腔", "vtype": "虚构医药服务项目或以骗保为目的串换项目", "priority": "P1", "status": "ready", "question": "将牙齿美容修复类（如种植牙、烤瓷/全瓷冠、正畸等）非医保支付项目，套用串换为根管再治疗术等口腔治疗项目上传医保结算，虚构诊疗服务，骗取医保基金。"}, {"rule_id": "R240", "tmpl": "M3", "domain": "口腔", "vtype": "虚构医药服务项目或以骗保为目的串换项目", "priority": "P1", "status": "ready", "question": "将牙齿美容修复类（如种植牙、烤瓷/全瓷冠、正畸等）非医保支付项目，套用串换为根管充填术等口腔治疗项目上传医保结算，虚构诊疗服务，骗取医保基金。"}, {"rule_id": "R241", "tmpl": "M3", "domain": "口腔", "vtype": "虚构医药服务项目或以骗保为目的串换项目", "priority": "P1", "status": "ready", "question": "将牙齿美容修复类（如种植牙、烤瓷/全瓷冠、正畸等）非医保支付项目，套用串换为牙髓失活术等口腔治疗项目上传医保结算，虚构诊疗服务，骗取医保基金。"}, {"rule_id": "R242", "tmpl": "M3", "domain": "口腔", "vtype": "虚构医药服务项目或以骗保为目的串换项目", "priority": "P1", "status": "ready", "question": "将牙齿美容修复类（如种植牙、烤瓷/全瓷冠、正畸等）非医保支付项目，套用串换为牙髓摘除术等口腔治疗项目上传医保结算，虚构诊疗服务，骗取医保基金。"}, {"rule_id": "R243", "tmpl": "M3", "domain": "口腔", "vtype": "虚构医药服务项目或以骗保为目的串换项目", "priority": "P1", "status": "ready", "question": "将牙齿美容修复类（如种植牙、烤瓷/全瓷冠、正畸等）非医保支付项目，套用串换为牙脱敏治疗等口腔治疗项目上传医保结算，虚构诊疗服务，骗取医保基金。"}, {"rule_id": "R244", "tmpl": "M3", "domain": "口腔", "vtype": "虚构医药服务项目或以骗保为目的串换项目", "priority": "P1", "status": "ready", "question": "将牙齿美容修复类（如种植牙、烤瓷/全瓷冠、正畸等）非医保支付项目，套用串换为牙体缺损粘接修复术等口腔治疗项目上传医保结算，虚构诊疗服务，骗取医保基金。"}, {"rule_id": "R245", "tmpl": "M3", "domain": "口腔", "vtype": "虚构医药服务", "priority": "P1", "status": "ready", "question": "开展普通拔牙、阻生牙拔除操作以及对牙龈炎、牙髓炎患者的普通诊治过程中，虚构服务收取口腔颌面软组织清创术等费用，虚计费用骗取医保基金。"}, {"rule_id": "R246", "tmpl": "M3", "domain": "口腔", "vtype": "虚构医药服务", "priority": "P1", "status": "ready", "question": "开展普通拔牙、阻生牙拔除操作以及对牙龈炎、牙髓炎患者的普通诊治过程中，虚构服务收取根尖搔刮术等费用，虚计费用骗取医保基金。"}, {"rule_id": "R247", "tmpl": "M3", "domain": "口腔", "vtype": "虚构医药服务", "priority": "P1", "status": "ready", "question": "开展普通拔牙、阻生牙拔除操作以及对牙龈炎、牙髓炎患者的普通诊治过程中，虚构服务收取分根术等费用，虚计费用骗取医保基金。"}, {"rule_id": "R248", "tmpl": "M3", "domain": "口腔", "vtype": "虚构医药服务", "priority": "P1", "status": "ready", "question": "开展普通拔牙、阻生牙拔除操作以及对牙龈炎、牙髓炎患者的普通诊治过程中，虚构服务收取牙龈切除术等费用，虚计费用骗取医保基金。"}, {"rule_id": "R249", "tmpl": "M3", "domain": "口腔", "vtype": "虚构医药服务", "priority": "P1", "status": "ready", "question": "开展普通拔牙、阻生牙拔除操作以及对牙龈炎、牙髓炎患者的普通诊治过程中，虚构服务收取龈瓣整形术等费用，虚计费用骗取医保基金。"}]}, "M4": {"name": "超标准收费", "sub": "实际计价方式 ≠ 诊疗目录规定 (计价单位错 / 加成漏算 / 时长拆分)", "focus": "患者本次住院，是否未按诊疗目录规定的计价标准收费（计价单位错 / 加成漏算 / 按时长拆分多收）。", "basis": "依据：目录条款规定项目的基础价、计价单位与加成规则；实际计价方式与目录不符即超标准。", "premise": "", "gates": [{"t": "查费用命中次数 count + 实收金额合计", "outs": [{"c": "费用无命中", "v": "C", "d": "规则不适用"}, {"c": "命中", "v": "NEXT", "d": "继续"}]}, {"t": "从文书提取实际事件量化值 N（切口数 / 治疗时长 / 牙数 / 血管数 / 疗程数）", "outs": [{"c": "文书无量化信息", "v": "I", "d": "无法核算，存疑"}, {"c": "取得量化值 N", "v": "NEXT", "d": "继续"}]}, {"t": "按目录规则算「应收次数 expected」，比对 count vs expected", "outs": [{"c": "count 明显 > expected", "v": "V", "d": "超标准多收。取证：项目名 × count + 实际事件 N + 目录单位 + 应收 expected + 多收金额"}, {"c": "count = expected", "v": "C", "d": "按目录正确收"}, {"c": "count < expected", "v": "C", "d": "未足量收，不属本规则"}]}], "rules": [{"rule_id": "R020", "tmpl": "M4", "domain": "心血管内科", "vtype": "超标准收费", "priority": "P0", "status": "ready", "question": "开展经血管介入项目，扩张多支血管超出计价标准。如：定向冠脉内膜旋切术、经皮冠状动脉内支架置入术(STENT)、经皮冠状动脉腔内激光成形术(ELCA)、高速冠状动脉内膜旋磨术等。"}, {"rule_id": "R063", "tmpl": "M4", "domain": "骨科", "vtype": "超标准收费", "priority": "P0", "status": "ready", "question": "经同一切口进行的两种不同疾病的手术,次要手术未按照诊疗项目计价标准收费。"}, {"rule_id": "R074", "tmpl": "M4", "domain": "血液净化", "vtype": "超标准收费", "priority": "P0", "status": "ready", "question": "按次收费的血液净化类诊疗项目（如血液透析、血液灌流、血液滤过、血液透析滤过、血透监测等），按治疗时长进行收费。"}, {"rule_id": "R165", "tmpl": "M4", "domain": "临床检验（组织学检查）", "vtype": "超标准收费", "priority": "P0", "status": "ready", "question": "开展全器官大切片检查与诊断、手术标本检查与诊断，未按计价单位收费。"}, {"rule_id": "R193", "tmpl": "M4", "domain": "肿瘤", "vtype": "超标准收费", "priority": "P0", "status": "ready", "question": "开展体表肿物切除术等手术，未按照同一切口、不同切口手术计价标准收费。"}, {"rule_id": "R196", "tmpl": "M4", "domain": "肿瘤", "vtype": "超标准收费", "priority": "P0", "status": "ready", "question": "高强度超声聚焦刀治疗，未按计价标准收费。"}, {"rule_id": "R200", "tmpl": "M4", "domain": "肿瘤", "vtype": "超标准收费", "priority": "P0", "status": "ready", "question": "开展简易定位、专用X线机模拟定位、专用X线机复杂模拟定位等，未按照计价单位收费。"}, {"rule_id": "R212", "tmpl": "M4", "domain": "麻醉", "vtype": "超标准收费", "priority": "P0", "status": "ready", "question": "医院无麻醉恢复室，收取麻醉恢复室监护费用。"}, {"rule_id": "R250", "tmpl": "M4", "domain": "口腔", "vtype": "超标准收费", "priority": "P0", "status": "ready", "question": "开展各种口腔检查或治疗项目，未按照计价单位收费。"}, {"rule_id": "R291", "tmpl": "M4", "domain": "精神医学", "vtype": "超标准收费", "priority": "P0", "status": "ready", "question": "开展精神科监护，未严格按照诊疗规范及项目内涵规定的适用对象、监护内容、病区环境、人员资质等要求提供服务，仍按该项目标准收费。"}, {"rule_id": "R292", "tmpl": "M4", "domain": "精神医学", "vtype": "超标准收费", "priority": "P0", "status": "ready", "question": "已诊断为精神疾病的住院患者，多次收取首诊精神病费用。"}, {"rule_id": "R293", "tmpl": "M4", "domain": "精神医学", "vtype": "超标准收费", "priority": "P0", "status": "ready", "question": "开展心理治疗、精神康复治疗等时，未按照加收标准收费。"}, {"rule_id": "R205", "tmpl": "M4", "domain": "麻醉", "vtype": "重复收费", "priority": "P2", "status": "ready", "question": "各种麻醉方式（如全身麻醉、神经阻滞麻醉、椎管内麻醉、局部麻醉等），收费时长大于实际麻醉记录时长。"}]}, "M5": {"name": "虚构医药服务", "sub": "fee 见某项但文书无对应执行记录 / 诊断不匹配", "focus": "费用里有某项目，但文书中没有对应的执行记录，即虚构服务骗取医保基金。", "basis": "依据：真实开展的服务应在相应文书 section 留有执行记录；有费无记录 = 虚构。", "premise": "", "gates": [{"t": "查费用是否命中该项目？", "outs": [{"c": "费用无命中", "v": "C", "d": "规则不适用"}, {"c": "命中", "v": "NEXT", "d": "继续"}]}, {"t": "查文书重点 section 是否有该服务的执行证据（如麻醉记录 / 诱导药物 / 维持 / 苏醒过程）？", "outs": [{"c": "有任一执行证据", "v": "C", "d": "服务实际开展"}, {"c": "诊断有支持但文书无执行记录", "v": "I", "d": "有指征但记录可能缺失，存疑"}, {"c": "文书无执行证据（且诊断无支持）", "v": "V", "d": "虚构。取证：项目名 + 价格 +「重点 section 未检索到执行描述」。无相关科室介入痕迹 = 强支持"}, {"c": "section 不完整 / 描述模糊", "v": "I", "d": "存疑"}]}], "rules": [{"rule_id": "R015", "tmpl": "M5", "domain": "心血管内科", "vtype": "虚构医药服务项目", "priority": "P0", "status": "ready", "question": "未开展相关诊疗项目，但收取对应诊疗费用。"}, {"rule_id": "R037", "tmpl": "M5", "domain": "骨科", "vtype": "虚构医药服务项目", "priority": "P0", "status": "ready", "question": "未开展相关诊疗项目，但收取对应诊疗费用。"}, {"rule_id": "R080", "tmpl": "M5", "domain": "康复", "vtype": "虚构医药服务项目", "priority": "P0", "status": "ready", "question": "未开展相关诊疗项目，但收取对应诊疗费用。"}, {"rule_id": "R103", "tmpl": "M5", "domain": "医学影像", "vtype": "虚构医药服务项目", "priority": "P0", "status": "ready", "question": "未开展相关诊疗项目，但收取对应诊疗费用。"}, {"rule_id": "R105", "tmpl": "M5", "domain": "医学影像", "vtype": "虚构医药服务项目", "priority": "P0", "status": "ready", "question": "开展X线计算机体层(CT)平扫时，未进行三维重建操作，但收取三维重建费用。"}, {"rule_id": "R134", "tmpl": "M5", "domain": "临床检验", "vtype": "虚构医药服务项目", "priority": "P0", "status": "ready", "question": "未开展相关诊疗项目，但收取对应诊疗费用。"}, {"rule_id": "R203", "tmpl": "M5", "domain": "麻醉", "vtype": "虚构医药服务项目", "priority": "P0", "status": "ready", "question": "未开展相关诊疗项目，但收取对应诊疗费用。"}, {"rule_id": "R224", "tmpl": "M5", "domain": "重症医学", "vtype": "虚构医药服务项目", "priority": "P0", "status": "ready", "question": "未开展相关诊疗项目，但收取对应诊疗费用。"}]}, "M6": {"name": "过度诊疗（治疗超适应症）", "sub": "treatment 命中 + 文书无指征 / 排除指征命中", "focus": "患者本次住院，是否被无指征收取某项治疗 / 干预（过度诊疗）。", "basis": "依据：治疗有明确适应症；诊断与治疗硬冲突（排除指征）或全无指征即过度。", "premise": "", "gates": [{"t": "查费用是否命中该治疗？", "outs": [{"c": "无命中", "v": "C", "d": "规则不适用"}, {"c": "命中", "v": "NEXT", "d": "继续"}]}, {"t": "诊断中是否含任一「合理指征」？", "outs": [{"c": "有指征", "v": "C", "d": "合理"}, {"c": "无指征", "v": "NEXT", "d": "继续"}]}, {"t": "诊断中是否含「明确排除指征」（与治疗硬冲突）？", "outs": [{"c": "命中排除指征 + 治疗命中", "v": "V", "d": "强证据：治疗与诊断硬冲突"}, {"c": "无排除指征", "v": "NEXT", "d": "继续"}]}, {"t": "无任一指征 + 无排除指征 + 治疗命中", "outs": [{"c": "成立", "v": "V", "d": "无指征过度。取证：完整诊断列表 + 治疗项目名 + 价格"}, {"c": "文书简略 / 诊断中间态", "v": "I", "d": "存疑"}]}], "rules": [{"rule_id": "R218", "tmpl": "M6", "domain": "麻醉", "vtype": "过度诊疗", "priority": "P0", "status": "ready", "question": "向非全身麻醉状态的患者，收取麻醉深度电生理监测费用。"}, {"rule_id": "R221", "tmpl": "M6", "domain": "麻醉", "vtype": "过度诊疗", "priority": "P0", "status": "ready", "question": "对不符合脑电双频指数监测适用范围（如非全麻、非儿童重症监护病房镇静镇痛、深度睡眠等）的患者，收取脑电双频指数监测费用。"}, {"rule_id": "R222", "tmpl": "M6", "domain": "麻醉", "vtype": "过度诊疗", "priority": "P0", "status": "ready", "question": "医院无指征普遍开展特殊方法气管插管术。"}, {"rule_id": "R225", "tmpl": "M6", "domain": "重症医学", "vtype": "过度诊疗或虚构医药服务项目", "priority": "P0", "status": "ready", "question": "对不符合康复治疗适应症范围的患者开展康复治疗项目，或未开展康复治疗但收取相应费用。"}, {"rule_id": "R310", "tmpl": "M6", "domain": "精神医学", "vtype": "过度诊疗", "priority": "P0", "status": "ready", "question": "未严格执行精神科住院标准，将轻中度焦虑/抑郁、睡眠障碍、酒精依赖等可经门诊管控的非危急重症患者（门诊管控不佳的除外）违规收治住院。"}, {"rule_id": "R311", "tmpl": "M6", "domain": "精神医学", "vtype": "过度诊疗", "priority": "P0", "status": "ready", "question": "违反项目内涵及适应证规定，为非重性精神病急性发作期、或无急性发作指征的患者常规化、全程化开展精神科监护并收费。"}, {"rule_id": "R312", "tmpl": "M6", "domain": "精神医学", "vtype": "过度诊疗", "priority": "P0", "status": "ready", "question": "开展脑反射治疗时，超出脑波治疗仪说明书规定的适应症范围（仅限失眠及强迫症状），为精神分裂症、抑郁症、焦虑症等非适用病症患者进行治疗，并收取相应费用。"}, {"rule_id": "R099", "tmpl": "M6", "domain": "康复", "vtype": "将不属于医保支付范围的纳入医保基金结算", "priority": "P2", "status": "ready", "question": "开展精神障碍作业疗法训练，申请医保支付存在下述问题：\n1.不符合医保限定支付适应症；\n2.不符合人员资质限制；\n3.不符合医保限定支付天数及频次。"}, {"rule_id": "R100", "tmpl": "M6", "domain": "康复", "vtype": "将不属于医保支付范围的纳入医保基金结算", "priority": "P2", "status": "ready", "question": "开展日常生活动作训练，医保支付存在下述问题：\n1.不符合医保限定支付适应症；\n2.不符合医保限定支付天数；\n3.不符合医保继续支付的限定条件。"}]}, "M7": {"name": "项目身份串换收费", "sub": "实际开展 X (低价) 但 fee 收 Y (高价)，项目身份替换", "focus": "收费项目 Y（高价 / 特殊）实际开展的是 X（低价 / 普通），即项目身份串换骗保。", "basis": "依据：按诊疗目录，Y 与 X 有独有特征差异；文书吻合 X 且无 Y 独有特征 = 串换。", "premise": "", "gates": [{"t": "查费用 Y 是否命中？", "outs": [{"c": "无命中", "v": "C", "d": "规则不适用"}, {"c": "命中", "v": "NEXT", "d": "继续"}]}, {"t": "提取实际操作过程描述，核对是否含 Y 的「独有特征」（设备 / 参数 / 特殊操作）？", "outs": [{"c": "多数 Y 独有特征命中", "v": "C", "d": "身份核对一致，Y 真做了"}, {"c": "不含 Y 独有特征", "v": "NEXT", "d": "继续"}]}, {"t": "文书操作描述是否吻合 X（实际低价项目）特征？", "outs": [{"c": "吻合 X + 不含 Y 独有特征", "v": "V", "d": "串换硬证据。取证：Y 项目名 + 价格 + 文书实际操作原文 + 目录差异说明"}, {"c": "命中排除指征（Y 确有合理适应症）", "v": "C", "d": "不构成串换"}, {"c": "操作描述模糊 / section 缺失", "v": "I", "d": "存疑（ETL 缺失时 conf 0.5 + etl_warning）"}]}], "rules": [{"rule_id": "R014", "tmpl": "M7", "domain": "心血管内科", "vtype": "串换项目", "priority": "P2", "status": "ready", "question": "开展心内诊疗，不同厂家、不同规格、不同价格的一次性高值耗材之间相互串换收费。"}, {"rule_id": "R019", "tmpl": "M7", "domain": "心血管内科", "vtype": "串换项目", "priority": "P2", "status": "ready", "question": "将冠脉介入项目，如冠脉内支架置入术，串换为费用更高的冠脉腔内激光成形术、冠脉内膜旋磨术、定向冠脉内膜旋磨术等收费。"}, {"rule_id": "R024", "tmpl": "M7", "domain": "心血管内科", "vtype": "串换项目", "priority": "P2", "status": "ready", "question": "使用血压计、监护仪监测血压，按照动态血压监测进行收费。"}, {"rule_id": "R026", "tmpl": "M7", "domain": "心血管内科", "vtype": "串换项目", "priority": "P2", "status": "ready", "question": "动态心电图与遥测心电监护项目互相串换收费。"}, {"rule_id": "R034", "tmpl": "M7", "domain": "骨科", "vtype": "串换项目", "priority": "P2", "status": "ready", "question": "骨科一次性使用高值耗材（如髓内钉、螺钉、金属接骨板、关节钢板、骨针、人工骨、异体骨、固定棒、椎间融合器、骨水泥、脊柱内镜、等离子刀头、钛板等），不同厂家、不同规格、不同价格之间相互串换收费。"}, {"rule_id": "R038", "tmpl": "M7", "domain": "骨科", "vtype": "串换项目", "priority": "P2", "status": "ready", "question": "将椎间盘消融治疗操作串换为心脏电生理诊疗项目分类下的射频消融术收费。"}, {"rule_id": "R039", "tmpl": "M7", "domain": "骨科", "vtype": "串换项目", "priority": "P2", "status": "ready", "question": "开展椎间盘突出症治疗，将热凝治疗串换为椎间盘消融术进行收费。"}, {"rule_id": "R040", "tmpl": "M7", "domain": "骨科", "vtype": "串换项目", "priority": "P2", "status": "ready", "question": "各类骨折切开复位内固定术间相互串换收费。"}, {"rule_id": "R041", "tmpl": "M7", "domain": "骨科", "vtype": "串换项目", "priority": "P2", "status": "ready", "question": "不同的中医骨科手法整复术之间串换收费。"}, {"rule_id": "R054", "tmpl": "M7", "domain": "骨科", "vtype": "重复收费", "priority": "P2", "status": "ready", "question": "将普通手术切口的缝合步骤，按照皮瓣成形术进行收费。"}, {"rule_id": "R076", "tmpl": "M7", "domain": "血液净化", "vtype": "串换项目", "priority": "P2", "status": "ready", "question": "开展血液净化类诊疗项目时，将费用较低的项目串换成费用较高的项目进行收费。"}, {"rule_id": "R079", "tmpl": "M7", "domain": "血液净化", "vtype": "串换项目", "priority": "P2", "status": "ready", "question": "实际开展项目为人工肝治疗，但按照价格更高的血浆置换术进行收费。"}, {"rule_id": "R083", "tmpl": "M7", "domain": "康复", "vtype": "串换项目", "priority": "P2", "status": "ready", "question": "将使用冰袋降温的操作，按照使用专用设备进行的冷疗治疗进行收费。"}, {"rule_id": "R223", "tmpl": "M7", "domain": "麻醉", "vtype": "串换项目", "priority": "P2", "status": "ready", "question": "开展气管插管术，但按照特殊方法气管插管术收费。"}, {"rule_id": "R231", "tmpl": "M7", "domain": "重症医学", "vtype": "串换项目", "priority": "P2", "status": "ready", "question": "开展经纤支镜治疗，按照经纤支镜特殊治疗进行收费。"}, {"rule_id": "R232", "tmpl": "M7", "domain": "重症医学", "vtype": "串换项目", "priority": "P2", "status": "ready", "question": "将普通病房床位，串换为层流洁净病房床位进行收费。"}, {"rule_id": "R275", "tmpl": "M7", "domain": "内分泌", "vtype": "串换项目", "priority": "P2", "status": "ready", "question": "将葡萄糖测定、床旁血糖仪检测串换为电脑血糖监测收费。"}, {"rule_id": "R307", "tmpl": "M7", "domain": "精神医学", "vtype": "串换项目", "priority": "P2", "status": "ready", "question": "将实际提供的低价或非医保项目，记录并结算为高价或医保目录内的精神科项目，如将日常查房与平时看护串换为行为观察和治疗收费等。"}, {"rule_id": "R308", "tmpl": "M7", "domain": "精神医学", "vtype": "串换项目", "priority": "P2", "status": "ready", "question": "将应用录音录像设备开展的治疗，串换为心理治疗收费。"}, {"rule_id": "R309", "tmpl": "M7", "domain": "精神医学", "vtype": "串换项目", "priority": "P2", "status": "ready", "question": "将常规查房过程，串换为心理治疗项目收费。"}]}, "M8": {"name": "药品适应症 / 限定审计", "sub": "药品 fee 命中监管 KB + 诊断比对 (4 种类型逻辑)", "focus": "药品是否存在超出适应症 / 医保限定支付范围的用药。", "basis": "⚠️ on-label 闸（成败关键）：命中监管知识库 ≠ 违规；是否违规取决于「患者诊断是否落在依据范围内」。诊断源优先用病案首页 ground truth（含主诊）。", "premise": "", "gates": [{"t": "drug_audit_lookup 取命中本类型的药品 + 各自依据原文 + 病案首页诊断", "outs": [{"c": "命中列表为空", "v": "C", "d": "患者无该类型命中药，规则不适用"}, {"c": "有命中药", "v": "NEXT", "d": "逐药比对"}]}, {"t": "逐药做「诊断 × 依据」比对（按规则类型分 4 种逻辑）", "why": "类型不同，判定方向不同：限适应症 / 超说明书正向、禁忌症反向、限二线看一线失败证据。", "outs": [{"c": "限适应症 / 超说明书：诊断落在依据内（或合理临床外延）", "v": "C", "d": "合规"}, {"c": "限适应症 / 超说明书：诊断与依据完全无关", "v": "V", "d": "超适应症违规"}, {"c": "禁忌症（反向）：诊断命中说明书疾病禁忌", "v": "V", "d": "用药安全违规"}, {"c": "禁忌症：诊断不在禁忌内", "v": "C", "d": "合规"}, {"c": "限二线：在适应症内 + 有一线药失败 / 不耐受证据", "v": "C", "d": "合规"}, {"c": "限二线：在适应症内 但无一线失败证据", "v": "V", "d": "违规"}, {"c": "限二线：诊断不在适应症内", "v": "I", "d": "可能系他用，存疑"}]}, {"t": "剂型 / 给药途径复核（防同名异药 stem 误命中）", "outs": [{"c": "剂型 / 途径与依据明显不同", "v": "I", "d": "疑似误命中，判存疑，不判违规"}, {"c": "诊断缺失 / 待查 / 疑似 / 排除中间态", "v": "I", "d": "存疑"}]}], "rules": [{"rule_id": "R007", "tmpl": "M8", "domain": "各科室通用类", "vtype": "将不属于医保支付范围的纳入医保基金结算", "priority": "P1", "status": "ready", "question": "申请医保支付的药品，超出药品说明书适应症范围或不符合医保药品目录限定支付条件。"}, {"rule_id": "RD01", "tmpl": "M8", "domain": "药品", "vtype": "超药品说明书适应症用药", "priority": "P1", "status": "ready", "question": "申请医保支付的「超说明书类药品」，超出药品说明书适应症范围。"}, {"rule_id": "RD02", "tmpl": "M8", "domain": "药品", "vtype": "超医保限定二线用药", "priority": "P1", "status": "ready", "question": "申请医保支付的「限二线类药品」，无一线药失败/不耐受证据即作二线使用。"}, {"rule_id": "RD03", "tmpl": "M8", "domain": "药品", "vtype": "用药安全/禁忌", "priority": "P1", "status": "ready", "question": "申请医保支付的「禁忌症类药品」，用于存在该药说明书疾病禁忌的患者 (用药安全)。"}, {"rule_id": "RD10", "tmpl": "M8", "domain": "药品", "vtype": "超医保限定支付适应症用药", "priority": "P1", "status": "ready", "question": "申请医保支付的「人血白蛋白」，超出医保限定支付适应症范围。"}, {"rule_id": "RD11", "tmpl": "M8", "domain": "药品", "vtype": "超医保限定支付适应症用药", "priority": "P1", "status": "ready", "question": "申请医保支付的「聚桂醇注射液」，超出医保限定支付适应症范围。"}, {"rule_id": "RD12", "tmpl": "M8", "domain": "药品", "vtype": "超医保限定支付适应症用药", "priority": "P1", "status": "ready", "question": "申请医保支付的「果糖注射液」，超出医保限定支付适应症范围。"}, {"rule_id": "RD13", "tmpl": "M8", "domain": "药品", "vtype": "超医保限定支付适应症用药", "priority": "P1", "status": "ready", "question": "申请医保支付的「ω-3鱼油脂肪乳注射液」，超出医保限定支付适应症范围。"}, {"rule_id": "RD14", "tmpl": "M8", "domain": "药品", "vtype": "超医保限定支付适应症用药", "priority": "P1", "status": "ready", "question": "申请医保支付的「注射用盐酸万古霉素」，超出医保限定支付适应症范围。"}, {"rule_id": "RD15", "tmpl": "M8", "domain": "药品", "vtype": "超医保限定支付适应症用药", "priority": "P1", "status": "ready", "question": "申请医保支付的「复方氨基酸注射液(20AA)」，超出医保限定支付适应症范围。"}, {"rule_id": "RD16", "tmpl": "M8", "domain": "药品", "vtype": "超医保限定支付适应症用药", "priority": "P1", "status": "ready", "question": "申请医保支付的「恩替卡韦口服溶液」，超出医保限定支付适应症范围。"}, {"rule_id": "RD17", "tmpl": "M8", "domain": "药品", "vtype": "超医保限定支付适应症用药", "priority": "P1", "status": "ready", "question": "申请医保支付的「注射用福沙匹坦双葡甲胺」，超出医保限定支付适应症范围。"}, {"rule_id": "RD18", "tmpl": "M8", "domain": "药品", "vtype": "超医保限定支付适应症用药", "priority": "P1", "status": "ready", "question": "申请医保支付的「右酮洛芬氨丁三醇注射液」，超出医保限定支付适应症范围。"}, {"rule_id": "RD19", "tmpl": "M8", "domain": "药品", "vtype": "超医保限定支付适应症用药", "priority": "P1", "status": "ready", "question": "申请医保支付的「重组人血小板生成素注射液」，超出医保限定支付适应症范围。"}, {"rule_id": "RD20", "tmpl": "M8", "domain": "药品", "vtype": "超医保限定支付适应症用药", "priority": "P1", "status": "ready", "question": "申请医保支付的「注射用艾普拉唑钠」，超出医保限定支付适应症范围。"}, {"rule_id": "RD21", "tmpl": "M8", "domain": "药品", "vtype": "超医保限定支付适应症用药", "priority": "P1", "status": "ready", "question": "申请医保支付的「泽布替尼胶囊」，超出医保限定支付适应症范围。"}, {"rule_id": "RD22", "tmpl": "M8", "domain": "药品", "vtype": "超医保限定支付适应症用药", "priority": "P1", "status": "ready", "question": "申请医保支付的「拓培非格司亭注射液」，超出医保限定支付适应症范围。"}, {"rule_id": "RD23", "tmpl": "M8", "domain": "药品", "vtype": "超医保限定支付适应症用药", "priority": "P1", "status": "ready", "question": "申请医保支付的「盐酸莫西沙星注射液」，超出医保限定支付适应症范围。"}, {"rule_id": "RD24", "tmpl": "M8", "domain": "药品", "vtype": "超药品说明书适应症用药", "priority": "P1", "status": "ready", "question": "申请医保支付的「甲状腺片」，超出药品说明书适应症范围。"}, {"rule_id": "RD25", "tmpl": "M8", "domain": "药品", "vtype": "超药品说明书适应症用药", "priority": "P1", "status": "ready", "question": "申请医保支付的「盐酸尼卡地平注射液」，超出药品说明书适应症范围。"}, {"rule_id": "RD26", "tmpl": "M8", "domain": "药品", "vtype": "超药品说明书适应症用药", "priority": "P1", "status": "ready", "question": "申请医保支付的「盐酸二甲双胍片」，超出药品说明书适应症范围。"}, {"rule_id": "RD27", "tmpl": "M8", "domain": "药品", "vtype": "超药品说明书适应症用药", "priority": "P1", "status": "ready", "question": "申请医保支付的「苯磺酸氨氯地平片」，超出药品说明书适应症范围。"}, {"rule_id": "RD28", "tmpl": "M8", "domain": "药品", "vtype": "超药品说明书适应症用药", "priority": "P1", "status": "ready", "question": "申请医保支付的「缬沙坦片」，超出药品说明书适应症范围。"}, {"rule_id": "RD29", "tmpl": "M8", "domain": "药品", "vtype": "用药安全/禁忌", "priority": "P1", "status": "ready", "question": "申请医保支付的「奥美拉唑肠溶片」，用于存在该药说明书疾病禁忌的患者 (用药安全)。"}, {"rule_id": "RD30", "tmpl": "M8", "domain": "药品", "vtype": "用药安全/禁忌", "priority": "P1", "status": "ready", "question": "申请医保支付的「葡萄糖酸钙片」，用于存在该药说明书疾病禁忌的患者 (用药安全)。"}, {"rule_id": "RD31", "tmpl": "M8", "domain": "药品", "vtype": "用药安全/禁忌", "priority": "P1", "status": "ready", "question": "申请医保支付的「碳酸钙片」，用于存在该药说明书疾病禁忌的患者 (用药安全)。"}, {"rule_id": "RD32", "tmpl": "M8", "domain": "药品", "vtype": "用药安全/禁忌", "priority": "P1", "status": "ready", "question": "申请医保支付的「对乙酰氨基酚片」，用于存在该药说明书疾病禁忌的患者 (用药安全)。"}, {"rule_id": "RD33", "tmpl": "M8", "domain": "药品", "vtype": "用药安全/禁忌", "priority": "P1", "status": "ready", "question": "申请医保支付的「乙酰半胱氨酸颗粒」，用于存在该药说明书疾病禁忌的患者 (用药安全)。"}, {"rule_id": "RD34", "tmpl": "M8", "domain": "药品", "vtype": "用药安全/禁忌", "priority": "P1", "status": "ready", "question": "申请医保支付的「甲氧氯普胺片」，用于存在该药说明书疾病禁忌的患者 (用药安全)。"}, {"rule_id": "RD35", "tmpl": "M8", "domain": "药品", "vtype": "用药安全/禁忌", "priority": "P1", "status": "ready", "question": "申请医保支付的「阿司匹林片」，用于存在该药说明书疾病禁忌的患者 (用药安全)。"}, {"rule_id": "RD36", "tmpl": "M8", "domain": "药品", "vtype": "用药安全/禁忌", "priority": "P1", "status": "ready", "question": "申请医保支付的「瑞舒伐他汀钙片」，用于存在该药说明书疾病禁忌的患者 (用药安全)。"}, {"rule_id": "RD37", "tmpl": "M8", "domain": "药品", "vtype": "超医保限定二线用药", "priority": "P1", "status": "ready", "question": "申请医保支付的「艾普拉唑肠溶片」，无一线药失败/不耐受证据即作二线使用。"}]}}};
+window.SAVED_NOTES = {}; //__SAVED_NOTES__  (「保存」按钮会把当前批注写进这里, 重开文件即恢复)
+
+// ---------- 批注存取 (localStorage + 文件内种子) ----------
+const KEY = "javert_tpl_annot_v1";
+let STORE = load();
+// 本机若有更新的 localStorage 用它; 否则用文件里保存的批注 (换机器/清缓存后仍能恢复)
+function load(){ try{ const ls=localStorage.getItem(KEY); if(ls) return JSON.parse(ls); }catch(e){} return Object.assign({}, window.SAVED_NOTES||{}); }
+function save(){ localStorage.setItem(KEY, JSON.stringify(STORE));
+  const s=document.getElementById("status");
+  const t=new Date().toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+  s.textContent="已保存 "+t; }
+function get(k){ return STORE[k]||""; }
+function set(k,v){ if(v) STORE[k]=v; else delete STORE[k]; save(); refreshDots(); }
+
+// ---------- 渲染 ----------
+const V_LABEL={V:"违规 VIOLATION",I:"存疑 INCONCLUSIVE",C:"合规 CLEAN",NEXT:"继续下一步"};
+let CUR = DATA.order[0];
+
+function el(tag,cls,html){const e=document.createElement(tag);if(cls)e.className=cls;if(html!=null)e.innerHTML=html;return e;}
+function esc(s){return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+
+function buildTabs(){
+  const bar=document.getElementById("tabs"); bar.innerHTML="";
+  DATA.order.forEach(mid=>{
+    const f=DATA.flows[mid];
+    const t=el("div","tab"+(mid===CUR?" active":""));
+    t.innerHTML=`<span class="id">${mid}</span>${esc(f.name)}<span class="dot" data-tabdot="${mid}" style="display:none"></span>`;
+    t.onclick=()=>{CUR=mid;render();};
+    bar.appendChild(t);
+  });
+}
+
+function noteBtn(k,label){
+  const wrap=el("div");
+  const btn=el("button","notebtn"+(get(k)?" has":""),(get(k)?"✎ 已批注":"✎ 批注"));
+  const box=el("div","notewrap hidden");
+  const ta=el("textarea"); ta.rows=3; ta.placeholder=label||"在此写下您的意见 / 修正 / 补充指征…";
+  ta.value=get(k);
+  ta.oninput=()=>{set(k,ta.value); btn.className="notebtn"+(ta.value?" has":""); btn.textContent=ta.value?"✎ 已批注":"✎ 批注";};
+  box.appendChild(ta);
+  btn.onclick=()=>{box.classList.toggle("hidden"); if(!box.classList.contains("hidden"))ta.focus();};
+  if(get(k)) box.classList.remove("hidden");
+  wrap.appendChild(box);
+  return {btn,wrap};
+}
+
+function render(){
+  buildTabs();
+  const f=DATA.flows[CUR];
+  const m=document.getElementById("main"); m.innerHTML="";
+
+  // 模板头
+  const head=el("div","thead");
+  head.appendChild(el("h2",null,`<span class="id">${CUR}</span> ${esc(f.name)}`));
+  head.appendChild(el("div","subtitle",esc(f.sub)));
+  head.appendChild(el("div","kv",`<b>关注点</b>　${esc(f.focus)}`));
+  head.appendChild(el("div","kv"+(f.basis.indexOf("⚠️")>=0?" warn":""),esc(f.basis)));
+  if(f.premise) head.appendChild(el("div","kv",`<b>前提</b>　${esc(f.premise)}`));
+  head.appendChild(el("div","legend",
+    `<span><span class="pill NEXT">流转</span>继续下一步</span>
+     <span><span class="pill V">V</span>违规</span>
+     <span><span class="pill I">I</span>存疑</span>
+     <span><span class="pill C">C</span>合规</span>`));
+  m.appendChild(head);
+
+  // 流程图
+  const flow=el("div","flow");
+  f.gates.forEach((g,gi)=>{
+    const gate=el("div","gate");
+    gate.appendChild(el("div",null,`<span class="step">步骤 ${gi+1}</span><span class="qt">${esc(g.t)}</span>`));
+    if(g.why) gate.appendChild(el("div","why",esc(g.why)));
+    const outs=el("div","outs");
+    g.outs.forEach(o=>{
+      const row=el("div","out "+o.v);
+      row.innerHTML=`<div class="cond"><div class="ct">${esc(o.c)}</div>${o.d?`<div class="cd">${esc(o.d)}</div>`:""}</div>
+                     <div class="verdict">${o.v==="NEXT"?"→ 下一步":V_LABEL[o.v]}</div>`;
+      outs.appendChild(row);
+    });
+    gate.appendChild(outs);
+    // 该步骤批注
+    const {btn,wrap}=noteBtn(`${CUR}#gate${gi}`,"针对本步骤判定逻辑的意见…");
+    gate.appendChild(btn); gate.appendChild(wrap);
+    flow.appendChild(gate);
+    if(gi<f.gates.length-1) flow.appendChild(el("div","connector"));
+  });
+  m.appendChild(flow);
+
+  // 总评大文本框
+  const sum=el("div","summary");
+  sum.appendChild(el("h3",null,`<span class="ic">📝</span> ${CUR} 模板总评（专家意见）`));
+  const sk=`${CUR}#summary`; const ta=el("textarea"); ta.rows=6;
+  ta.placeholder="对本模板整体逻辑的评价：判定是否合理？漏了哪些指征 / 排除条件？阈值是否合适？边界情形…";
+  ta.value=get(sk); ta.oninput=()=>set(sk,ta.value);
+  sum.appendChild(ta); m.appendChild(sum);
+
+  // 归属规则
+  const rules=el("div","rules");
+  rules.appendChild(el("h3",null,`📋 归属细规则 <span class="cnt">（${f.rules.length} 条）</span>`));
+  const tbl=el("table");
+  tbl.innerHTML=`<thead><tr><th>规则号</th><th>领域</th><th>违规类型</th><th>优先级</th><th>问题描述</th><th>批注</th></tr></thead>`;
+  const tb=el("tbody");
+  f.rules.forEach(r=>{
+    const rk=`rule#${r.rule_id}`;
+    const tr=el("tr");
+    tr.innerHTML=`<td class="rid">${esc(r.rule_id)}</td><td>${esc(r.domain)}</td><td>${esc(r.vtype)}</td>
+      <td><span class="prio ${r.priority}">${esc(r.priority)}</span></td>
+      <td class="q">${esc(r.question)}</td>
+      <td><span class="rnote-toggle${get(rk)?" has":""}">${get(rk)?"✎ 已批注":"✎ 批注"}</span></td>`;
+    const noteRow=el("tr","rnote-row hidden");
+    const td=el("td"); td.colSpan=6;
+    const ta2=el("textarea"); ta2.rows=2; ta2.placeholder=`对 ${r.rule_id} 的意见…`; ta2.value=get(rk);
+    const tog=tr.querySelector(".rnote-toggle");
+    ta2.oninput=()=>{set(rk,ta2.value); tog.className="rnote-toggle"+(ta2.value?" has":""); tog.textContent=ta2.value?"✎ 已批注":"✎ 批注";};
+    td.appendChild(ta2); noteRow.appendChild(td);
+    tog.onclick=()=>{noteRow.classList.toggle("hidden"); if(!noteRow.classList.contains("hidden"))ta2.focus();};
+    if(get(rk)) noteRow.classList.remove("hidden");
+    tb.appendChild(tr); tb.appendChild(noteRow);
+  });
+  tbl.appendChild(tb); rules.appendChild(tbl); m.appendChild(rules);
+
+  refreshDots();
+}
+
+function refreshDots(){
+  DATA.order.forEach(mid=>{
+    const has=Object.keys(STORE).some(k=>k.startsWith(mid+"#") || (k.startsWith("rule#") && DATA.flows[mid].rules.some(r=>k==="rule#"+r.rule_id) && STORE[k]));
+    // 仅按模板内步骤/总评 + 该模板规则批注计
+    const dot=document.querySelector(`[data-tabdot="${mid}"]`);
+    if(dot) dot.style.display=has?"inline-block":"none";
+  });
+}
+
+// ---------- 导入导出 ----------
+function saveHTML(){
+  save(); // 先落 localStorage
+  // 把当前批注烧进文件里的 SAVED_NOTES 种子; 转义 < 防止批注文本截断脚本标签
+  const notes = JSON.stringify(STORE).replace(/</g,"\\u003c");
+  let doc = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+  doc = doc.replace(/window\.SAVED_NOTES\s*=\s*\{[\s\S]*?\};\s*\/\/__SAVED_NOTES__/,
+                    "window.SAVED_NOTES = "+notes+"; //__SAVED_NOTES__");
+  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([doc],{type:"text/html"}));
+  a.download="Javert模板批注_"+new Date().toISOString().slice(0,10)+".html"; a.click();
+  document.getElementById("status").textContent="已保存文件 · 批注已写入";
+}
+function exportJSON(){
+  const blob=new Blob([JSON.stringify({_meta:{tool:"Javert模板批注",exported:new Date().toISOString()},notes:STORE},null,2)],
+    {type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+  a.download="javert_模板批注_"+new Date().toISOString().slice(0,10)+".json"; a.click();
+}
+function importJSON(input){
+  const file=input.files[0]; if(!file)return;
+  const rd=new FileReader();
+  rd.onload=()=>{ try{
+      const j=JSON.parse(rd.result); const notes=j.notes||j;
+      if(typeof notes!=="object") throw 0;
+      if(!confirm("导入将合并到当前批注（同一位置会被覆盖）。继续？")) return;
+      Object.assign(STORE,notes); save(); render();
+      alert("已导入 "+Object.keys(notes).length+" 条批注。");
+    }catch(e){ alert("文件格式不对，无法导入。"); } };
+  rd.readAsText(file); input.value="";
+}
+function clearTab(){
+  if(!confirm(`确定清空 ${CUR} 模板的全部批注？（其它模板不受影响）`)) return;
+  Object.keys(STORE).forEach(k=>{
+    if(k.startsWith(CUR+"#")) delete STORE[k];
+    if(k.startsWith("rule#") && DATA.flows[CUR].rules.some(r=>"rule#"+r.rule_id===k)) delete STORE[k];
+  });
+  save(); render();
+}
+
+render();
+</script>
+</body>
+</html>
