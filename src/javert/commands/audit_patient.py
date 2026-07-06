@@ -425,7 +425,7 @@ def run_audit_patient(
     patient_id: str,
     priority: str = "P0",
     rules_arg: str | None = None,
-    share_tool_cache: bool = False,
+    share_tool_cache: bool = True,
     concurrency: int = 1,
     use_router: bool = False,
 ) -> int:

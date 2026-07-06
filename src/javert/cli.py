@@ -115,10 +115,10 @@ def show_cmd(identifier: str, patient: str | None) -> None:
     help="逗号分隔的 rule_id 列表 (例如 R045,R191), 显式选定时绕过 priority 与 abandoned 过滤",
 )
 @click.option(
-    "--share-tool-cache", "share_tool_cache",
-    is_flag=True,
-    default=False,
-    help="跨规则共享 ToolExecutor 缓存 (默认关, 冷启动跑 baseline)",
+    "--share-tool-cache/--no-share-tool-cache", "share_tool_cache",
+    default=True,
+    show_default=True,
+    help="跨规则共享 ToolExecutor 缓存 (同患者多规则复用检索; --no-share-tool-cache 跑冷启动 baseline)",
 )
 @click.option(
     "--concurrency", "concurrency",
@@ -174,8 +174,17 @@ def web_cmd(
         sys.exit(2)
     import os
 
-    from .config import get_config
+    from .config import JavertConfig, get_config
     cfg = get_config()
+    # 进院前红区修复: 工作台模式下 session secret 仍是源码默认值 → 可伪造任意用户 cookie, 拒绝启动
+    effective_mssql = with_mssql if with_mssql is not None else cfg.web_with_mssql
+    if effective_mssql and cfg.session_secret == JavertConfig.model_fields["session_secret"].default:
+        click.echo(
+            "✗ JAVERT_SESSION_SECRET 仍是源码默认值 (可伪造会话) — "
+            "请 `set -a && source .env && set +a` 或设置环境变量后再启动.",
+            err=True,
+        )
+        sys.exit(2)
     final_host = host or cfg.web_host
     final_port = port or cfg.web_port
     final_reload = reload or cfg.web_reload

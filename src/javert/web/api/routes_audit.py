@@ -21,16 +21,17 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from javert.audit.rule_loader import load_rule
 from javert.audit.runner import Runner
 from javert.config import get_config
-from javert.data.csv_loader import CsvLoader
 from javert.store.audit_store import SqliteStore
 from javert.store.result_persister import persist_one
 from javert.tools.llm_provider import LlmUnavailableError
 from javert.tools.registry import build_executor
 
+from .routes_workbench import _get_loader
 from .schemas import AuditRunDetail, AuditRunSummary
 
 logger = logging.getLogger("javert.web.routes_audit")
@@ -44,6 +45,23 @@ def _format_sse(event: str, data: Any) -> str:
         data = {"msg": str(data)}
     payload = json.dumps(data, ensure_ascii=False, default=str)
     return f"event: {event}\ndata: {payload}\n\n"
+
+
+def _result_payload(result: Any) -> dict:
+    """AuditResult → result 事件 payload（单条 / 批量共用）。"""
+    return {
+        "run_id": result.run_id,
+        "rule_id": result.rule_id,
+        "patient_id": result.patient_id,
+        "verdict": result.verdict,
+        "confidence": result.confidence,
+        "reasoning": result.reasoning,
+        "evidence": [e.model_dump() for e in result.evidence],
+        "tool_calls": [tc.model_dump() for tc in result.tool_calls],
+        "duration_ms": result.duration_ms,
+        "model": result.model,
+        "started_at": result.started_at.isoformat(),
+    }
 
 
 @router.get("/run")
@@ -70,7 +88,8 @@ async def run_audit(
     def emit(msg: str) -> None:
         msg_queue.put(("trace", {"msg": msg}))
 
-    loader = CsvLoader(cfg.notes_path, cfg.fees_path)
+    # 复用 workbench 进程单例 loader (含 data_import overlay) — 每请求新建 CsvLoader 会冷读 300MB+ CSV
+    loader = _get_loader()
     executor = build_executor(loader, cfg)
     runner = Runner(executor=executor, config=cfg, emit=emit, loader=loader)
 
@@ -154,6 +173,91 @@ async def run_audit(
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
         },
+    )
+
+
+# =========================================================
+# 批量审计 (供 2c 平台 BFF 点菜调用，US-011)
+# =========================================================
+class RunBatchRequest(BaseModel):
+    patient_id: str
+    rules: list[str]
+
+
+@router.post("/run-batch")
+async def run_audit_batch(req: RunBatchRequest):
+    """SSE 流式批量跑 (patient_id × 多规则)，供 BFF javert 适配器点菜调用。
+
+    Events:
+        - start:  {patient_id, rules, total}
+        - trace:  {msg}                — 每轮 LLM/工具调用（进度中继）
+        - result: {run_id, verdict, ...} — 每条规则一个（CLEAN/VIOLATION/INCONCLUSIVE）
+        - fail:   {type, message, rule_id} — 单条失败不中断整批
+        - done:   {total, completed}
+    复用 Runner.audit + 共享 executor 工具缓存（一个病案多规则只检索一次文书/费用）。
+    """
+    cfg = get_config()
+    rules = []
+    for rid in req.rules:
+        yaml_path = cfg.rules_path / f"{rid}.yaml"
+        if yaml_path.exists():
+            rules.append(load_rule(yaml_path))
+
+    msg_queue: queue.Queue = queue.Queue()
+
+    def emit(msg: str) -> None:
+        msg_queue.put(("trace", {"msg": msg}))
+
+    loader = _get_loader()  # 进程单例 (含 overlay), 不再每请求冷读 CSV
+    executor = build_executor(loader, cfg)  # 共享：同病案多规则复用工具缓存
+    runner = Runner(executor=executor, config=cfg, emit=emit, loader=loader)
+
+    async def event_generator():
+        yield _format_sse("start", {
+            "patient_id": req.patient_id,
+            "rules": [r.rule_id for r in rules],
+            "total": len(rules),
+        })
+        loop = asyncio.get_event_loop()
+        completed = 0
+        for rule in rules:
+            future = loop.run_in_executor(None, lambda r=rule: runner.audit(r, req.patient_id))
+            while True:
+                try:
+                    kind, payload = msg_queue.get(timeout=0.05)
+                    yield _format_sse(kind, payload)
+                except queue.Empty:
+                    if future.done():
+                        break
+                    await asyncio.sleep(0.05)
+            while not msg_queue.empty():
+                try:
+                    kind, payload = msg_queue.get_nowait()
+                    yield _format_sse(kind, payload)
+                except queue.Empty:
+                    break
+            try:
+                result = future.result()
+            except LlmUnavailableError as exc:
+                yield _format_sse("fail", {"type": "LlmUnavailable", "message": str(exc), "rule_id": rule.rule_id})
+                continue
+            except Exception as exc:
+                logger.exception("batch audit failed: rule=%s patient=%s", rule.rule_id, req.patient_id)
+                yield _format_sse("fail", {"type": exc.__class__.__name__, "message": str(exc), "rule_id": rule.rule_id})
+                continue
+            # 持久化（本地 SQLite + 142），与单条一致
+            try:
+                persist_one(result, rule, triggered_by="bff-batch")
+            except Exception:
+                logger.exception("persist failed: run=%s", result.run_id)
+            completed += 1
+            yield _format_sse("result", _result_payload(result))
+        yield _format_sse("done", {"total": len(rules), "completed": completed})
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 

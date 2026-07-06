@@ -21,7 +21,10 @@ class JavertConfig(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="JAVERT_",
-        env_file=None,
+        # 项目根 .env 自动兜底 (优先级最低: 显式 env > yaml > .env 文件 > 字段默认).
+        # 凭证移出源码后, 忘 source .env 的 CLI/批跑进程也能拿到 JAVERT_SQL_PASSWORD.
+        env_file=str(PROJECT_ROOT / ".env"),
+        env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
     )
@@ -66,7 +69,9 @@ class JavertConfig(BaseSettings):
     sql_host: str = "192.168.31.142"
     sql_port: int = 1433
     sql_user: str = "machendong"
-    sql_password: str = "Jyn_Machendong"
+    # 凭证不入源码 (进院前红区修复): 从 JAVERT_SQL_PASSWORD 环境变量注入 (source .env).
+    # 未设置时 142 双写自动降级不可用 (sqlserver_store warn), 本地 SQLite 不受影响.
+    sql_password: str = ""
     sql_database: str = "zadig"
     # 快照桥 (scripts/etl_from_sql.py) 的源数据库: 投资人/外院兜底数据填这里的 6 张 intake_* 表.
     # 与结果归档库 sql_database=zadig 区分 (同台 142 / 同账号, 桥读 aidb, 审计结果仍写 zadig).

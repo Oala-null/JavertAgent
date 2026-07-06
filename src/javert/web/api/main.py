@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -88,6 +89,24 @@ async def lifespan(app: FastAPI):
             await routes_sse.audit_watcher.start()
         except Exception as e:  # noqa: BLE001
             logger.warning("AuditWatcher 启动失败 (SSE 仅 review_submitted): %s", e)
+
+    # 5. 数据预热 (后台线程, 不阻塞启动) — 首个访客不再付 30-90s CSV 冷读.
+    #    条件借用 sql_enabled: 生产 (62) 恒 true; 测试/本地演示 false 时跳过, 免拖慢 pytest.
+    if getattr(app.state, "with_mssql", False) and cfg.sql_enabled:
+        def _warmup() -> None:
+            try:
+                from javert.web.patient_overview import get_fees_sum_map
+
+                from . import routes_workbench
+                loader = routes_workbench._get_loader()
+                loader.all_notes()
+                loader.all_fees()
+                get_fees_sum_map(loader)
+                logger.info("数据预热完成 (notes/fees/费用汇总)")
+            except Exception as e:  # noqa: BLE001
+                logger.warning("数据预热失败 (首个请求现付冷加载): %s", e)
+
+        threading.Thread(target=_warmup, name="javert-warmup", daemon=True).start()
 
     yield
 

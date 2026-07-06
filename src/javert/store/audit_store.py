@@ -78,8 +78,12 @@ class SqliteStore(AuditStore):
     def conn(self) -> sqlite3.Connection:
         if self._conn is None:
             # check_same_thread=False 允许跨线程使用同一 conn (由 _write_lock 串行)
-            self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            # timeout=30 + WAL + busy_timeout: jv-go (CLI 进程) 与 web SyncWorker 并发写同一库时
+            # 不再 5s 就抛 database is locked 丢结果 (跨进程 _write_lock 无效, 只能靠 sqlite 层)
+            self._conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=30)
             self._conn.row_factory = sqlite3.Row
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA busy_timeout=30000")
         return self._conn
 
     def close(self) -> None:

@@ -31,6 +31,10 @@ PROTECTED_PREFIXES = (
     "/api/workbench",
     "/onboarding",
     "/api/onboarding",
+    # 进院前红区修复: 以下三组之前在 PUBLIC — 匿名可跑审计/枚举住院号/触发同步 (PHI 泄露面)
+    "/api/patients",
+    "/api/audit",
+    "/api/sync",
 )
 
 PUBLIC_PREFIXES = (
@@ -40,12 +44,8 @@ PUBLIC_PREFIXES = (
     "/static",
     "/healthz",
     "/api/health",
-    # 已有 SPA 路由 (规则浏览) 不强制鉴权; 工作台是独立线
+    # 规则元数据 (非 PHI) 不强制鉴权
     "/api/rules",
-    "/api/patients/sample",
-    "/api/patients/pools",
-    "/api/sync",
-    "/api/audit",
     "/",  # 老 index.html 入口仍开放
 )
 

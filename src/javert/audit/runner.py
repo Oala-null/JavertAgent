@@ -106,6 +106,8 @@ class Runner:
         self.loader = loader
         # 临床事实闸 (⑥⑦⑧ + 影像确认) 的 per-patient 缓存; 跨规则复用同一 ctx.
         self._clinical_ctx_cache: dict[str, Any] = {}
+        # 单次闸净费上下文 per-patient 缓存 (同策略, None 也缓存) — 免同患者多条 V 重复全表扫 fee.
+        self._net_fee_ctx_cache: dict[str, Any] = {}
 
     # --- 公共 API ---
     def audit(
@@ -143,14 +145,18 @@ class Runner:
                 self.executor.clear_patient_context()
 
     def _build_net_fee_ctx(self, patient_id: str):
-        """该 patient 的退费净额 {group_key: NetItem}; loader 缺失/取数失败 → None (单次闸 fail-open)."""
-        if self.loader is None:
-            return None
-        try:
-            return net_fee_items(self.loader.get_fees(patient_id))
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("net_fee_ctx 构建失败 patient=%s: %s (单次闸 fail-open)", patient_id, exc)
-            return None
+        """该 patient 的退费净额 {group_key: NetItem}; loader 缺失/取数失败 → None (单次闸 fail-open).
+        per-patient 缓存, 跨规则复用 (与 _build_clinical_ctx 同策略)."""
+        if patient_id in self._net_fee_ctx_cache:
+            return self._net_fee_ctx_cache[patient_id]
+        ctx = None
+        if self.loader is not None:
+            try:
+                ctx = net_fee_items(self.loader.get_fees(patient_id))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("net_fee_ctx 构建失败 patient=%s: %s (单次闸 fail-open)", patient_id, exc)
+        self._net_fee_ctx_cache[patient_id] = ctx
+        return ctx
 
     def _build_clinical_ctx(self, patient_id: str):
         """该 patient 的病案首页临床事实 (手术/麻醉/诊断 + 检查报告确认); 构建失败 → None

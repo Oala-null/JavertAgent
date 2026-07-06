@@ -78,6 +78,7 @@ class SqlServerStore:
             f"UID={self.config.sql_user};"
             f"PWD={self.config.sql_password};"
             f"TrustServerCertificate=yes;"
+            f"Encrypt=no;"  # 142 老 TLS: Driver18 默认强制加密会 Login timeout (data-hub 实测)
             f"Connection Timeout=10;"
         )
         return f"mssql+pyodbc:///?odbc_connect={params}"
@@ -89,6 +90,14 @@ class SqlServerStore:
 
         if not self.config.sql_enabled:
             logger.info("142 双写已被 sql_enabled=false 关闭")
+            self._engine_initialized = True
+            return None
+
+        if not self.config.sql_password:
+            logger.warning(
+                "JAVERT_SQL_PASSWORD 未设置 (凭证已移出源码) — 142 双写降级不可用; "
+                "source .env 后重启可恢复"
+            )
             self._engine_initialized = True
             return None
 

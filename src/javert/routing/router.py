@@ -125,6 +125,8 @@ class RuleRouter:
         self._entries: list[dict] = violation_dict["entries"]
         self._keyword_index: dict[str, list[int]] = violation_dict["keyword_index"]
         self._kw_sorted = sorted(self._keyword_index.keys(), key=lambda s: -len(s))
+        # from_paths 懒加载模式下由其填充; java_engine_lookup 首调时才真正读盘
+        self._phase2_paths: dict[str, Path] | None = None
 
     # ────────────────────────── 构造器辅助 ──────────────────────────
 
@@ -144,14 +146,22 @@ class RuleRouter:
     ) -> "RuleRouter":
         def _load(p: Path) -> dict:
             return json.loads(p.read_text(encoding="utf-8"))
-        return cls(
-            violation_dict=_load(violation_dict),
-            active_rules=_load(active_rules),
-            pruning_rules=_load(pruning_rules),
+        # ponytail: route() 只用 javert_index/rule_mapping; 5.1MB violation_dict 等 Phase 2
+        # 数据延迟到 java_engine_lookup 首调再读 — 每次 audit-patient 进程省一次大 JSON 解析
+        inst = cls(
+            violation_dict={"entries": [], "keyword_index": {}},
+            active_rules={},
+            pruning_rules={},
             javert_index=_load(javert_index),
             rule_mapping=_load(rule_mapping),
             **kwargs,
         )
+        inst._phase2_paths = {
+            "violation_dict": violation_dict,
+            "active_rules": active_rules,
+            "pruning_rules": pruning_rules,
+        }
+        return inst
 
     # ────────────────────────── 主流程 (single-gate) ──────────────────────────
 
@@ -327,7 +337,21 @@ class RuleRouter:
         这是 Java engine Track A 的 Python 入口; 跟 Javert yaml prune 完全解耦.
         当前 route() 不调; 留给 javert/java_engine/ 模块在 Phase 2 中调用.
         """
+        self._ensure_phase2_loaded()
         return self._deterministic_lookup(record)
+
+    def _ensure_phase2_loaded(self) -> None:
+        """from_paths 懒加载模式: 首次需要 Phase 2 数据时才读盘并建索引."""
+        paths = self._phase2_paths
+        if paths is None:
+            return
+        self.violation_dict = json.loads(paths["violation_dict"].read_text(encoding="utf-8"))
+        self.active_rules = json.loads(paths["active_rules"].read_text(encoding="utf-8"))
+        self.pruning_rules = json.loads(paths["pruning_rules"].read_text(encoding="utf-8"))
+        self._entries = self.violation_dict["entries"]
+        self._keyword_index = self.violation_dict["keyword_index"]
+        self._kw_sorted = sorted(self._keyword_index.keys(), key=lambda s: -len(s))
+        self._phase2_paths = None
 
     def _deterministic_lookup(
         self, record: PatientRecord,

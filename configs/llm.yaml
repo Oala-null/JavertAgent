@@ -33,7 +33,7 @@ sql_enabled: true
 sql_host: "192.168.31.142"
 sql_port: 1433
 sql_user: "machendong"
-sql_password: "Jyn_Machendong"
+# sql_password 不入源码 — 用环境变量 JAVERT_SQL_PASSWORD 注入 (见 .env / deploy/javert-web.env.example)
 sql_database: "zadig"
 sql_driver: "ODBC Driver 18 for SQL Server"
 sql_pool_size: 5

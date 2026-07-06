@@ -39,6 +39,37 @@ def client(monkeypatch):
     reset_config_cache()
 
 
+def _as_logged_in(client) -> None:
+    """伪造已登录 session cookie (与 starlette SessionMiddleware 同构签名).
+
+    进院前红区修复后 /api/patients | /api/audit | /api/sync 需登录;
+    测试知道 secret (config 默认值), 直接签一个 user_id=1 的 cookie.
+    """
+    import base64 as _b64
+    import json as _json
+
+    import itsdangerous
+
+    from javert.config import get_config
+
+    cfg = get_config()
+    signer = itsdangerous.TimestampSigner(str(cfg.session_secret))
+    payload = _b64.b64encode(_json.dumps({"user_id": 1}).encode("utf-8"))
+    client.cookies.set(cfg.session_cookie_name, signer.sign(payload).decode("utf-8"))
+
+
+def test_phi_endpoints_require_login(client):
+    """红区契约: 患者/审计/同步 API 匿名必须 401 (之前在 PUBLIC_PREFIXES, PHI 裸奔)."""
+    for path in (
+        "/api/patients/sample?n=1&pool=pilot",
+        "/api/patients/pools",
+        "/api/audit/runs?limit=1",
+        "/api/sync/status",
+    ):
+        resp = client.get(path)
+        assert resp.status_code == 401, f"{path} 匿名应 401, 实际 {resp.status_code}"
+
+
 def test_health(client):
     resp = client.get("/api/health")
     assert resp.status_code == 200
@@ -98,6 +129,7 @@ def test_get_rule_yaml(client):
 
 
 def test_sample_pilot(client):
+    _as_logged_in(client)
     resp = client.get("/api/patients/sample?n=2&pool=pilot")
     assert resp.status_code == 200
     data = resp.json()
@@ -107,11 +139,13 @@ def test_sample_pilot(client):
 
 
 def test_sample_pool_invalid(client):
+    _as_logged_in(client)
     resp = client.get("/api/patients/sample?n=1&pool=bogus")
     assert resp.status_code == 422  # FastAPI Query pattern 校验
 
 
 def test_pools_endpoint(client):
+    _as_logged_in(client)
     resp = client.get("/api/patients/pools")
     assert resp.status_code == 200
     data = resp.json()
@@ -120,6 +154,7 @@ def test_pools_endpoint(client):
 
 
 def test_audit_runs_query(client):
+    _as_logged_in(client)
     resp = client.get("/api/audit/runs?limit=5")
     assert resp.status_code == 200
     runs = resp.json()
@@ -128,6 +163,7 @@ def test_audit_runs_query(client):
 
 
 def test_audit_run_detail_404(client):
+    _as_logged_in(client)
     resp = client.get("/api/audit/runs/aud_NOTEXIST123")
     assert resp.status_code == 404
 
