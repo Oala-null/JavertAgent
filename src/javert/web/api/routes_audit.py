@@ -191,17 +191,24 @@ async def run_audit_batch(req: RunBatchRequest):
     Events:
         - start:  {patient_id, rules, total}
         - trace:  {msg}                — 每轮 LLM/工具调用（进度中继）
-        - result: {run_id, verdict, ...} — 每条规则一个（CLEAN/VIOLATION/INCONCLUSIVE）
-        - fail:   {type, message, rule_id} — 单条失败不中断整批
+        - result: {run_id, verdict, ...} — 每条规则一个（CLEAN/VIOLATION/INCONCLUSIVE），
+                  仅在裁决成功落库 (sqlite) 后发出
+        - fail:   {type, message, rule_id, stage} — 单条失败不中断整批;
+                  stage ∈ audit(裁决失败) / persist(落库失败, 不再发 result) /
+                  unknown_rule(请求了不存在的 rule_id)
         - done:   {total, completed}
+    契约只加不改 (harden-onsite-redlines): 老字段原样, 新增 stage + unknown_rule/persist 语义.
     复用 Runner.audit + 共享 executor 工具缓存（一个病案多规则只检索一次文书/费用）。
     """
     cfg = get_config()
     rules = []
+    unknown_rule_ids: list[str] = []
     for rid in req.rules:
         yaml_path = cfg.rules_path / f"{rid}.yaml"
         if yaml_path.exists():
             rules.append(load_rule(yaml_path))
+        else:
+            unknown_rule_ids.append(rid)
 
     msg_queue: queue.Queue = queue.Queue()
 
@@ -218,6 +225,14 @@ async def run_audit_batch(req: RunBatchRequest):
             "rules": [r.rule_id for r in rules],
             "total": len(rules),
         })
+        # 未知 rule_id 逐条显式回执 — BFF 可区分「规则不存在」与「漏返回」
+        for rid in unknown_rule_ids:
+            yield _format_sse("fail", {
+                "type": "UnknownRule",
+                "message": f"rule {rid} not found",
+                "rule_id": rid,
+                "stage": "unknown_rule",
+            })
         loop = asyncio.get_event_loop()
         completed = 0
         for rule in rules:
@@ -239,17 +254,23 @@ async def run_audit_batch(req: RunBatchRequest):
             try:
                 result = future.result()
             except LlmUnavailableError as exc:
-                yield _format_sse("fail", {"type": "LlmUnavailable", "message": str(exc), "rule_id": rule.rule_id})
+                yield _format_sse("fail", {"type": "LlmUnavailable", "message": str(exc), "rule_id": rule.rule_id, "stage": "audit"})
                 continue
             except Exception as exc:
                 logger.exception("batch audit failed: rule=%s patient=%s", rule.rule_id, req.patient_id)
-                yield _format_sse("fail", {"type": exc.__class__.__name__, "message": str(exc), "rule_id": rule.rule_id})
+                yield _format_sse("fail", {"type": exc.__class__.__name__, "message": str(exc), "rule_id": rule.rule_id, "stage": "audit"})
                 continue
-            # 持久化（本地 SQLite + 142），与单条一致
+            # 持久化（本地 SQLite + 142），与单条一致.
+            # persist 成功才发 result — 否则 BFF 拿到库中不存在的 run (真丢数窗口)
             try:
                 persist_one(result, rule, triggered_by="bff-batch")
-            except Exception:
+            except Exception as exc:
                 logger.exception("persist failed: run=%s", result.run_id)
+                yield _format_sse("fail", {
+                    "type": exc.__class__.__name__, "message": str(exc),
+                    "rule_id": rule.rule_id, "stage": "persist",
+                })
+                continue
             completed += 1
             yield _format_sse("result", _result_payload(result))
         yield _format_sse("done", {"total": len(rules), "completed": completed})

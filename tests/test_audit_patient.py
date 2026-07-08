@@ -226,29 +226,34 @@ def test_no_rules_match_priority_exits_2(audit_project, monkeypatch):
     assert "没有匹配的规则" in result.stderr
 
 
-def test_llm_unavailable_mid_batch_persists_first_exits_1(audit_project, monkeypatch):
-    """7.6: 第 2 条规则 raise LlmUnavailableError, 第 1 条已落 store, 进程 exit 1."""
+def test_llm_unavailable_mid_batch_continues_and_exits_1(audit_project, monkeypatch):
+    """7.6 (harden-onsite-redlines 改): 第 2 条 LlmUnavailableError 标 failed 继续跑第 3 条."""
     # 第 1 条: 2 calls (tool + verdict). 第 2 条: 第 1 call (call_idx=3) raise.
-    scripts = _audit_script("CLEAN")  # 第 1 条的 2 个 content
+    # 第 3 条: 继续消费 2 个 content (串行不再中断).
+    scripts = _audit_script("CLEAN") + _audit_script("CLEAN")
     provider = _ScriptedProvider(per_call=scripts, raise_on_call=3)
     _patch_provider(monkeypatch, provider)
 
     runner = CliRunner()
     result = runner.invoke(
-        main, ["audit-patient", PT_ID, "--rules", "R045,R191"],
+        main, ["audit-patient", PT_ID, "--rules", "R045,R191,R300"],
     )
     assert result.exit_code == 1
 
-    # 第 1 条已 verdict, 第 2 条标 LLM 不可用
-    assert "[1/2] R045 → C" in result.stderr
-    assert "[2/2] R191 → LLM 不可用" in result.stderr
-    # summary 区分
-    assert "LLM failed at: rule #2 (R191)" in result.stdout
+    # 第 1 条 verdict, 第 2 条标 LLM 不可用, 第 3 条照常跑 (失败不拖垮整患者)
+    assert "[1/3] R045 → C" in result.stderr
+    assert "[2/3] R191 → LLM 不可用" in result.stderr
+    assert "[3/3] R300 → C" in result.stderr
+    # summary: 2 完成 1 失败, 无 pending
+    assert "2 completed" in result.stdout
+    assert "1 failed" in result.stdout
+    assert "0 pending" in result.stdout
+    assert "LLM unavailable rules: R191" in result.stdout
 
-    # DB 应仅有 1 行 (R045)
+    # DB 应有 2 行 (R045 + R300)
     conn = sqlite3.connect(audit_project["db"])
     n = conn.execute(
         "SELECT COUNT(*) FROM audit_runs WHERE patient_id = ?", (PT_ID,)
     ).fetchone()[0]
     conn.close()
-    assert n == 1
+    assert n == 2

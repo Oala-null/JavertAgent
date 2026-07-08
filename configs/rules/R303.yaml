@@ -37,3 +37,14 @@ expected_signal: |
   典型 INCONCLUSIVE: 项目名歧义 (例 "综合训练" 无法判断归属哪类).
 notes: ''
 derived_from_template: M1
+precheck:
+  a_items:
+    - 作业疗法
+    - 作业疗法训练
+    - 精神障碍作业疗法
+    - 身体功能障碍作业疗法
+    - 辅助器具作业疗法
+  b_items:
+    - 日常生活动作训练
+    - ADL 训练
+    - 日常生活活动训练

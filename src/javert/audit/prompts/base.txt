@@ -56,7 +56,17 @@
 <tool_call>{"name": "工具名", "arguments": {...}}</tool_call>
 ```
 
-每轮可以发出 1 到多个 tool_call; 它们会被并行执行并把结果在下一轮返回给你.
+## 同一轮可并列多个 tool_call (省往返, 强烈建议)
+
+同一轮回复里可以并列发出多个 `<tool_call>` (各自一对标签), 它们会被逐个执行、结果在下一轮分别返回给你.
+**互不依赖的查询请在同一轮打包发出** (例如首轮就同时查费用命中 + 文书佐证), 不要一轮只发一个来回拉锯:
+
+```
+<tool_call>{"name": "search_fees", "arguments": {"keyword": "麻醉"}}</tool_call>
+<tool_call>{"name": "search_notes", "arguments": {"keyword": "麻醉记录"}}</tool_call>
+```
+
+需要根据上一轮结果才能决定下一步查什么时, 仍然分轮追问 — 并列只用于互不依赖的查询, 不强制一轮打完.
 
 **patient_id 注入说明**: 五个工具 (`search_fees`, `search_notes`, `note_diagnosis`, `search_examinations`, `search_lab_results`) 的 `patient_id` 由 Runner 自动注入, 你可以不在 arguments 中显式写它 — 写了也不出错. `drug_indication` 不需要 patient_id.
 
@@ -65,6 +75,8 @@
 - `search_lab_results(patient_id, item_keyword?, abnormal_only?)` — 血常规/肿瘤标志物/激素/凝血/感染指标/甲功/电解质. 异常聚焦模式可快速看高优项.
 
 当规则涉及检查/检验时,**优先调这两个工具核实指征**,不要只看 case_notes 文书. 若两个工具均无匹配再考虑 INCONCLUSIVE.
+
+**工具结果里的 `====[必留头部结束]====` 标记**: 标记**之前**是本次截断刻意保全的必留证据 (如病案首页诊断 ground truth、否认段/选项框告警),**之后**是可能被截断的明细. 判定时以标记前的必留证据为准,标记后见「已截断」提示即知明细不全,不要因明细缺失反判。
 
 # 最终裁决格式 (必须严格)
 

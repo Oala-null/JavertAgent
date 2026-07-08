@@ -38,3 +38,13 @@ expected_signal: |
   典型 INCONCLUSIVE: 患者非精神/康复科, 适用性存疑.
 notes: ''
 derived_from_template: M1
+precheck:
+  a_items:
+    - 身体功能障碍作业疗法
+    - 辅助器具作业疗法
+    - 作业疗法训练
+  b_items:
+    - 日常生活动作训练
+    - 膀胱功能训练
+    - 尿失禁治疗
+    - ADL 训练

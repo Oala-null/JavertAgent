@@ -35,3 +35,12 @@ expected_signal: |
   典型 CLEAN: 仅有内固定术费用; 或手术记录明确将韧带重建作为额外独立指征单独施行.
 notes: ''
 derived_from_template: M1
+precheck:
+  a_items:
+    - 肩锁关节脱位切开复位内固定术
+    - 肩锁关节切开复位内固定
+    - 肩锁关节脱位切开复位术
+  b_items:
+    - 韧带重建术
+    - 肩锁韧带重建
+    - 喙锁韧带重建术

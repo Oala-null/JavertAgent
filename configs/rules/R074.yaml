@@ -42,6 +42,9 @@ trigger_keywords:
   - 血透监测
   - 肾衰
   - 肾衰竭
+trigger_codes:
+  - S311000010
+  - XB05ZB
 suggested_tools:
   - search_fees
   - search_notes

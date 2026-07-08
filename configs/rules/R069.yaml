@@ -31,6 +31,9 @@ trigger_keywords:
   - 透析液
   - 一次性血路
   - 废液袋
+trigger_codes:
+  - S311000010
+  - XB05ZB
 suggested_tools:
   - note_diagnosis
   - search_fees
@@ -40,3 +43,19 @@ expected_signal: |
   典型 CLEAN: 仅有血液净化项目单笔; 或患者自费购买的耗材在文书中有独立采购单据.
 notes: ''
 derived_from_template: M1
+precheck:
+  a_items:
+    - 血液透析
+    - 血液灌流
+    - 血液滤过
+    - 血液透析滤过
+    - CRRT
+    - 连续性肾脏替代治疗
+  b_items:
+    - 透析器
+    - 滤器
+    - 管路
+    - 透析液
+    - 抗凝剂
+    - 一次性血路
+    - 废液袋

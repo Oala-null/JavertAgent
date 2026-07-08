@@ -124,6 +124,16 @@ def create_app(with_mssql: bool | None = None) -> FastAPI:
     if with_mssql is None:
         with_mssql = cfg.web_with_mssql
 
+    # harden-onsite-redlines: 生产形态 (with_mssql) session secret 仍是源码默认值 →
+    # 任意人可伪造用户 cookie. fail-fast 放这里而非 CLI, `uvicorn ...main:app` 直起同样拦截.
+    from javert.config import JavertConfig
+    if with_mssql and cfg.session_secret == JavertConfig.model_fields["session_secret"].default:
+        raise RuntimeError(
+            "JAVERT_SESSION_SECRET 仍是源码默认值 (可伪造会话) — "
+            "请 `set -a && source .env && set +a` 或设置环境变量后再启动. "
+            "本地 dev 可用 `javert web --no-mssql`."
+        )
+
     app = FastAPI(
         title="Javert Web",
         version="0.1.0",
@@ -162,7 +172,13 @@ def create_app(with_mssql: bool | None = None) -> FastAPI:
 
             if routes_auth.limiter is not None:
                 app.state.limiter = routes_auth.limiter
-                app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+                def _rate_limited_handler(request, exc):
+                    # raw 端点超限也留审计痕 (phi-access-audit spec: 429 请求可事后追查)
+                    routes_workbench.log_raw_rate_limited(request)
+                    return _rate_limit_exceeded_handler(request, exc)
+
+                app.add_exception_handler(RateLimitExceeded, _rate_limited_handler)
         except Exception as e:  # noqa: BLE001
             logger.warning("slowapi exception_handler 注册失败: %s", e)
 

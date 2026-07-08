@@ -13,6 +13,7 @@ on-demand 调用 (不是全患者一次扫). 用 functools.lru_cache 缓存按 p
 
 from __future__ import annotations
 
+import copy
 import logging
 import re
 from collections import defaultdict
@@ -27,6 +28,8 @@ from typing import Any
 #   "X女，45 岁因..."            (姓名直接接性别)
 # 隔符放宽到 [，, \t]+ , 性别和年龄之间也允许空白
 _SEX_AGE_PATTERN = re.compile(r"[，, \t]\s*([男女])\s*[，, \t]\s*(\d{1,3})\s*岁")
+# szx 等外部文书形态: "性别男性，年龄57岁"
+_SEX_AGE_PATTERN2 = re.compile(r"性别\s*([男女])性?\s*[，,].{0,8}?年龄\s*(\d{1,3})\s*岁")
 
 from javert.config import get_config
 from javert.data.csv_loader import CsvLoader
@@ -441,7 +444,7 @@ def _extract_from_notes_df(df) -> dict[str, Any]:
         if ("gender" not in out["fields"] or "age" not in out["fields"]) and content:
             head = content[:300]
             if "某某" not in head:  # 脱敏文书没法救
-                m = _SEX_AGE_PATTERN.search(head)
+                m = _SEX_AGE_PATTERN.search(head) or _SEX_AGE_PATTERN2.search(head)
                 if m:
                     out["fields"].setdefault("gender", m.group(1))
                     out["fields"].setdefault("age", m.group(2) + "岁")
@@ -566,7 +569,18 @@ def _extract_from_fees_df(df) -> dict[str, Any]:
 # 主入口 — 拼装单患者概览数据
 # =========================================================
 def build_overview(patient_id: str, loader: CsvLoader) -> dict[str, Any]:
-    """单患者概览数据 dict, 可直接传 Jinja2 模板."""
+    """单患者概览数据 dict, 可直接传 Jinja2 模板.
+
+    boost-llm-efficiency: lru_cache 按 (patient_id, loader 实例) 命中 — detail 页重开同患者
+    不再重算. loader 换新实例 (reset_loader) 自然换 key; onboarding 载入新数据走
+    reset_caches() 统一失效. fix-scan-residuals: 返回缓存 dict 的深拷贝, 调用方可安全修改
+    (如就地补字段) 不污染缓存, 消跨请求串数据回归面.
+    """
+    return copy.deepcopy(_build_overview_cached(patient_id, loader))
+
+
+@lru_cache(maxsize=256)
+def _build_overview_cached(patient_id: str, loader: CsvLoader) -> dict[str, Any]:
     notes_df = loader.get_notes(patient_id)
     fees_df = loader.get_fees(patient_id)
 
@@ -703,3 +717,4 @@ def reset_caches() -> None:
     _SS_CACHE = None
     _FEES_SUM_CACHE = None
     _STORED_CACHE = None
+    _build_overview_cached.cache_clear()

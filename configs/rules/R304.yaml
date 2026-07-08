@@ -38,3 +38,10 @@ expected_signal: |
   典型 INCONCLUSIVE: 患者无精神科诊断, 规则适用性存疑.
 notes: ''
 derived_from_template: M1
+precheck:
+  a_items:
+    - 精神障碍作业疗法
+    - 精神障碍作业疗法训练
+  b_items:
+    - 日常生活动作训练
+    - ADL 训练

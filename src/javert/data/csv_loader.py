@@ -14,8 +14,9 @@ from .loader import DataLoader
 
 logger = logging.getLogger("javert.data.csv_loader")
 
-# 索引类型: (mode, {键值: 行位置数组}); mode = "exact" (住院号精确) / "contains" (bah 包含)
-_KeyIndex = tuple[str, dict[str, np.ndarray]]
+# 索引类型: (mode, {键值: 行位置数组(组)}); mode = "exact" (住院号精确, 值为 ndarray)
+# / "tail" (bah 两级精确: 全键 + 复合键末段, 值为 list[ndarray])
+_KeyIndex = tuple[str, dict]
 
 
 class CsvLoader(DataLoader):
@@ -51,17 +52,22 @@ class CsvLoader(DataLoader):
     @staticmethod
     def _build_index(df: pd.DataFrame, exact_col: str | None) -> _KeyIndex:
         """按患者键列分组 → {键值: 行位置数组}. exact_col 存在时精确匹配 (strip 后);
-        否则 bah / 首列走包含匹配 (键唯一值仅数千, 远小于行数)."""
+        否则 bah / 首列走两级精确 (全键 + `{hospital_code}-{patient_id}` 复合键末段).
+
+        harden-onsite-redlines D4: 原 `patient_id in k` 子串语义会让短住院号
+        吃进长住院号 (如 123 命中 1123) 的费用行 — 改精确等值."""
         if exact_col is not None and exact_col in df.columns:
             key = df[exact_col].astype(str).str.strip()
-            mode = "exact"
-        elif "bah" in df.columns:
-            key = df["bah"].astype(str)
-            mode = "contains"
-        else:
-            key = df.iloc[:, 0].astype(str)
-            mode = "contains"
-        return mode, df.groupby(key, sort=False).indices
+            return "exact", df.groupby(key, sort=False).indices
+        col = df["bah"] if "bah" in df.columns else df.iloc[:, 0]
+        groups = df.groupby(col.astype(str), sort=False).indices
+        # 两级精确索引: 每个键同时挂 全键(strip) 和 复合键末段(strip) 两个入口
+        tail_index: dict[str, list[np.ndarray]] = {}
+        for k, pos in groups.items():
+            ks = k.strip()
+            for cand in {ks, ks.rsplit("-", 1)[-1].strip()}:
+                tail_index.setdefault(cand, []).append(pos)
+        return "tail", tail_index
 
     @staticmethod
     def _select(df: pd.DataFrame, index: _KeyIndex, patient_id: str) -> pd.DataFrame:
@@ -70,8 +76,7 @@ class CsvLoader(DataLoader):
             pos = groups.get(patient_id)
             hits = [pos] if pos is not None else []
         else:
-            # ponytail: 纯子串匹配 (原实现是 str.contains 正则; 住院号均为字母数字, 语义等价)
-            hits = [pos for k, pos in groups.items() if patient_id in k]
+            hits = groups.get(patient_id.strip(), [])
         if not hits:
             return df.iloc[0:0]
         return df.iloc[np.sort(np.concatenate(hits))]

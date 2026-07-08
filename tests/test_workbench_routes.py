@@ -14,7 +14,7 @@ from javert.store.models import RunWithReviews
 from javert.web.api.routes_workbench import (
     _fmt_fee_date,
     _group_runs_by_violation_type,
-    get_raw_patient,
+    _raw_payload,
 )
 
 
@@ -96,7 +96,7 @@ def test_group_runs_alias_compresses_long_violation_type():
 # (直接调路由函数, 绕过 HTTP auth; J66252 是 primary 测试患者)
 # =========================================================
 def test_raw_endpoint_notes_bucketed_and_sorted():
-    data = get_raw_patient("J66252")
+    data = _raw_payload("J66252")
     notes = data["notes"]
     assert notes, "J66252 应有文书"
     # 每条带 bucket + bucket_order
@@ -112,7 +112,7 @@ def test_raw_endpoint_notes_bucketed_and_sorted():
 
 
 def test_raw_endpoint_fees_have_formatted_date():
-    data = get_raw_patient("J66252")
+    data = _raw_payload("J66252")
     fees = data["fees"]
     assert fees, "J66252 应有费用"
     assert all("fee_date" in f for f in fees)
@@ -127,7 +127,7 @@ def test_raw_endpoint_fees_have_formatted_date():
 # (J66252 同时有检验+检查记录; 首次触发 LabLoader 索引构建, 稍慢)
 # =========================================================
 def test_raw_endpoint_includes_labs_and_exams():
-    data = get_raw_patient("J66252")
+    data = _raw_payload("J66252")
     for key in ("labs", "exams", "n_labs", "n_exams"):
         assert key in data, f"raw 响应应含 {key}"
     assert data["n_labs"] == len(data["labs"])
@@ -142,3 +142,41 @@ def test_raw_endpoint_includes_labs_and_exams():
     # 检查行 shape
     exam = data["exams"][0]
     assert {"date", "check_type", "item", "conclusion"}.issubset(exam.keys())
+
+
+# =========================================================
+# boost-llm-efficiency: sidebar TTL 缓存 (detail 页不复跑全表 CTE)
+# =========================================================
+def test_sidebar_patients_ttl_cache():
+    import time as _time
+
+    from javert.web.api import routes_workbench as rw
+
+    rw._sidebar_cache.clear()
+    calls: list[str] = []
+
+    class _FakeStore:
+        def list_patients_with_violations(self, filter_mode):
+            calls.append(filter_mode)
+            return []
+
+    store = _FakeStore()
+    try:
+        # 列表页: 总是现查 + 刷新缓存
+        rw._sidebar_patients(store, "v_and_i", allow_cached=False)
+        assert calls == ["v_and_i"]
+        # detail 页: TTL 内吃缓存, 不再打全表 CTE
+        rw._sidebar_patients(store, "v_and_i", allow_cached=True)
+        assert calls == ["v_and_i"]
+        # 不同 filter → 各自缓存
+        rw._sidebar_patients(store, "all", allow_cached=True)
+        assert calls == ["v_and_i", "all"]
+        # TTL 过期 → 重查
+        rw._sidebar_cache["v_and_i"] = (_time.monotonic() - 999.0, [])
+        rw._sidebar_patients(store, "v_and_i", allow_cached=True)
+        assert calls == ["v_and_i", "all", "v_and_i"]
+        # allow_cached=False (列表页) 即便缓存新鲜也现查
+        rw._sidebar_patients(store, "all", allow_cached=False)
+        assert calls == ["v_and_i", "all", "v_and_i", "all"]
+    finally:
+        rw._sidebar_cache.clear()

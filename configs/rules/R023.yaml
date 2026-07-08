@@ -42,3 +42,13 @@ expected_signal: |
   典型 INCONCLUSIVE: 文书未明示心电图实际次数.
 notes: ''
 derived_from_template: M1
+precheck:
+  a_items:
+    - 三通道加收
+    - 六通道加收
+    - 十二通道加收
+    - 十八通道加收
+  b_items:
+    - 常规心电图
+    - 心电图检查
+    - 十二导联心电图

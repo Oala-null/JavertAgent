@@ -37,3 +37,15 @@ expected_signal: |
   典型 INCONCLUSIVE: 项目名简写无法判断是床旁还是常规.
 notes: ''
 derived_from_template: M1
+precheck:
+  a_items:
+    - 床旁透视
+    - 床旁 B 超
+    - 床旁彩色多普勒超声
+    - 床旁超声心动图
+    - 床旁 X 线
+  b_items:
+    - 透视常规检查
+    - B 超常规检查
+    - 彩色多普勒超声常规检查
+    - 超声心动图常规检查

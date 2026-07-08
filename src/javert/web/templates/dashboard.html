@@ -26,6 +26,50 @@
   </div>
 </div>
 
+<h2 style="font-size:16px; color:var(--text); margin:24px 0 6px;">系统性违规
+  <span class="muted" style="font-weight:400; font-size:13px;">— V 率倒序; V 率 = 违规患者数 / 被审计患者数 (非全院患者数)</span>
+</h2>
+{% if thresholds %}
+<p class="muted" style="margin:0 0 10px; font-size:12px;">判定阈值: V 率 ≥ {{ (thresholds.v_rate*100)|round|int }}% 且 被审计 ≥ {{ thresholds.min_patients }} 患者 → ★ 系统性 (可在 configs/systemic_thresholds.yaml 按规则覆盖)</p>
+{% endif %}
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>rule_id</th>
+      <th class="tabular">被审计患者数</th>
+      <th class="tabular">V</th>
+      <th class="tabular">I</th>
+      <th class="tabular">V 率</th>
+      <th class="tabular">金额</th>
+      <th>系统性</th>
+      <th>V 患者</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for s in systemic_rules %}
+    <tr {% if s.systemic %}class="highlight"{% endif %}>
+      <td><strong>{{ s.rule_id }}</strong></td>
+      <td class="tabular">{{ s.n_patients }}</td>
+      <td class="tabular">{{ s.v }}</td>
+      <td class="tabular">{{ s.i }}</td>
+      <td class="tabular">{{ (s.v_rate*100)|round|int }}%</td>
+      <td class="tabular muted">{{ '不可计' if s.amount is none else s.amount }}</td>
+      <td>{% if s.systemic %}<span style="background:var(--danger,#b91c1c);color:#fff;border-radius:4px;padding:1px 6px;font-size:11px;white-space:nowrap;">★ 系统性</span>{% endif %}</td>
+      <td>
+        {% if s.v_patients %}
+        <details>
+          <summary class="muted" style="cursor:pointer;">{{ s.v_patients|length }} 例</summary>
+          {% for pid in s.v_patients %}<a class="btn-link" href="/workbench/{{ pid }}">{{ pid }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+        </details>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="8" class="muted">尚无裁决数据</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
 <h2 style="font-size:16px; color:var(--text); margin:24px 0 10px;">专家 leaderboard <span class="muted" style="font-weight:400; font-size:13px;">— 点行查看该专家审过的明细</span></h2>
 <table class="data-table">
   <thead><tr><th>用户</th><th>显示名</th><th class="tabular">最新审核数</th><th></th></tr></thead>

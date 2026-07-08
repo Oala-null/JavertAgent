@@ -227,21 +227,21 @@ def test_concurrency_llm_fail_isolated(audit_project, monkeypatch):
     assert n == 4
 
 
-def test_concurrency_1_preserves_serial_break_semantics(audit_project, monkeypatch):
-    """concurrency=1 时 LlmUnavailableError 仍然 break — 与 add-patient-centric-audit 保持一致."""
+def test_concurrency_1_llm_fail_isolated_like_parallel(audit_project, monkeypatch):
+    """concurrency=1 时 LlmUnavailableError 标 failed 继续 — 与并发模式对齐 (harden-onsite-redlines)."""
     scripts = _make_audit_scripts(["R001", "R002", "R003", "R004", "R005"])
-    # R002 抛 → 第 2 条挂, 后面 R003-R005 都 pending
+    # R002 抛 → 仅第 2 条 failed, R003-R005 照常跑完
     _patch_provider(monkeypatch, _ThreadSafeScriptedProvider(scripts, raise_for={"R002"}))
 
     runner = CliRunner()
     result = runner.invoke(main, ["audit-patient", PT_ID])  # 默认 concurrency=1
     assert result.exit_code == 1
 
-    # 串行: R001 完, R002 LLM 挂 → break, 后续 pending
-    assert "1 completed" in result.stdout
-    assert "pending" in result.stdout
+    assert "4 completed" in result.stdout
+    assert "1 failed" in result.stdout
+    assert "0 pending" in result.stdout
     assert "concurrency: 1" in result.stdout
-    assert "LLM failed at: rule #2 (R002)" in result.stdout
+    assert "LLM unavailable rules: R002" in result.stdout
 
 
 def test_concurrency_max_workers_capped_by_rule_count(audit_project, monkeypatch):

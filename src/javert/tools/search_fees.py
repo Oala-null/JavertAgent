@@ -57,8 +57,28 @@ _CATEGORY_KEYWORDS: dict[str, list[str]] = {
 
 _VALID_CATEGORIES = ["手术类", "药品类", "耗材类", "检查类", "其他类"]
 
+# 官方类别标签 (medins_chrgitm_type) → 自信桶. data-hub 已把 MXFYLB 2 位国标码回填成同款
+# 中文, 故跨院可移植. 只在标签明确落桶时覆盖; 模糊标签 (治疗/床位/护理/其他/麻醉…) 与缺列
+# 回退名称启发式 = 最小漂移. 数字码 med_chrgitm_type 本院脏码, 不参与.
+_LABEL_CATEGORY: list[tuple[tuple[str, ...], str]] = [
+    (("手术",), "手术类"),
+    (("药",), "药品类"),           # 西药/中药/中成药/药品 皆含"药"
+    (("材料", "耗材"), "耗材类"),
+    (("检查", "化验", "检验", "CT", "MRI", "拍片", "病理", "影像", "超声", "B超"), "检查类"),
+]
 
-def _classify(name: str) -> str:
+
+def _classify_by_label(label: str) -> str | None:
+    for needles, cat in _LABEL_CATEGORY:
+        if any(n in label for n in needles):
+            return cat
+    return None
+
+
+def _classify(name: str, chrgitm_label: str = "") -> str:
+    by_label = _classify_by_label(chrgitm_label)
+    if by_label:
+        return by_label
     for cat, kws in _CATEGORY_KEYWORDS.items():
         if any(kw in name for kw in kws):
             return cat
@@ -92,6 +112,10 @@ def create_executor(loader: DataLoader) -> Callable[..., str]:
         fees = patient_fees.copy()
         fees["_amount"] = pd.to_numeric(fees[amount_col], errors="coerce").fillna(0)
         fees["_name"] = fees[name_col].astype(str)
+        # make-rules-code-portable: 官方类别标签优先分类 (缺列→空串→纯名称兜底)
+        fees["_chrgitm_label"] = (
+            fees["medins_chrgitm_type"].astype(str) if "medins_chrgitm_type" in fees.columns else ""
+        )
 
         # v0.9 — 加日期返回, R112 等需要对比平扫/增强是否不同日
         date_col = _find_col(patient_fees, ["fee_ocur_time", "事件时间", "fee_date"])
@@ -107,6 +131,38 @@ def create_executor(loader: DataLoader) -> Callable[..., str]:
             fees["_cnt"] = pd.to_numeric(fees[cnt_col], errors="coerce").fillna(0)
         else:
             fees["_cnt"] = 1.0  # 无 cnt 列 → 每行视为 1 次正收费 (不净额)
+        # boost-llm-efficiency: 量价 + 开单科室/医师 信号 (M4 超标准/分解/串换科室类规则依赖).
+        # 源数据缺列时整体省略 (不出现占位符); 行锚与既有列文本不变, 只追加.
+        pric_col = next((c for c in ("pric", "unit_price", "单价") if c in patient_fees.columns), None)
+        dept_col = next(
+            (c for c in ("acord_dept_name", "bilg_dept_name", "开单科室") if c in patient_fees.columns), None
+        )
+        dr_col = next(
+            (c for c in ("orders_dr_name", "bilg_dr_name", "开单医师") if c in patient_fees.columns), None
+        )
+        if pric_col:
+            fees["_pric"] = pd.to_numeric(fees[pric_col], errors="coerce")
+
+        def _clean_str(v) -> str:
+            s = str(v).strip()
+            return "" if s.lower() in ("nan", "none") else s
+
+        def _row_extra(row) -> str:
+            parts = []
+            if pric_col and cnt_col and pd.notna(row["_pric"]) and row["_pric"] > 0:
+                cnt_v = row["_cnt"]
+                cnt_str = f"{int(cnt_v)}" if float(cnt_v).is_integer() else f"{cnt_v:g}"
+                parts.append(f"单价{row['_pric']:.2f}×{cnt_str}")
+            who = "/".join(
+                x for x in (
+                    _clean_str(row.get(dept_col)) if dept_col else "",
+                    _clean_str(row.get(dr_col)) if dr_col else "",
+                ) if x
+            )
+            if who:
+                parts.append(f"[开单:{who}]")
+            return (" " + " ".join(parts)) if parts else ""
+
         has_code = "med_list_codg" in fees.columns
         net_items = net_fee_items(patient_fees)
         full_refunded = {k for k, it in net_items.items() if it.is_full_refund}
@@ -135,7 +191,7 @@ def create_executor(loader: DataLoader) -> Callable[..., str]:
                 date_str = f"  [{row['_date']}]" if row['_date'] else ""
                 # v0.9 (前向 locator): fee 行定位标记 — 让新审计锚点能精确指回该费用行
                 loc = f" ⟨行={i} 项目={row['_name']}⟩"
-                lines.append(f"  {row['_name']}: ¥{row['_amount']:.2f}{date_str}{loc}")
+                lines.append(f"  {row['_name']}: ¥{row['_amount']:.2f}{date_str}{_row_extra(row)}{loc}")
                 if i >= 20:
                     lines.append(f"... 共{len(display)}条, 已显示前 20 条")
                     break
@@ -150,7 +206,7 @@ def create_executor(loader: DataLoader) -> Callable[..., str]:
                     )
             return "\n".join(lines)
 
-        fees["_category"] = fees["_name"].apply(_classify)
+        fees["_category"] = fees.apply(lambda r: _classify(r["_name"], r["_chrgitm_label"]), axis=1)
         # 明细/计数只看净正收费行 (退费行 _cnt<=0 不进列表); 合计仍走 fees 全量 (net)
         display_fees = fees[fees["_cnt"] > 0]
 
@@ -165,7 +221,7 @@ def create_executor(loader: DataLoader) -> Callable[..., str]:
             )
             lines = [f"{category}明细 (共{len(cat_disp)}项):", ""]
             for i, (_, row) in enumerate(cat_disp.iterrows(), 1):
-                lines.append(f"  {i}. {row['_name']}: ¥{row['_amount']:.2f}")
+                lines.append(f"  {i}. {row['_name']}: ¥{row['_amount']:.2f}{_row_extra(row)}")
             total = cat_all["_amount"].sum()
             lines.append("")
             lines.append(f"{category}合计: ¥{total:.2f}")

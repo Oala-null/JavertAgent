@@ -35,3 +35,12 @@ expected_signal: |
   典型 CLEAN: 仅有精神监护单笔; 或药学服务记录中有氯氮平等特殊药物血药浓度独立申请单据.
 notes: ''
 derived_from_template: M1
+precheck:
+  a_items:
+    - 精神科监护
+    - 精神科特级护理
+    - 精神科一级监护
+  b_items:
+    - 抗精神病药物治疗监测
+    - 药物治疗监测
+    - 精神药物监测

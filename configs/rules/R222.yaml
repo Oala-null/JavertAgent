@@ -45,6 +45,8 @@ trigger_keywords:
   - 视频喉镜
   - 经鼻气管插管
   - Mallampati
+trigger_codes:
+  - S330100014
 suggested_tools:
   - search_fees
   - note_diagnosis

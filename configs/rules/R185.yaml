@@ -36,3 +36,12 @@ expected_signal: |
   典型 CLEAN: 仅有根治术单笔; 或手术记录明确为保留卵巢功能的独立分期操作单独计费.
 notes: ''
 derived_from_template: M1
+precheck:
+  a_items:
+    - 根治性宫颈切除术
+    - 广泛性子宫切除
+    - 宫颈癌根治术
+  b_items:
+    - 卵巢动静脉高位结扎术
+    - 卵巢血管结扎
+    - 高位结扎

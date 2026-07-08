@@ -14,6 +14,8 @@ trigger_keywords:
 - 颅内手术
 - 鼻内镜手术
 - 中耳手术
+trigger_codes:
+- S330100016
 suggested_tools:
 - note_diagnosis
 - search_fees

@@ -71,3 +71,32 @@ def test_resolve_paths():
     assert cfg.data_path.is_absolute()
     assert cfg.notes_path.name == "case_notes.csv"
     assert cfg.fees_path.name == "shi_fee.csv"
+
+
+def test_hub_raw_defaults():
+    """add-workbench-sql-raw-source: 开关默认关 = 纯 CSV 行为不变."""
+    cfg = JavertConfig()
+    assert cfg.hub_raw_enabled is False
+    assert cfg.hub_database == "TP_data_hub"
+
+
+def test_hub_raw_env_override(monkeypatch):
+    monkeypatch.setenv("JAVERT_HUB_RAW_ENABLED", "true")
+    monkeypatch.setenv("JAVERT_HUB_DATABASE", "TP_other")
+    cfg = JavertConfig()
+    assert cfg.hub_raw_enabled is True
+    assert cfg.hub_database == "TP_other"
+
+
+def test_tool_result_max_chars_default():
+    """fix-drug-audit-precision: 未配置时默认 2000 (与现状一致)."""
+    cfg = JavertConfig()
+    assert cfg.tool_result_max_chars == 2000
+
+
+def test_tool_result_max_chars_from_file(tmp_path: Path):
+    config_file = tmp_path / "llm.yaml"
+    config_file.write_text(
+        yaml.safe_dump({"tool_result_max_chars": 4000}), encoding="utf-8"
+    )
+    assert load_config(config_file).tool_result_max_chars == 4000

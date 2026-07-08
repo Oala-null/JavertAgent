@@ -29,6 +29,10 @@ trigger_keywords:
   - CT 平扫
   - CT 增强
   - 胶片
+trigger_codes:
+  - S210300001a0
+  - S210300001b0
+  - S210300002b0
 suggested_tools:
   - note_diagnosis
   - search_fees
@@ -38,3 +42,19 @@ expected_signal: |
   典型 CLEAN: 仅有引导单笔; 或影像报告明确术前 / 术后独立扫描各自记录.
 notes: ''
 derived_from_template: M1
+precheck:
+  a_items:
+    - CT 引导
+    - X 线计算机体层引导
+    - CT 引导穿刺
+    - CT 引导消融
+    - 临床操作的 CT 引导
+  b_items:
+    - CT 扫描
+    - CT 平扫
+    - CT 增强
+    - CT 成象
+    - X 线计算机体层扫描
+    - X 线计算机体层平扫
+    - X 线计算机体层增强扫描
+    - 胶片

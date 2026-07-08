@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 
 from javert.audit.result import AuditResult
-from javert.audit.rule import Rule
+from javert.audit.rule import PrecheckSpec, Rule
 from javert.audit.runner import Runner
 from javert.config import JavertConfig, reset_config_cache
 from javert.data.loader import DataLoader
@@ -52,9 +52,12 @@ class FakeProvider:
         self.calls = 0
         self.raise_on_call = raise_on_call
         self.model_name = "fake-qwen"
+        self.seen_user_msgs: list[str] = []  # 每次调用时最后一条 user 消息内容
 
     def chat_with_retry(self, messages, **kwargs):
         self.calls += 1
+        if messages:
+            self.seen_user_msgs.append(messages[-1].get("content", ""))
         if self.raise_on_call is not None and self.calls == self.raise_on_call:
             raise LlmUnavailableError("simulated outage")
         if not self.contents:
@@ -119,6 +122,26 @@ def test_happy_path_with_tool_then_verdict(cfg, executor):
     assert len(result.tool_calls) == 1
     assert result.tool_calls[0].tool_name == "search_notes"
     assert result.confidence == pytest.approx(0.9)
+
+
+def test_gate_downgrade_normalizes_confidence(cfg, executor):
+    """fix-scan-residuals: gate 降级 (V→I) 时 conf 归一 0.5, 原值进 [gate: ...] 注记.
+
+    conf=0.80 的 V 触发 ③低置信闸 (< 0.85 ceiling) → INCONCLUSIVE.
+    """
+    contents = [
+        '<tool_call>{"name": "search_notes", "arguments": {"patient_id": "J66252"}}</tool_call>',
+        '```json\n{"verdict": "VIOLATION", "confidence": 0.80, '
+        '"evidence": [{"source":"note","locator":"入院诊断","text":"甲状腺乳头状癌"}], '
+        '"reasoning": "初判违规"}\n```',
+    ]
+    runner = Runner(executor=executor, provider=FakeProvider(contents), config=cfg)
+    result = runner.audit(_make_rule(), "J66252")
+    assert result.verdict == "INCONCLUSIVE"          # 被 gate 降级
+    assert result.confidence == pytest.approx(0.5)   # 归一, 不再是 0.80
+    assert "[gate:" in result.reasoning
+    assert "原 conf=0.80" in result.reasoning        # 原值留档
+    assert "初判违规" in result.reasoning            # 原 reasoning 保留
 
 
 def test_max_tool_calls_returns_inconclusive(cfg, executor):
@@ -411,3 +434,171 @@ def test_rejects_verdict_without_any_tool_call(cfg, executor):
     result = runner.audit(_make_rule(), "J66252")
     assert result.verdict == "CLEAN"
     assert len(result.tool_calls) == 1
+
+
+# ==== harden-agent-loop ====
+
+def test_repair_tool_call_continues_not_inconclusive(cfg, executor):
+    """change 1: repair 响应含 tool_call 时应执行并续跑, 不再丢弃直接 INCONCLUSIVE."""
+    contents = [
+        # 1 轮: 既非 tool_call 也非 verdict → 触发 repair
+        "让我想想该查什么...",
+        # repair 响应: 一个合法 tool_call (旧版会丢弃 → INCONCLUSIVE conf 0)
+        '<tool_call>{"name": "search_notes", "arguments": {"patient_id": "J66252"}}</tool_call>',
+        # 2 轮 (续跑): 出 verdict
+        '```json\n{"verdict": "CLEAN", "confidence": 0.7, "evidence": [{"source":"note","locator":"入院诊断","text":"x"}], "reasoning": "checked"}\n```',
+    ]
+    runner = Runner(executor=executor, provider=FakeProvider(contents), config=cfg)
+    result = runner.audit(_make_rule(), "J66252")
+    assert result.verdict == "CLEAN"          # 不是丢成 INCONCLUSIVE conf 0
+    assert result.confidence == pytest.approx(0.7)
+    assert len(result.tool_calls) == 1        # repair 里的 tool_call 被执行并记录
+
+
+def test_malformed_tool_call_gets_targeted_feedback(cfg, executor):
+    """change 3: 畸形 tool_call JSON → 回传具体解析错误 (而非泛化 repair 提示)."""
+    provider = FakeProvider([
+        # 1 轮: 缺右括号的 tool_call (json.loads 失败)
+        '<tool_call>{"name": "search_notes", "arguments": {}</tool_call>',
+        # repair 响应: 合法 tool_call → 续跑
+        '<tool_call>{"name": "search_notes", "arguments": {"patient_id": "J66252"}}</tool_call>',
+        # 2 轮: verdict
+        '```json\n{"verdict": "CLEAN", "confidence": 0.7, "evidence": [{"source":"note","locator":"入院诊断","text":"x"}], "reasoning": "ok"}\n```',
+    ])
+    emitted: list[str] = []
+    runner = Runner(executor=executor, provider=provider, config=cfg, emit=emitted.append)
+    result = runner.audit(_make_rule(), "J66252")
+    assert result.verdict == "CLEAN"
+    # emit 里出现「畸形」诊断
+    assert any("畸形" in m for m in emitted)
+    # 模型收到的 repair 提示里含 tool_call JSON 非法字样 (第 2 次 LLM 调用前的 user 消息)
+    assert any("tool_call JSON 非法" in m for m in provider.seen_user_msgs)
+
+
+def test_all_tool_calls_failed_does_not_unlock_verdict(cfg, executor):
+    """change 4: 工具全部执行失败时不解锁裁决, 模型想判 V 也被拒绝."""
+    contents = [
+        # 1 轮: 未知工具 → 执行失败 (不计成功)
+        '<tool_call>{"name": "no_such_tool", "arguments": {}}</tool_call>',
+        # 2 轮: 想直接判 VIOLATION → 应被拒绝 (n_success==0)
+        '```json\n{"verdict": "VIOLATION", "confidence": 0.95, "evidence": [], "reasoning": "凭空判违规"}\n```',
+        # 3 轮: 再次未知工具失败
+        '<tool_call>{"name": "no_such_tool", "arguments": {}}</tool_call>',
+        # 4 轮: 又想判 V → 再拒绝, budget 耗尽走 deadline (无更多 content → malformed)
+        '```json\n{"verdict": "VIOLATION", "confidence": 0.9, "evidence": [], "reasoning": "还是判违规"}\n```',
+    ]
+    emitted: list[str] = []
+    runner = Runner(executor=executor, provider=FakeProvider(contents), config=cfg, emit=emitted.append)
+    result = runner.audit(_make_rule(), "J66252")
+    assert result.verdict != "VIOLATION"      # 全失败的 V 不被接受
+    assert result.verdict == "INCONCLUSIVE"
+    assert any("无成功 tool_call" in m for m in emitted)
+
+
+def test_one_successful_tool_call_unlocks_verdict(cfg, executor):
+    """change 4: 只要有 1 次成功 tool_call, 后续 verdict 即可裁决."""
+    contents = [
+        # 1 轮: 未知工具失败
+        '<tool_call>{"name": "no_such_tool", "arguments": {}}</tool_call>',
+        # 2 轮: 成功工具
+        '<tool_call>{"name": "search_notes", "arguments": {"patient_id": "J66252"}}</tool_call>',
+        # 3 轮: verdict → 应被接受 (n_success==1)
+        '```json\n{"verdict": "CLEAN", "confidence": 0.7, "evidence": [{"source":"note","locator":"入院诊断","text":"x"}], "reasoning": "查过了"}\n```',
+    ]
+    runner = Runner(executor=executor, provider=FakeProvider(contents), config=cfg)
+    result = runner.audit(_make_rule(), "J66252")
+    assert result.verdict == "CLEAN"
+    assert len(result.tool_calls) == 2        # 1 失败 + 1 成功都记录
+
+
+def test_parse_verdict_bare_json_with_braces_in_reasoning():
+    """change 2: reasoning 含花括号时括号平衡扫描仍能取到末尾合法 verdict 块."""
+    from javert.audit.runner import _parse_verdict_block
+    text = '思考{中间有}花括号\n{"verdict": "CLEAN", "confidence": 0.8, "reasoning": "r"}'
+    data = _parse_verdict_block(text)
+    assert data is not None
+    assert data["verdict"] == "CLEAN"
+    assert data["confidence"] == 0.8
+
+
+def test_parse_verdict_multi_candidate_takes_last_valid():
+    """change 2: 多个平衡对象, 从后往前取首个含合法 verdict 字段的块."""
+    from javert.audit.runner import _parse_verdict_block
+    text = (
+        '{"verdict": "VIOLATION", "confidence": 0.9}\n'
+        '一些解释 {"noise": 1}\n'
+        '{"verdict": "CLEAN", "confidence": 0.6, "reasoning": "final"}'
+    )
+    data = _parse_verdict_block(text)
+    assert data is not None
+    assert data["verdict"] == "CLEAN"   # 取末尾那个
+
+
+def test_parse_verdict_no_valid_returns_none():
+    """change 2: 所有平衡对象都无合法 verdict 字段 → None."""
+    from javert.audit.runner import _parse_verdict_block
+    assert _parse_verdict_block("纯文本 {没有} 合法 {json:1} verdict") is None
+
+
+# ========== 确定性预检 (pilot-deterministic-precheck) ==========
+def _precheck_rule(a_items, b_items) -> Rule:
+    return Rule(
+        rule_id="R191", domain="肿瘤", violation_type="重复收费",
+        question="q", derived_from_template="M1",
+        precheck=PrecheckSpec(a_items=a_items, b_items=b_items),
+    )
+
+
+class _ABLoader(_StubLoader):
+    """费用含 A(全身断层) + B(图文报告) 两项, 供 precheck facts 路径."""
+
+    def __init__(self):
+        super().__init__()
+        self._fees = pd.DataFrame({
+            "bah": ["H-J66252 ", "H-J66252 "],
+            "fee_ocur_time": ["2026-01-01", "2026-01-01"],
+            "cnt": [1.0, 1.0],
+            "det_item_fee_sumamt": [3000.0, 50.0],
+            "medins_list_name": ["PET-CT全身断层显像", "PET-CT图文报告费"],
+        })
+
+
+def test_precheck_clean_short_circuits_no_llm(cfg, executor):
+    """A 项不在费用里 → precheck 短路 CLEAN, provider 0 次调用."""
+    provider = FakeProvider([])  # 若被误调返回空 → 便于发现
+    runner = Runner(executor=executor, provider=provider, config=cfg, loader=_StubLoader())
+    result = runner.audit(_precheck_rule(a_items=["全身断层"], b_items=["图文报告"]), "J66252")
+    assert result.verdict == "CLEAN"
+    assert result.precheck_tag == "无A项"
+    assert provider.calls == 0          # 关键: 没调 LLM
+    assert result.tool_calls == []
+
+
+def test_precheck_facts_injects_and_merges_evidence(cfg, executor):
+    """A∩B 并存 → 注入事实块, LLM 判 V → 合并 precheck 费用锚点."""
+    contents = [
+        '<tool_call>{"name": "search_notes", "arguments": {"patient_id": "J66252"}}</tool_call>',
+        '```json\n{"verdict": "VIOLATION", "confidence": 0.9, "evidence": [{"source":"note","locator":"手术记录","text":"无分次说明"}], "reasoning": "无反证"}\n```',
+    ]
+    provider = FakeProvider(contents)
+    runner = Runner(executor=executor, provider=provider, config=cfg, loader=_ABLoader())
+    result = runner.audit(_precheck_rule(a_items=["全身断层"], b_items=["图文报告"]), "J66252")
+    assert result.verdict == "VIOLATION"
+    assert result.precheck_tag == "A∩B并存待核反证"
+    assert any("系统预检费用事实" in m for m in provider.seen_user_msgs)
+    fee_locs = {e.locator for e in result.evidence if "fee" in e.source}
+    assert "PET-CT全身断层显像" in fee_locs and "PET-CT图文报告费" in fee_locs
+
+
+def test_precheck_off_runs_normal_path(cfg, executor):
+    """JAVERT_PRECHECK=off → 带 precheck 的 M1 也走原 LLM 路径 (不短路)."""
+    cfg.precheck = "off"
+    contents = [
+        '<tool_call>{"name": "search_notes", "arguments": {"patient_id": "J66252"}}</tool_call>',
+        '```json\n{"verdict": "CLEAN", "confidence": 0.7, "evidence": [{"source":"note","locator":"x","text":"y"}], "reasoning": "ok"}\n```',
+    ]
+    provider = FakeProvider(contents)
+    runner = Runner(executor=executor, provider=provider, config=cfg, loader=_StubLoader())
+    result = runner.audit(_precheck_rule(a_items=["全身断层"], b_items=["图文报告"]), "J66252")
+    assert provider.calls >= 1          # 走了 LLM
+    assert result.precheck_tag == ""

@@ -24,6 +24,7 @@ from .prompt_assembler import (
     load_experience_doc,
     load_hospital_config,
 )
+from .precheck import CLEAN as PC_CLEAN, FACTS as PC_FACTS, PrecheckResult, run_precheck
 from .result import AuditResult, Evidence, ToolCall
 from .rule import Rule
 from .run_id import new_run_id
@@ -33,28 +34,76 @@ logger = logging.getLogger("javert.audit.runner")
 
 # 解析最终 fenced JSON
 _JSON_BLOCK_PATTERN = re.compile(r"```(?:json)?\s*\n(.*?)\n```", re.DOTALL)
-_TRUNCATE = 2000  # 单工具结果存储上限
+_TRUNCATE = 2000  # 单工具结果存储上限 (默认; 实际用 config.tool_result_max_chars)
+
+# 分段截断标记 (fix-drug-audit-precision D1): 工具把「必留头部」放标记之前、
+# 「可截明细」放标记之后; 无此标记的工具结果维持旧尾截断行为.
+RETAIN_HEAD_MARKER = "====[必留头部结束]===="
 
 
 def _truncate(text: str, limit: int = _TRUNCATE) -> str:
     if len(text) <= limit:
         return text
-    return text[:limit] + f"\n...[已截断, 原长 {len(text)}]"
+    pos = text.find(RETAIN_HEAD_MARKER)
+    if pos == -1:
+        # 无标记: 旧尾截断
+        return text[:limit] + f"\n...[已截断, 原长 {len(text)}]"
+    # 含标记: 头部 (含标记行) 优先保全, 只截明细段
+    head = text[: pos + len(RETAIN_HEAD_MARKER)]
+    detail = text[pos + len(RETAIN_HEAD_MARKER):]
+    if len(head) > limit:
+        # fix-scan-residuals: 头部本身超总预算时也硬截 (防单条工具结果整体超预算 → context 溢出 400).
+        # 权衡: 极端诊断数患者可能丢部分 ground truth, 但换来总长有界; 提示让模型可感知.
+        return head[:limit] + f"\n...[头部超总预算, 已硬截; 原头部 {len(head)} 字符]"
+    kept = detail[: max(0, limit - len(head))]
+    return head + kept + f"\n...[明细已截断, 原明细 {len(detail)} 字符]"
+
+
+def _scan_balanced_objects(text: str) -> list[str]:
+    """扫出所有顶层平衡的 `{...}` 对象子串 (识别字符串字面量与转义).
+
+    替代「首 `{` 到末 `}`」贪婪切片: reasoning 内含花括号时贪婪切片会拼出
+    不可解析 blob; 平衡扫描则把每个完整对象单独抽出.
+    """
+    objs: list[str] = []
+    depth = 0
+    start = -1
+    in_str = False
+    escape = False
+    for i, ch in enumerate(text):
+        if in_str:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            if depth > 0:
+                depth -= 1
+                if depth == 0 and start != -1:
+                    objs.append(text[start:i + 1])
+                    start = -1
+    return objs
 
 
 def _parse_verdict_block(text: str) -> dict[str, Any] | None:
     """从 LLM 输出提取 verdict JSON. 优先 fenced ```json``` 块; 无围栏时回退裸 JSON.
 
     deadline turn 常直接吐裸 `{...}` (不带 ``` 围栏), 旧版只认 fenced → 合法 verdict
-    被丢成 conf=0.00. 此处加裸 JSON 回退 (取首 `{` 到末 `}`), 多候选择最后一个合法的.
+    被丢成 conf=0.00. 无围栏时用括号平衡扫描逐个抽取候选, 从后往前取首个合法块.
     """
     candidates = _JSON_BLOCK_PATTERN.findall(text)
     if not candidates:
-        # 回退: 裸 JSON (deadline turn 不带围栏的常见情况)
-        start = text.find("{")
-        end = text.rfind("}")
-        if start != -1 and end > start:
-            candidates = [text[start:end + 1]]
+        # 回退: 裸 JSON (deadline turn 不带围栏的常见情况), 括号平衡扫描逐个候选
+        candidates = _scan_balanced_objects(text)
     # 从后往前取第一个合法 verdict 块 (最终裁决通常在尾部)
     for raw in reversed(candidates):
         try:
@@ -180,6 +229,90 @@ class Runner:
         self._clinical_ctx_cache[patient_id] = ctx
         return ctx
 
+    def _execute_and_record(
+        self,
+        content: str,
+        tool_calls: list[dict[str, Any]],
+        messages: list[dict[str, str]],
+        tool_records: list[ToolCall],
+    ) -> int:
+        """执行一批 tool_call: 记录到 tool_records、把结果回灌对话, 返回成功次数.
+
+        主循环与 repair 路径共用 — repair 响应含 tool_call 时也走这里续跑,
+        不再丢弃. 成功次数供「至少 1 次成功 tool_call 才解锁裁决」判定.
+        """
+        tool_results_text: list[str] = []
+        n_ok = 0
+        for call in tool_calls:
+            t0 = time.perf_counter()
+            result_text, cached = self.executor.execute(call)
+            elapsed_ms = int((time.perf_counter() - t0) * 1000)
+            truncated = _truncate(result_text, self.config.tool_result_max_chars)
+            tool_records.append(ToolCall(
+                tool_name=call["name"],
+                arguments=call.get("arguments", {}) or {},
+                result=truncated,
+                duration_ms=elapsed_ms,
+                cached=cached,
+            ))
+            if not ToolExecutor.is_error_result(result_text):
+                n_ok += 1
+            self.emit(
+                f"[Tool] {call['name']}({json.dumps(call.get('arguments', {}), ensure_ascii=False)}) "
+                f"→ {truncated[:200].replace(chr(10), ' ')} "
+                f"({elapsed_ms}ms{', cached' if cached else ''})"
+            )
+            tool_results_text.append(f"工具 {call['name']} 返回:\n{truncated}")
+        messages.append({"role": "assistant", "content": content})
+        messages.append({"role": "user", "content": "\n\n".join(tool_results_text)})
+        return n_ok
+
+    # --- 确定性预检 (pilot-deterministic-precheck) ---
+    def _run_precheck(self, rule: Rule, patient_id: str) -> PrecheckResult | None:
+        """带 precheck 字段 + 开关 on 时跑确定性预检; 否则/取数失败 → None (走原 LLM 路径)."""
+        if getattr(rule, "precheck", None) is None:
+            return None
+        if str(self.config.precheck).lower() == "off":
+            return None
+        try:
+            fee_df = self.loader.get_fees(patient_id) if self.loader is not None else None
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("precheck 取 fee 失败 patient=%s: %s (skip)", patient_id, exc)
+            return None
+        return run_precheck(rule.precheck, fee_df)
+
+    def _make_precheck_clean(
+        self,
+        rule: Rule,
+        patient_id: str,
+        run_id: str,
+        started: datetime,
+        t_start: float,
+        pc: PrecheckResult,
+    ) -> AuditResult:
+        """预检短路 CLEAN → 直接构造结果 (0 LLM 调用, 0 工具调用)."""
+        duration_ms = int((time.perf_counter() - t_start) * 1000)
+        self.emit(f"[Precheck] {rule.rule_id} → CLEAN ({pc.precheck_tag}): {pc.reason}")
+        result = AuditResult(
+            run_id=run_id,
+            rule_id=rule.rule_id,
+            patient_id=patient_id,
+            verdict="CLEAN",
+            confidence=0.9,
+            reasoning=pc.reason,
+            evidence=pc.evidence,
+            tool_calls=[],
+            duration_ms=duration_ms,
+            model=self.provider.model_name,
+            started_at=started,
+            precheck_tag=pc.precheck_tag,
+        )
+        self.emit(
+            f"[Verdict] C conf=0.90 duration={duration_ms / 1000:.1f}s "
+            f"tool_calls=0 (precheck) run_id={run_id}"
+        )
+        return result
+
     def _audit_body(
         self,
         rule: Rule,
@@ -189,6 +322,20 @@ class Runner:
         t_start: float,
     ) -> AuditResult:
         """audit() 主体 — 提出来便于 try/finally 包裹 patient_context 管理."""
+        # --- 确定性预检 (pilot-deterministic-precheck): LLM loop 之前 ---
+        # clean → 短路 CLEAN 零 LLM 调用; facts → 注入事实块 + 判 V 时合并费用锚点; 否则原路径.
+        precheck_facts: str | None = None
+        precheck_tag = ""
+        precheck_evidence: list[Evidence] = []
+        pc = self._run_precheck(rule, patient_id)
+        if pc is not None:
+            if pc.outcome == PC_CLEAN:
+                return self._make_precheck_clean(rule, patient_id, run_id, started, t_start, pc)
+            if pc.outcome == PC_FACTS:
+                precheck_facts = pc.fact_block
+                precheck_tag = pc.precheck_tag
+                precheck_evidence = pc.evidence
+
         base_prompt = load_base_prompt(self.config.prompts_path)
         hospital_config = load_hospital_config(self.config.hospital_config_path)
         experience_doc = load_experience_doc(
@@ -203,10 +350,11 @@ class Runner:
         )
         messages: list[dict[str, str]] = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": initial_user_message(rule, patient_id)},
+            {"role": "user", "content": initial_user_message(rule, patient_id, precheck_facts)},
         ]
 
         tool_records: list[ToolCall] = []
+        n_success = 0  # 成功 (非错误串) 的 tool_call 次数 — 放行裁决的门槛
         verdict_data: dict[str, Any] | None = None
         final_reason = ""
 
@@ -223,70 +371,58 @@ class Runner:
 
             tool_calls = self.executor.parse_tool_calls(content)
             if tool_calls:
-                # 执行所有 tool_call
-                tool_results_text: list[str] = []
-                for call in tool_calls:
-                    t0 = time.perf_counter()
-                    result_text, cached = self.executor.execute(call)
-                    elapsed_ms = int((time.perf_counter() - t0) * 1000)
-                    truncated = _truncate(result_text)
-                    tool_records.append(ToolCall(
-                        tool_name=call["name"],
-                        arguments=call.get("arguments", {}) or {},
-                        result=truncated,
-                        duration_ms=elapsed_ms,
-                        cached=cached,
-                    ))
-                    self.emit(
-                        f"[Tool] {call['name']}({json.dumps(call.get('arguments', {}), ensure_ascii=False)}) "
-                        f"→ {truncated[:200].replace(chr(10), ' ')} "
-                        f"({elapsed_ms}ms{', cached' if cached else ''})"
-                    )
-                    tool_results_text.append(
-                        f"工具 {call['name']} 返回:\n{truncated}"
-                    )
-                # 把 LLM 这轮的 raw content 与工具结果都加到对话
-                messages.append({"role": "assistant", "content": content})
-                messages.append({
-                    "role": "user",
-                    "content": "\n\n".join(tool_results_text),
-                })
+                n_success += self._execute_and_record(content, tool_calls, messages, tool_records)
                 continue
 
             # 没 tool_call: 尝试解析最终 verdict
             verdict_data = _parse_verdict_block(content)
             if verdict_data is not None:
-                if not tool_records:
-                    # 强制要求至少 1 次 tool_call
-                    self.emit("[Runner] 模型未调用任何工具, 拒绝 verdict")
+                if n_success == 0:
+                    # 至少 1 次成功 tool_call 才解锁裁决 (全失败/未调用均拒绝)
+                    self.emit("[Runner] 无成功 tool_call, 拒绝 verdict")
                     verdict_data = None
                     messages.append({"role": "assistant", "content": content})
                     messages.append({
                         "role": "user",
-                        "content": "你必须在裁决前至少调用 1 次工具. 请重新发出 <tool_call>."
+                        "content": (
+                            "你必须在裁决前至少成功调用 1 次工具 (此前调用均失败或未调用). "
+                            "请换参数重发 <tool_call>; 若确实查不到证据可裁 INCONCLUSIVE."
+                        ),
                     })
                     continue
                 final_reason = ""
                 break
 
-            # 没 tool_call 也没合法 verdict — 触发一次 repair
-            self.emit("[Runner] 输出既无 tool_call 也无合法 verdict JSON, 发起 repair turn")
-            messages.append({"role": "assistant", "content": content})
-            messages.append({
-                "role": "user",
-                "content": (
+            # 没 tool_call 也没合法 verdict — 触发一次 repair.
+            # 若含畸形 tool_call 标签, 回传具体 JSON 解析错误 (针对性反馈); 否则通用提示.
+            tc_errors = self.executor.parse_errors(content)
+            if tc_errors:
+                self.emit(f"[Runner] tool_call JSON 畸形 ({tc_errors[0]}), 发起针对性 repair")
+                repair_prompt = (
+                    f"你的 tool_call JSON 非法: {tc_errors[0]}. "
+                    "请修正后重新发出 <tool_call> (仍可继续调查); 若已可裁决则只输出 ```json {...} ``` 块."
+                )
+            else:
+                self.emit("[Runner] 输出既无 tool_call 也无合法 verdict JSON, 发起 repair turn")
+                repair_prompt = (
                     "你的输出无法解析. 请: 若需更多证据则发 <tool_call>; "
                     "若已可裁决则只输出 ```json {...} ``` 块, 字段含 verdict/confidence/evidence/reasoning."
-                ),
-            })
+                )
+            messages.append({"role": "assistant", "content": content})
+            messages.append({"role": "user", "content": repair_prompt})
             try:
                 resp_repair = self.provider.chat_with_retry(messages)
             except LlmUnavailableError:
                 raise
             content_repair = resp_repair["content"] or ""
             self.emit(f"[LLM #{turn}-repair] {content_repair[:1500]}")
+            # repair 响应含 tool_call → 执行并回主循环续跑, 不再丢弃直接 INCONCLUSIVE
+            repair_calls = self.executor.parse_tool_calls(content_repair)
+            if repair_calls:
+                n_success += self._execute_and_record(content_repair, repair_calls, messages, tool_records)
+                continue
             verdict_data = _parse_verdict_block(content_repair)
-            if verdict_data is not None and tool_records:
+            if verdict_data is not None and n_success > 0:
                 break
             # 二次失败 → INCONCLUSIVE
             final_reason = "malformed verdict JSON (repair failed)"
@@ -365,7 +501,21 @@ class Runner:
                 self.emit(f"[Gate] {verdict} → {outcome.verdict} ({outcome.tag}): {outcome.reason}")
                 verdict = outcome.verdict
                 gate_tag = outcome.tag
-                reasoning = (reasoning + f"\n[gate: {outcome.reason}]").strip()
+                # fix-scan-residuals: 降级后 confidence 归一到 0.5 (原 V 值留在注记),
+                # 避免落库出现「INCONCLUSIVE conf=0.90」误读; 原值仍可从 reasoning 追溯.
+                reasoning = (
+                    reasoning + f"\n[gate: {outcome.reason} | 原 conf={confidence:.2f}]"
+                ).strip()
+                confidence = 0.5
+
+        # pilot-deterministic-precheck: 事实成立判 V → 合并预检确定性费用锚点 (去重),
+        # 保证新 V 的 evidence 100% 带机器可复核费用行 (与 LLM 引用是否准确解耦).
+        if verdict == "VIOLATION" and precheck_evidence:
+            seen = {(e.source, e.locator) for e in evidence}
+            for e in precheck_evidence:
+                if (e.source, e.locator) not in seen:
+                    evidence.append(e)
+                    seen.add((e.source, e.locator))
 
         result = AuditResult(
             run_id=run_id,
@@ -380,6 +530,7 @@ class Runner:
             model=self.provider.model_name,
             started_at=started,
             gate_tag=gate_tag,
+            precheck_tag=precheck_tag,
         )
         self.emit(
             f"[Verdict] {verdict[0]} conf={confidence:.2f} "

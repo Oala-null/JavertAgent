@@ -19,6 +19,14 @@ trigger_keywords:
 - HCV
 - 乙型肝炎
 - 丙型肝炎
+trigger_codes:
+- S250403004
+- S250403005
+- S250403006
+- S250403007
+- S250403009
+- S250403010
+- S250403014
 suggested_tools:
 - note_diagnosis
 - search_fees

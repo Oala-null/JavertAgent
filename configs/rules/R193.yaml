@@ -40,6 +40,8 @@ trigger_keywords:
   - 体表肿物切除
   - 皮下肿物
   - 切口数
+trigger_codes:
+  - S331602004
 suggested_tools:
   - search_fees
   - search_notes

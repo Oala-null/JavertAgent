@@ -27,6 +27,8 @@ trigger_keywords:
   - 血透监测
   - 血液透析监测
   - 透析中监测
+trigger_codes:
+  - S311000011
 suggested_tools:
   - note_diagnosis
   - search_fees
@@ -36,3 +38,12 @@ expected_signal: |
   典型 CLEAN: 仅有血液透析单笔; 或透析记录明确监测包括血温 / 血容量 / 在线尿素等专项指标.
 notes: ''
 derived_from_template: M1
+precheck:
+  a_items:
+    - 血液透析
+    - 血液透析滤过
+    - 血液净化
+  b_items:
+    - 血透监测
+    - 血液透析监测
+    - 透析中监测

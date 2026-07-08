@@ -40,6 +40,8 @@ trigger_keywords:
   - 严重感染
   - 感染性休克
   - SIRS
+trigger_codes:
+  - S250310054
 suggested_tools:
   - note_diagnosis
   - search_fees

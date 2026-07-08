@@ -37,3 +37,14 @@ expected_signal: |
   典型 CLEAN: 仅有图文报告单笔; 或文书有患者额外打印 / 院外读片独立申请记录.
 notes: ''
 derived_from_template: M1
+precheck:
+  a_items:
+    - 超声计算机图文报告
+    - 超声图文报告
+    - 彩超图文报告
+  b_items:
+    - 彩色打印照片
+    - 彩色胶片照相
+    - 超声胶片
+    - 超声照相
+    - 超声打印

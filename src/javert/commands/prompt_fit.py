@@ -19,6 +19,7 @@ def run_prompt_fit_cli(
     dry_run: bool,
     output_path: str | None,
     save_vars: str | None,
+    force: bool = False,
 ) -> int:
     """三模式互斥检查; 然后委托 run_prompt_fit."""
     chosen: list[str] = []
@@ -46,4 +47,5 @@ def run_prompt_fit_cli(
         dry_run=dry_run,
         output_path=output_path,
         save_vars=save_vars,
+        force=force,
     )

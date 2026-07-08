@@ -36,3 +36,14 @@ expected_signal: |
   典型 INCONCLUSIVE: 放射源项目名歧义, 无法判断是冠脉内放射源还是其他放射治疗.
 notes: ''
 derived_from_template: M1
+precheck:
+  a_items:
+    - 冠脉内局部放射治疗
+    - 冠脉内放射治疗
+    - 冠状动脉内放射治疗术
+  b_items:
+    - 同位素放射源
+    - 放射源使用费
+    - 放疗装置使用
+    - 近距离放射源
+    - β射线源

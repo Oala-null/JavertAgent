@@ -44,6 +44,10 @@ trigger_keywords:
   - 全身麻醉
   - 局麻
   - 椎管内麻醉
+trigger_codes:
+  - S330100003
+  - S330100005a
+  - S330100005b
 suggested_tools:
   - search_fees
   - note_diagnosis

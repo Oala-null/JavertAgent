@@ -40,6 +40,8 @@ trigger_keywords:
   - 平衡检查
   - Barthel
   - FIM
+trigger_codes:
+  - S340200003
 suggested_tools:
   - search_fees
   - search_notes

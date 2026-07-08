@@ -148,3 +148,35 @@ def test_executor_lists_tools(stub_loader, drug_map_tmp):
         "search_pathology",   # add-visual-schema-onboarding view 工具
         "scan_progress_indications",  # add-verdict-gate-layer 病程指征扫描
     }
+
+
+# ==== harden-agent-loop: ToolExecutor 韧性原语 ====
+
+def test_parse_errors_surfaces_malformed_tool_call():
+    """parse_errors 暴露 <tool_call> 标签内 JSON 解析错误 (parse_tool_calls 静默丢弃)."""
+    from javert.tools.tool_executor import ToolExecutor
+    ex = ToolExecutor()
+    # 缺右括号 → json.loads 失败
+    errs = ex.parse_errors('<tool_call>{"name": "x", "arguments": {}</tool_call>')
+    assert len(errs) == 1
+    # 合法 tool_call → 无错误
+    assert ex.parse_errors('<tool_call>{"name": "x", "arguments": {}}</tool_call>') == []
+    # 无 tool_call 标签 → 无错误
+    assert ex.parse_errors("纯文本没有工具调用") == []
+
+
+def test_is_error_result_classifies_execute_output():
+    """is_error_result 认得 execute() 生成的两种错误串, 不误判真实输出."""
+    from javert.tools.tool_executor import ToolExecutor
+    ex = ToolExecutor()
+    # 未知工具错误
+    unknown, _ = ex.execute({"name": "no_such_tool", "arguments": {}})
+    assert ToolExecutor.is_error_result(unknown) is True
+    # 抛异常的工具
+    ex.register("boom", lambda **kw: (_ for _ in ()).throw(RuntimeError("炸了")))
+    fail, _ = ex.execute({"name": "boom", "arguments": {}})
+    assert ToolExecutor.is_error_result(fail) is True
+    # 真实工具输出不被误判
+    ex.register("ok", lambda **kw: "正常的检索结果")
+    good, _ = ex.execute({"name": "ok", "arguments": {}})
+    assert ToolExecutor.is_error_result(good) is False

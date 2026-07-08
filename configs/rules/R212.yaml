@@ -41,6 +41,8 @@ trigger_keywords:
   - PACU
   - 麻醉恢复室监护
   - 复苏监护
+trigger_codes:
+  - S330100005c
 suggested_tools:
   - search_fees
   - search_notes

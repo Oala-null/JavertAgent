@@ -9,5 +9,5 @@ prompt_addon: ''
 trigger_keywords: []
 suggested_tools: []
 expected_signal: ''
-notes: 套用模板病历需跨患者文书相似度比对, 当前工具不支持. 留 add-cross-patient-stats change.
+notes: 套用模板病历需跨患者文书相似度比对. add-cross-patient-stats 提供了系统性违规报表面 (V 率聚合), 但本规则的专属检测器 (文书相似度) 仍未实现 — 该统计层聚合的是已有 LLM 裁决, 不做原始文书相似度. 仍 drafting, 待专属相似度检测 change.
 derived_from_template: null

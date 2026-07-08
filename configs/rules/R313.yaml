@@ -44,6 +44,9 @@ trigger_keywords:
   - 喹硫平
   - 氯氮平
   - 氟哌啶醇
+trigger_codes:
+  - XN05AH
+  - XN05AX
 suggested_tools:
   - note_diagnosis
   - search_fees

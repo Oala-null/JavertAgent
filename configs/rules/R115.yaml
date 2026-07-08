@@ -36,3 +36,18 @@ expected_signal: |
   典型 INCONCLUSIVE: 同次既有超声又有 CT/MR, 附加费归属模糊.
 notes: ''
 derived_from_template: M1
+precheck:
+  a_items:
+    - CT
+    - MRI
+    - MR
+    - X线
+    - DR
+    - CR
+    - PET
+  b_items:
+    - 计算机图文报告
+    - 彩色胶片报告
+    - 超声图象记录
+    - 图象记录附加
+    - 超声胶片

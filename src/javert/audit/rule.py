@@ -11,6 +11,17 @@ Status = Literal["drafting", "ready", "validated", "abandoned"]
 Priority = Literal["P0", "P1", "P2", "P3"]
 
 
+class PrecheckSpec(BaseModel):
+    """确定性预检的结构化 A/B 项目集 (pilot-deterministic-precheck).
+
+    a_items/b_items = 主项/附属项目名列表, precheck 按项目名子串匹配患者费用。
+    只 M1 (重复收费) 规则填充; 迁移脚本从 prompt_addon 抽取生成。
+    """
+
+    a_items: list[str] = Field(default_factory=list, description="主项 (A 类) 项目名列表")
+    b_items: list[str] = Field(default_factory=list, description="附属 (B 类) 项目名列表")
+
+
 class Rule(BaseModel):
     """单条「做不了」规则的 yaml 数据载体.
 
@@ -30,6 +41,15 @@ class Rule(BaseModel):
     priority: Priority = Field(default="P3", description="审计优先级 (P0 最高/P3 最低, 由专家标注)")
     prompt_addon: str = Field(default="", description="规则特定 prompt 片段, 由操作者编写")
     trigger_keywords: list[str] = Field(default_factory=list, description="触发关键词列表")
+    trigger_codes: list[str] = Field(
+        default_factory=list,
+        description="触发编码前缀/类别 token 列表 (医保目录码前缀 med_list_codg / 本院码 / 类别标签); "
+        "router 编码命中与 keyword 命中取并集, 空=不参与 (换院命名不同仍可召回)",
+    )
+    exam_keywords: list[str] = Field(
+        default_factory=list,
+        description="verdict_gate 单次/存在性闸匹配 fee 行的检查名; 空则回退 grep prompt_addon",
+    )
     suggested_tools: list[str] = Field(default_factory=list, description="建议优先调用的工具名")
     expected_signal: str = Field(default="", description="预期信号 (操作者备注)")
     notes: str = Field(default="", description="设计 / 取舍说明")
@@ -40,6 +60,14 @@ class Rule(BaseModel):
     drug_rule_type: str | None = Field(
         default=None,
         description="药品类规则 (M8) 的类型: 限适应症/超说明书/限二线/禁忌症; 非药品规则为 None",
+    )
+    render_hash: str | None = Field(
+        default=None,
+        description="prompt-fit 最近一次渲染产物的 hash; 供覆盖护栏比对手改 (缺失=未知来源)",
+    )
+    precheck: PrecheckSpec | None = Field(
+        default=None,
+        description="确定性预检 A/B 项目集 (pilot-deterministic-precheck); 只 M1 规则填, 空=无预检",
     )
 
 

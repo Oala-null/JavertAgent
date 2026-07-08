@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 from pathlib import Path
 
@@ -22,12 +23,28 @@ _FIELD_ORDER = [
     "priority",
     "prompt_addon",
     "trigger_keywords",
+    "trigger_codes",
+    "exam_keywords",
     "suggested_tools",
     "expected_signal",
     "notes",
     "derived_from_template",
     "drug_rule_type",
+    "render_hash",
+    "precheck",
 ]
+
+
+def compute_render_hash(prompt_addon: str) -> str:
+    """prompt_addon 规范化后取 sha256, 供覆盖护栏比对手改.
+
+    规范化 = 多行内容补尾 `\\n` (与写盘时 LiteralScalarString 及 yaml 重载后
+    的形态对齐), 单行原样; 保证 hash(写盘前) == hash(重载后).
+    """
+    s = prompt_addon
+    if "\n" in s and not s.endswith("\n"):
+        s = s + "\n"
+    return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 
 def _make_yaml() -> YAML:
@@ -160,6 +177,9 @@ def update_from_template_render(
             data.insert(idx, "derived_from_template", template_id)
         else:
             data["derived_from_template"] = template_id
+
+    # 覆盖护栏: 记录本次渲染产物 hash (末尾), 供下次 prompt-fit 检测人工手改.
+    data["render_hash"] = compute_render_hash(prompt_addon)
 
     with open(path, "w", encoding="utf-8") as f:
         yaml.dump(data, f)

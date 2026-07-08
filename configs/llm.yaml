@@ -11,6 +11,7 @@ llm_enable_thinking: false
 # Audit runner 配置
 max_tool_calls: 10
 retry_budget: 3                 # LLM 不可达时的重试次数
+tool_result_max_chars: 2000     # 单工具结果喂 LLM 上限 (含必留标记者只截明细段)
 
 # 路径
 data_dir: "data"

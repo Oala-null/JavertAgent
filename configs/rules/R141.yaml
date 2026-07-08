@@ -39,6 +39,8 @@ trigger_keywords:
   - 心肌损伤标志物
   - 心肌梗死
   - 横纹肌溶解
+trigger_codes:
+  - S250306010
 suggested_tools:
   - note_diagnosis
   - search_fees

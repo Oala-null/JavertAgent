@@ -15,6 +15,9 @@ trigger_keywords:
 - 全麻费用
 - 麻醉记录
 - 诱导药物
+trigger_codes:
+- S330100005a
+- S330100005b
 suggested_tools:
 - search_fees
 - search_notes

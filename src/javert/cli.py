@@ -154,6 +154,19 @@ def audit_patient_cmd(
     sys.exit(code)
 
 
+@main.command("stats")
+@click.option("--batch-tag", "batch_tag", default=None,
+              help="只统计该 batch_tag 的裁决 (省略=全量)")
+@click.option("--min-patients", "min_patients", type=int, default=None,
+              help="覆盖系统性判定的最小样本数 (默认读 configs/systemic_thresholds.yaml)")
+@click.option("--min-v-rate", "min_v_rate", type=float, default=None,
+              help="覆盖系统性判定的 V 率阈值 (0-1, 默认读 configs)")
+def stats_cmd(batch_tag: str | None, min_patients: int | None, min_v_rate: float | None) -> None:
+    """规则维度跨患者聚合 (本地 sqlite): 患者数 / V / I / V 率 / 系统性违规."""
+    from .commands.stats import run_stats
+    sys.exit(run_stats(batch_tag=batch_tag, min_patients=min_patients, min_v_rate=min_v_rate))
+
+
 @main.command("web")
 @click.option("--host", default=None, help="监听地址 (默认 config.web_host = 127.0.0.1)")
 @click.option("--port", default=None, type=int, help="监听端口 (默认 config.web_port = 8090)")
@@ -174,23 +187,17 @@ def web_cmd(
         sys.exit(2)
     import os
 
-    from .config import JavertConfig, get_config
+    from .config import get_config, reset_config_cache
     cfg = get_config()
-    # 进院前红区修复: 工作台模式下 session secret 仍是源码默认值 → 可伪造任意用户 cookie, 拒绝启动
-    effective_mssql = with_mssql if with_mssql is not None else cfg.web_with_mssql
-    if effective_mssql and cfg.session_secret == JavertConfig.model_fields["session_secret"].default:
-        click.echo(
-            "✗ JAVERT_SESSION_SECRET 仍是源码默认值 (可伪造会话) — "
-            "请 `set -a && source .env && set +a` 或设置环境变量后再启动.",
-            err=True,
-        )
-        sys.exit(2)
+    # session secret 默认值 fail-fast 收敛进 create_app() (单一来源, uvicorn 直起也拦截)
     final_host = host or cfg.web_host
     final_port = port or cfg.web_port
     final_reload = reload or cfg.web_reload
     # 透传 with_mssql 到 create_app (默认走 config.web_with_mssql)
     if with_mssql is not None:
         os.environ["JAVERT_WEB_WITH_MSSQL"] = "true" if with_mssql else "false"
+        # get_config 已被上面调用 lru_cache 住 — 重置让 uvicorn import 时读到本次覆盖
+        reset_config_cache()
     click.echo(
         f"Javert Web → http://{final_host}:{final_port}"
         f"  (reload={final_reload}, with_mssql={with_mssql if with_mssql is not None else cfg.web_with_mssql})"
@@ -215,6 +222,8 @@ def web_cmd(
               help="--dry-run 时输出路径; '-' 表示 stdout (默认)")
 @click.option("--save-vars", "save_vars", default=None,
               help="把本次 vars dict 落盘到该 json 文件 (interactive / auto 模式留底)")
+@click.option("--force", is_flag=True,
+              help="prompt_addon 被人工手改 (render_hash 不符) 时仍强制覆盖")
 def prompt_fit_cmd(
     rule_id: str,
     template_id: str,
@@ -224,6 +233,7 @@ def prompt_fit_cmd(
     dry_run: bool,
     output_path: str | None,
     save_vars: str | None,
+    force: bool,
 ) -> None:
     """按模板渲染 prompt_addon 写回 rule yaml."""
     from .commands.prompt_fit import run_prompt_fit_cli
@@ -236,6 +246,7 @@ def prompt_fit_cmd(
         dry_run=dry_run,
         output_path=output_path,
         save_vars=save_vars,
+        force=force,
     )
     sys.exit(code)
 

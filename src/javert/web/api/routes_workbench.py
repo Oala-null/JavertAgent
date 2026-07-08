@@ -11,6 +11,7 @@ import csv
 import io
 import json
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -27,7 +28,7 @@ from javert.data.csv_loader import CsvLoader
 from javert.data.examination_loader import ExaminationLoader
 from javert.data.lab_loader import LabLoader
 from javert.store.sqlserver_store import get_sqlserver_store
-from javert.web.auth import current_user, request_meta
+from javert.web.auth import current_user, request_meta, session_user_id
 from javert.web.doc_order import bucket_of
 from javert.web.hit_resolver import hits_from_json, load_kb_drugs, resolve_hits
 from javert.web.patient_overview import (
@@ -70,6 +71,24 @@ def _enrich_sidebar(patients: list) -> list:
     return patients
 
 
+# boost-llm-efficiency (design D5): 点开病人 detail 不再复跑两遍全表 ROW_NUMBER CTE.
+# sidebar 需要全患者列表 (按 pid 窄查询会砍掉侧栏导航), 故用短 TTL 进程缓存:
+# detail 页允许秒级陈旧 (计数由 SSE 客户端增量更新), 列表页始终现查并刷新缓存.
+_SIDEBAR_TTL_SECONDS = 10.0
+_sidebar_cache: dict[str, tuple[float, list]] = {}
+
+
+def _sidebar_patients(store, filter_mode: str, *, allow_cached: bool) -> list:
+    now = time.monotonic()
+    if allow_cached:
+        hit = _sidebar_cache.get(filter_mode)
+        if hit is not None and (now - hit[0]) < _SIDEBAR_TTL_SECONDS:
+            return hit[1]
+    patients = _enrich_sidebar(store.list_patients_with_violations(filter_mode=filter_mode))
+    _sidebar_cache[filter_mode] = (now, patients)
+    return patients
+
+
 def _resolve_hits_for_runs(
     patient_id: str, runs: list, meta_map: dict, anchors_map: dict[str, str] | None = None,
 ) -> dict[str, list]:
@@ -96,6 +115,8 @@ def _resolve_hits_for_runs(
         if not fee_loaded:
             try:
                 fee_df = _get_loader().get_fees(patient_id)
+                if (fee_df is None or len(fee_df) == 0) and get_config().hub_raw_enabled:
+                    fee_df = _get_hub_source().get_fees(patient_id)  # hub 患者命中项目 join
             except Exception as e:  # noqa: BLE001
                 logger.warning("_resolve_hits_for_runs 取 fee 失败 patient=%s: %s", patient_id, e)
                 fee_df = None
@@ -193,9 +214,7 @@ def workbench_index(request: Request, filter: str | None = None):
 
     f = _filter_from(request, filter)
     store = get_sqlserver_store()
-    patients = _enrich_sidebar(
-        store.list_patients_with_violations(filter_mode=f)
-    )
+    patients = _sidebar_patients(store, f, allow_cached=False)
 
     # 欢迎 banner — 跳过条件: cookie welcome_dismissed == 当次 session login_ts
     prev_iso = request.session.get("prev_last_login")
@@ -248,9 +267,7 @@ def workbench_patient(
         )
     f = _filter_from(request, filter)
     store = get_sqlserver_store()
-    patients = _enrich_sidebar(
-        store.list_patients_with_violations(filter_mode=f)
-    )
+    patients = _sidebar_patients(store, f, allow_cached=True)
     runs = store.list_runs_for_patient(patient_id=patient_id, filter_mode=f)
     if not runs:
         # 不报 404 — patient 可能存在但 filter 下空
@@ -259,10 +276,18 @@ def workbench_patient(
             # has_other_runs 用 exclude='__no_such__', 等价 "patient 有任何 row 吗"
             # 没有 → 404
             raise HTTPException(status_code=404, detail=f"未找到患者 {patient_id}")
-    # 概览数据 (basics + fees + dx + 手术); 失败不阻断违规渲染
+    # 概览数据 (basics + fees + dx + 手术); 失败不阻断违规渲染.
+    # CSV 双 miss 且 hub 开启 → 概览改喂 HubRawSource (get_notes/get_fees 与 CsvLoader 同形,
+    # 病案基本信息/费用分类对 hub 患者才有数据; add-workbench-sql-raw-source 补遗)
     overview = None
     try:
-        overview = build_overview(patient_id, _get_loader())
+        ov_loader = _get_loader()
+        _n = ov_loader.get_notes(patient_id)
+        _f = ov_loader.get_fees(patient_id)
+        if ((_n is None or len(_n) == 0) and (_f is None or len(_f) == 0)
+                and get_config().hub_raw_enabled):
+            ov_loader = _get_hub_source()
+        overview = build_overview(patient_id, ov_loader)
     except Exception as e:  # noqa: BLE001
         logger.warning("build_overview 失败 patient=%s: %s", patient_id, e)
 
@@ -400,11 +425,24 @@ def _get_loader() -> CsvLoader:
 
 def reset_loader() -> None:
     """重置工作台 loader 单例 — onboarding 载入新数据后调, 让 data_import 叠加层立即生效.
-    含 lab/exam loader (它们也叠加 data_import 的 lab_results/examinations.csv)."""
-    global _loader_singleton, _lab_loader_singleton, _exam_loader_singleton
+    含 lab/exam loader (它们也叠加 data_import 的 lab_results/examinations.csv) 与 hub 源缓存."""
+    global _loader_singleton, _lab_loader_singleton, _exam_loader_singleton, _hub_source_singleton
     _loader_singleton = None
     _lab_loader_singleton = None
     _exam_loader_singleton = None
+    _hub_source_singleton = None
+
+
+# hub 原文源单例 (add-workbench-sql-raw-source: CSV 双 miss 时按患者号查 hub, 开关默认关)
+_hub_source_singleton = None
+
+
+def _get_hub_source():
+    global _hub_source_singleton
+    if _hub_source_singleton is None:
+        from javert.web.hub_raw_source import HubRawSource
+        _hub_source_singleton = HubRawSource(get_config())
+    return _hub_source_singleton
 
 
 # 检验/检查 loader 单例 (索引一次性构建后进程缓存; 检验文件大, 首次 raw 取数稍慢)
@@ -447,20 +485,82 @@ def _fmt_fee_date(raw: str) -> str:
     return head
 
 
+# =========================================================
+# PHI 访问留痕 + 限流 (harden-onsite-redlines phi-access-audit)
+# =========================================================
+def _session_key(request: Request) -> str:
+    """限流 key: 登录 session 的 user_id (AuthMiddleware 保证已登录); 未登录兜底 IP."""
+    uid = session_user_id(request)
+    if uid is not None:
+        return f"uid:{uid}"
+    return request.client.host if request.client else "anon"
+
+
+def _rate_limit_raw(func):  # noqa: ANN001
+    """raw 端点每会话限流 (档位 config.raw_rate_limit, 每请求读 → env 可调)."""
+    from .routes_auth import limiter as _limiter
+    if _limiter is None:
+        return func
+    return _limiter.limit(lambda: get_config().raw_rate_limit, key_func=_session_key)(func)
+
+
+def _log_raw_access(request: Request, patient_id: str, source: str) -> None:
+    """raw 端点审计留痕 (对齐 /export 的 log_action). 写失败只 warn 不阻断响应."""
+    try:
+        user = current_user(request)
+        ip, ua = request_meta(request)
+        get_sqlserver_store().log_action(
+            user_id=user.id if user else None,
+            action="raw_access",
+            target_id=patient_id,
+            payload={"source": source},
+            ip=ip, user_agent=ua,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("raw_access 留痕失败 patient=%s: %s", patient_id, e)
+
+
+def log_raw_rate_limited(request: Request) -> None:
+    """限流 429 的 raw 请求同样留痕 (create_app 的 RateLimitExceeded handler 调)."""
+    try:
+        if not request.url.path.endswith("/raw"):
+            return
+        pid = (request.path_params or {}).get("patient_id", "")
+        _log_raw_access(request, pid, source="rate_limited")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("rate_limited 留痕失败: %s", e)
+
+
 @router.get("/api/patient/{patient_id}/raw")
-def get_raw_patient(patient_id: str):
-    """加载病人 fee + notes 原始数据.
+@_rate_limit_raw
+def get_raw_patient(request: Request, patient_id: str):
+    """加载病人 fee + notes 原始数据 (留痕 + 每会话限流)."""
+    data = _raw_payload(patient_id)
+    _log_raw_access(request, patient_id, source=data.get("source", "csv"))
+    return data
+
+
+def _raw_payload(patient_id: str) -> dict:
+    """病人 fee + notes 原始数据 (纯数据组装, 无 request 依赖).
 
     实际 CSV 列名:
       case_notes.csv: 住院号 / 事件时间 / 阶段 / 子阶段 / 内容 / 来源文件 (中文)
       shi_fee.csv:    medins_list_name / spec / cnt / pric / det_item_fee_sumamt /
                        medins_chrgitm_type / fee_ocur_time / bah (英文)
     """
+    source = "csv"
     loader = _get_loader()
     fees_df = loader.get_fees(patient_id)
     notes_df = loader.get_notes(patient_id)
     if (fees_df is None or len(fees_df) == 0) and (notes_df is None or len(notes_df) == 0):
-        raise HTTPException(status_code=404, detail="未找到患者原始数据")
+        # CSV 双 miss → hub SQL 链式回退 (开关关闭时直接 404, 行为与从前一致)
+        if get_config().hub_raw_enabled:
+            hub = _get_hub_source()
+            fees_df = hub.get_fees(patient_id)
+            notes_df = hub.get_notes(patient_id)
+            source = "hub"
+        if (fees_df is None or len(fees_df) == 0) and (notes_df is None or len(notes_df) == 0):
+            raise HTTPException(status_code=404, detail="未找到患者原始数据")
 
     # 病案首页主诊从 shi_zd.xls 取 (case_notes 没有 main_dx)
     main_dx = _get_main_diagnosis(patient_id)
@@ -509,6 +609,7 @@ def get_raw_patient(patient_id: str):
 
     return {
         "patient_id": patient_id,
+        "source": source,
         "main_diagnosis": main_dx,
         "fees": _fees_to_list(),
         "notes": _notes_to_list(),
@@ -527,7 +628,9 @@ def _labs_to_list(patient_id: str) -> list[dict]:
         rows = _get_lab_loader().get_lab_results(patient_id)
     except Exception as e:  # noqa: BLE001
         logger.warning("加载检验数据失败 patient=%s: %s", patient_id, e)
-        return []
+        rows = []
+    if not rows and get_config().hub_raw_enabled:
+        rows = _get_hub_source().get_labs(patient_id)
     out: list[dict] = []
     for r in rows:
         out.append({
@@ -549,7 +652,9 @@ def _exams_to_list(patient_id: str) -> list[dict]:
         rows = _get_exam_loader().get_examinations(patient_id)
     except Exception as e:  # noqa: BLE001
         logger.warning("加载检查数据失败 patient=%s: %s", patient_id, e)
-        return []
+        rows = []
+    if not rows and get_config().hub_raw_enabled:
+        rows = _get_hub_source().get_exams(patient_id)
     out: list[dict] = []
     for r in rows:
         out.append({
@@ -567,15 +672,22 @@ def _exams_to_list(patient_id: str) -> list[dict]:
 _zd_cache: dict[str, str] | None = None
 
 
+def _hub_main_dx(patient_id: str) -> str | None:
+    """hub 主诊回退 (开关关 → None); _get_main_diagnosis 所有 miss 出口共用."""
+    if get_config().hub_raw_enabled:
+        return _get_hub_source().get_main_diagnosis(patient_id)
+    return None
+
+
 def _get_main_diagnosis(patient_id: str) -> str | None:
-    """从 shi_zd.xls 拿病案首页主诊 (maindiag_flag=1). 没文件 / 没匹配 → None."""
+    """从 shi_zd.xls 拿病案首页主诊 (maindiag_flag=1). 文件/匹配 miss → hub 回退 → None."""
     global _zd_cache
     if _zd_cache is None:
         _zd_cache = {}
         cfg = get_config()
         zd_path = cfg.data_path / "shi_zd.xls"
         if not zd_path.exists():
-            return None
+            return _hub_main_dx(patient_id)
         try:
             import pandas as pd
             df = pd.read_excel(zd_path)
@@ -585,7 +697,7 @@ def _get_main_diagnosis(patient_id: str) -> str | None:
             name_col = next((c for c in ("dx_name", "diagnosis", "诊断名称") if c in df.columns), None)
             code_col = next((c for c in ("dx_code", "icd_code", "诊断编码") if c in df.columns), None)
             if id_col is None or flag_col is None or name_col is None:
-                return None
+                return _hub_main_dx(patient_id)
             mains = df[df[flag_col].astype(str).str.strip() == "1"]
             for _, row in mains.iterrows():
                 pid = str(row[id_col]).strip()
@@ -597,7 +709,10 @@ def _get_main_diagnosis(patient_id: str) -> str | None:
                 _zd_cache[pid_match] = label
         except Exception as e:
             logger.warning("shi_zd.xls 加载失败: %s", e)
-    return _zd_cache.get(patient_id)
+    main_dx = _zd_cache.get(patient_id)
+    if main_dx is None:
+        main_dx = _hub_main_dx(patient_id)
+    return main_dx
 
 
 # =========================================================
@@ -610,11 +725,24 @@ def dashboard(request: Request):
         return RedirectResponse(url="/login?next=/dashboard", status_code=302)
     store = get_sqlserver_store()
     stats = store.dashboard_stats()
+    # 系统性违规面板 (add-cross-patient-stats) — 只读, 失败不阻断 dashboard 其余部分
+    systemic_rules: list = []
+    try:
+        from javert.stats.cross_patient import aggregate, compute_rule_stats, load_thresholds
+        thresholds = load_thresholds()
+        systemic_rules = compute_rule_stats(
+            aggregate(store.latest_verdict_rows()), thresholds,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("系统性违规面板生成失败: %s", e)
+        thresholds = None
     return HTMLResponse(render(
         "dashboard.html",
         title="仪表盘",
         current_user=user,
         stats=stats,
+        systemic_rules=systemic_rules,
+        thresholds=thresholds,
     ))
 
 

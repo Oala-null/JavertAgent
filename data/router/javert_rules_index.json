@@ -10,6 +10,7 @@
       "priority": "P2",
       "derived_from_template": null,
       "trigger_keywords": [],
+      "trigger_codes": [],
       "question": "套用模版病历下达虚假医嘱、虚构检查检验项目、开具虚假处方、虚假开具药品。"
     },
     {
@@ -21,6 +22,7 @@
       "priority": "P2",
       "derived_from_template": null,
       "trigger_keywords": [],
+      "trigger_codes": [],
       "question": "药品耗材，申请医保支付数量大于实际采购、使用数量。"
     },
     {
@@ -32,6 +34,7 @@
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [],
+      "trigger_codes": [],
       "question": "申请医保支付的药品，超出药品说明书适应症范围或不符合医保药品目录限定支付条件。"
     },
     {
@@ -43,6 +46,7 @@
       "priority": "P2",
       "derived_from_template": null,
       "trigger_keywords": [],
+      "trigger_codes": [],
       "question": "为患者提供的级别护理与医保结算的级别护理等级不符。"
     },
     {
@@ -54,6 +58,7 @@
       "priority": "P2",
       "derived_from_template": null,
       "trigger_keywords": [],
+      "trigger_codes": [],
       "question": "将分值、权重低的病组高编、高套为分值、权重高的病组。"
     },
     {
@@ -73,6 +78,7 @@
         "球囊",
         "注册证号"
       ],
+      "trigger_codes": [],
       "question": "开展心内诊疗，不同厂家、不同规格、不同价格的一次性高值耗材之间相互串换收费。"
     },
     {
@@ -91,6 +97,9 @@
         "PCWP",
         "心输出量监测"
       ],
+      "trigger_codes": [
+        "S310702001"
+      ],
       "question": "未开展相关诊疗项目，但收取对应诊疗费用。"
     },
     {
@@ -108,6 +117,7 @@
         "冠脉造影",
         "近距离放射源"
       ],
+      "trigger_codes": [],
       "question": "开展冠脉内局部放射治疗，重复收取同位素放射源及放疗装置的使用费用。"
     },
     {
@@ -128,6 +138,7 @@
         "Excimer",
         "冠脉支架"
       ],
+      "trigger_codes": [],
       "question": "将冠脉介入项目，如冠脉内支架置入术，串换为费用更高的冠脉腔内激光成形术、冠脉内膜旋磨术、定向冠脉内膜旋磨术等收费。"
     },
     {
@@ -147,6 +158,9 @@
         "支架置入",
         "多支血管"
       ],
+      "trigger_codes": [
+        "S320500003"
+      ],
       "question": "开展经血管介入项目，扩张多支血管超出计价标准。如：定向冠脉内膜旋切术、经皮冠状动脉内支架置入术(STENT)、经皮冠状动脉腔内激光成形术(ELCA)、高速冠状动脉内膜旋磨术等。"
     },
     {
@@ -165,6 +179,7 @@
         "心电图检查",
         "常规心电图"
       ],
+      "trigger_codes": [],
       "question": "将常规心电图检查(×通道加收)，分解为多个较少通道加收（如十二通道加收、三通道加收）项目收费。"
     },
     {
@@ -183,6 +198,7 @@
         "监护仪",
         "Mobil-O-Graph"
       ],
+      "trigger_codes": [],
       "question": "使用血压计、监护仪监测血压，按照动态血压监测进行收费。"
     },
     {
@@ -201,6 +217,7 @@
         "床边遥测",
         "中央监护"
       ],
+      "trigger_codes": [],
       "question": "动态心电图与遥测心电监护项目互相串换收费。"
     },
     {
@@ -221,6 +238,7 @@
         "骨水泥",
         "注册证号"
       ],
+      "trigger_codes": [],
       "question": "骨科一次性使用高值耗材（如髓内钉、螺钉、金属接骨板、关节钢板、骨针、人工骨、异体骨、固定棒、椎间融合器、骨水泥、脊柱内镜、等离子刀头、钛板等），不同厂家、不同规格、不同价格之间相互串换收费。"
     },
     {
@@ -238,6 +256,7 @@
         "腰椎骨折",
         "椎体压缩骨折"
       ],
+      "trigger_codes": [],
       "question": "未开展相关诊疗项目，但收取对应诊疗费用。"
     },
     {
@@ -256,6 +275,7 @@
         "房颤",
         "室上速"
       ],
+      "trigger_codes": [],
       "question": "将椎间盘消融治疗操作串换为心脏电生理诊疗项目分类下的射频消融术收费。"
     },
     {
@@ -273,6 +293,7 @@
         "射频控温热凝器",
         "微创消融"
       ],
+      "trigger_codes": [],
       "question": "开展椎间盘突出症治疗，将热凝治疗串换为椎间盘消融术进行收费。"
     },
     {
@@ -291,6 +312,7 @@
         "单髁骨折",
         "粉碎性骨折"
       ],
+      "trigger_codes": [],
       "question": "各类骨折切开复位内固定术间相互串换收费。"
     },
     {
@@ -309,6 +331,7 @@
         "正骨手法",
         "椎间盘"
       ],
+      "trigger_codes": [],
       "question": "不同的中医骨科手法整复术之间串换收费。"
     },
     {
@@ -326,6 +349,7 @@
         "肩锁韧带",
         "喙锁韧带"
       ],
+      "trigger_codes": [],
       "question": "开展肩锁关节脱位切开复位内固定术，重复收取韧带重建术费用。"
     },
     {
@@ -346,6 +370,7 @@
         "关节镜使用费",
         "关节镜辅助费"
       ],
+      "trigger_codes": [],
       "question": "开展关节镜下半月板修整术、韧带重建术、骨折复位固定术、滑膜切除术等，重复收取关节镜加收费用。"
     },
     {
@@ -364,6 +389,7 @@
         "供区",
         "皮瓣旋转"
       ],
+      "trigger_codes": [],
       "question": "将普通手术切口的缝合步骤，按照皮瓣成形术进行收费。"
     },
     {
@@ -382,6 +408,7 @@
         "联合手术",
         "手术加成"
       ],
+      "trigger_codes": [],
       "question": "经同一切口进行的两种不同疾病的手术,次要手术未按照诊疗项目计价标准收费。"
     },
     {
@@ -404,6 +431,10 @@
         "一次性血路",
         "废液袋"
       ],
+      "trigger_codes": [
+        "S311000010",
+        "XB05ZB"
+      ],
       "question": "将血液透析、血液灌流、血液滤过等项目中不能单独收费的一次性耗材进行额外收费。"
     },
     {
@@ -423,6 +454,10 @@
         "肾衰",
         "肾衰竭"
       ],
+      "trigger_codes": [
+        "S311000010",
+        "XB05ZB"
+      ],
       "question": "按次收费的血液净化类诊疗项目（如血液透析、血液灌流、血液滤过、血液透析滤过、血透监测等），按治疗时长进行收费。"
     },
     {
@@ -441,6 +476,7 @@
         "血液灌流",
         "置换液"
       ],
+      "trigger_codes": [],
       "question": "开展血液净化类诊疗项目时，将费用较低的项目串换成费用较高的项目进行收费。"
     },
     {
@@ -458,6 +494,9 @@
         "血透监测",
         "血液透析监测",
         "透析中监测"
+      ],
+      "trigger_codes": [
+        "S311000011"
       ],
       "question": "开展血液透析或血液透析滤过治疗时，将测量血压或一般生命体征测量，按照血透监测收费。"
     },
@@ -477,6 +516,7 @@
         "DPMAS",
         "胆红素吸附"
       ],
+      "trigger_codes": [],
       "question": "实际开展项目为人工肝治疗，但按照价格更高的血浆置换术进行收费。"
     },
     {
@@ -495,6 +535,9 @@
         "平衡检查",
         "Barthel",
         "FIM"
+      ],
+      "trigger_codes": [
+        "S340200003"
       ],
       "question": "未开展相关诊疗项目，但收取对应诊疗费用。"
     },
@@ -515,6 +558,7 @@
         "降温毯",
         "核心温度"
       ],
+      "trigger_codes": [],
       "question": "将使用冰袋降温的操作，按照使用专用设备进行的冷疗治疗进行收费。"
     },
     {
@@ -532,6 +576,7 @@
         "康复期",
         "稳定期"
       ],
+      "trigger_codes": [],
       "question": "开展精神障碍作业疗法训练，申请医保支付存在下述问题：\n1.不符合医保限定支付适应症；\n2.不符合人员资质限制；\n3.不符合医保限定支付天数及频次。\n"
     },
     {
@@ -551,6 +596,7 @@
         "截瘫",
         "生活自理"
       ],
+      "trigger_codes": [],
       "question": "开展日常生活动作训练，医保支付存在下述问题：\n1.不符合医保限定支付适应症；\n2.不符合医保限定支付天数；\n3.不符合医保继续支付的限定条件。\n"
     },
     {
@@ -569,6 +615,7 @@
         "影像号",
         "阅片"
       ],
+      "trigger_codes": [],
       "question": "未开展相关诊疗项目，但收取对应诊疗费用。"
     },
     {
@@ -587,6 +634,7 @@
         "MIP",
         "CT 重建"
       ],
+      "trigger_codes": [],
       "question": "开展X线计算机体层(CT)平扫时，未进行三维重建操作，但收取三维重建费用。"
     },
     {
@@ -606,6 +654,7 @@
         "胸痛",
         "术前评估"
       ],
+      "trigger_codes": [],
       "question": "无指征为住院患者普通开展胸部CT检查并收取费用。"
     },
     {
@@ -624,6 +673,7 @@
         "屏气",
         "冠脉 CTA"
       ],
+      "trigger_codes": [],
       "question": "将X线计算机体层(CT)扫描使用心电或呼吸门控加收），作为常规检查，向大多数患者普遍开展并收费。"
     },
     {
@@ -643,6 +693,9 @@
         "MRI 平扫",
         "平扫"
       ],
+      "trigger_codes": [
+        "S210300001"
+      ],
       "question": "开展CT、磁共振等增强扫描，重复收取平扫费用。"
     },
     {
@@ -661,6 +714,7 @@
         "CT",
         "MR"
       ],
+      "trigger_codes": [],
       "question": "开展非超声检查项目并收费，重复收取属于超声检查项目类别下的图象记录费用。"
     },
     {
@@ -680,6 +734,7 @@
         "超声胶片",
         "超声照相"
       ],
+      "trigger_codes": [],
       "question": "收取超声计算机图文报告同时收取彩色打印照片、彩色胶片照相费用"
     },
     {
@@ -698,6 +753,7 @@
         "透视常规检查",
         "超声常规检查"
       ],
+      "trigger_codes": [],
       "question": "开展床旁检查（如X线透视检查、超声检查等）并收费，同时重复收取同类常规检查费用。"
     },
     {
@@ -716,6 +772,9 @@
         "MRI 增强",
         "磁共振增强扫描",
         "MRA"
+      ],
+      "trigger_codes": [
+        "S210200005"
       ],
       "question": "开展临床操作的磁共振引导，收取引导费用时，重复收取磁共振扫描(MRI)、磁共振平扫、磁共振增强扫描、磁共振心脏功能检查、磁共振血管成象(MRA)等检查费用。"
     },
@@ -737,6 +796,11 @@
         "CT 增强",
         "胶片"
       ],
+      "trigger_codes": [
+        "S210300001a0",
+        "S210300001b0",
+        "S210300002b0"
+      ],
       "question": "开展临床操作的CT引导，收取引导费用时，重复收取X线计算机体层(CT)扫描、X线计算机体层(CT)平扫、X线计算机体层(CT)增强扫描、X线计算机体层(CT)成象等检查费用。"
     },
     {
@@ -754,6 +818,9 @@
         "泌尿系多普勒超声",
         "盆腔超声",
         "肾超声"
+      ],
+      "trigger_codes": [
+        "S220201001"
       ],
       "question": "为住院患者开展彩色腹部多普勒超声常规检查时，普遍无指征开展妇科、泌尿系多普勒超声常规检查并收取费用。"
     },
@@ -774,6 +841,7 @@
         "深静脉血栓",
         "动脉硬化"
       ],
+      "trigger_codes": [],
       "question": "为住院患者，普遍无指征开展血管彩色多普勒超声检查并收取费用。"
     },
     {
@@ -791,6 +859,10 @@
         "室壁运动",
         "组织多普勒",
         "TDI"
+      ],
+      "trigger_codes": [
+        "S220600004",
+        "S22060001"
       ],
       "question": "无指征为住院患者普遍开展心脏彩色多普勒超声、左心功能测定、室壁运动分析、组织多普勒显象(TDI)等检查并收费。"
     },
@@ -811,6 +883,7 @@
         "早期胃癌",
         "Barrett食管"
       ],
+      "trigger_codes": [],
       "question": "将内镜色素检查作为入院患者的常规检查，普遍为无相关指征的患者开展检验并收费。"
     },
     {
@@ -829,6 +902,7 @@
         "电解质",
         "检验报告"
       ],
+      "trigger_codes": [],
       "question": "未开展相关诊疗项目，但收取对应诊疗费用。"
     },
     {
@@ -840,6 +914,7 @@
       "priority": "P2",
       "derived_from_template": null,
       "trigger_keywords": [],
+      "trigger_codes": [],
       "question": "将用于临床试验的检验费用，纳入医保基金支付。"
     },
     {
@@ -858,6 +933,9 @@
         "心肌损伤标志物",
         "心肌梗死",
         "横纹肌溶解"
+      ],
+      "trigger_codes": [
+        "S250306010"
       ],
       "question": "医院部分科室将肌红蛋白测定作为入院患者的常规检查，对大量无相关疾病指征的患者开展检验。"
     },
@@ -878,6 +956,9 @@
         "脓毒症",
         "酸碱平衡"
       ],
+      "trigger_codes": [
+        "S250302008"
+      ],
       "question": "医院部分科室将血浆乳酸测定作为入院患者的常规检查，对大量无相关疾病指征的患者开展检验。"
     },
     {
@@ -896,6 +977,10 @@
         "心衰",
         "心功能不全",
         "心衰标志物"
+      ],
+      "trigger_codes": [
+        "S250306012",
+        "S250306013"
       ],
       "question": "医院部分科室将B型钠尿肽、B型钠尿肽前体等测定作为入院患者的常规检查，对大量无相关疾病指征的患者开展检验。"
     },
@@ -920,6 +1005,15 @@
         "乙型肝炎",
         "丙型肝炎"
       ],
+      "trigger_codes": [
+        "S250403004",
+        "S250403005",
+        "S250403006",
+        "S250403007",
+        "S250403009",
+        "S250403010",
+        "S250403014"
+      ],
       "question": "非肝炎患者，住院期间多次测定乙肝、丙肝抗体。"
     },
     {
@@ -937,6 +1031,10 @@
         "甲胎蛋白异质体",
         "肝癌标志物",
         "孕妇唐筛"
+      ],
+      "trigger_codes": [
+        "S250404002",
+        "S25040402"
       ],
       "question": "将甲胎蛋白测定作为入院患者的常规检查，对大量无相关疾病指征的患者开展检验并收费。"
     },
@@ -958,6 +1056,7 @@
         "CA724",
         "肿瘤标志物"
       ],
+      "trigger_codes": [],
       "question": "将癌胚抗原、糖类抗原作为入院患者的常规检查，对大量无相关疾病指征的患者开展检验并收费。"
     },
     {
@@ -978,6 +1077,7 @@
         "细胞因子谱",
         "风湿免疫"
       ],
+      "trigger_codes": [],
       "question": "将各种白介素测定、干扰素测定、肿瘤坏死因素测定等作为入院患者的常规检查，对大量无相关疾病指征的患者开展检验并收费。"
     },
     {
@@ -997,6 +1097,10 @@
         "tPSA",
         "前列腺"
       ],
+      "trigger_codes": [
+        "S250404005",
+        "S250404006"
+      ],
       "question": "将前列腺特异性抗原作为普通人群入院常规检查，对大量非前列腺相关疾病的患者开展检测并收费。"
     },
     {
@@ -1015,6 +1119,9 @@
         "严重感染",
         "感染性休克",
         "SIRS"
+      ],
+      "trigger_codes": [
+        "S250310054"
       ],
       "question": "将降钙素原检测（PCT）作为入院患者的常规检查，对大量无相关疾病指征的患者开展检验并收费。"
     },
@@ -1036,6 +1143,10 @@
         "ACS",
         "心肌损伤"
       ],
+      "trigger_codes": [
+        "S250306008",
+        "S250306009"
+      ],
       "question": "将血清肌钙蛋白Ⅰ测定作为入院患者的常规检查，对大量无相关指征的患者开展检验并收费。"
     },
     {
@@ -1055,6 +1166,7 @@
         "结核抗体",
         "立克次体抗体"
       ],
+      "trigger_codes": [],
       "question": "将细菌抗体测定作为入院患者的常规检查，对大量无相关疾病指征的患者开展检验并收费。"
     },
     {
@@ -1072,6 +1184,7 @@
         "蜡块",
         "组织块"
       ],
+      "trigger_codes": [],
       "question": "开展全器官大切片检查与诊断、手术标本检查与诊断，未按计价单位收费。"
     },
     {
@@ -1090,6 +1203,7 @@
         "卵巢血管结扎",
         "高位结扎"
       ],
+      "trigger_codes": [],
       "question": "开展根治性宫颈切除术，重复收取卵巢动静脉高位结扎术。"
     },
     {
@@ -1110,6 +1224,7 @@
         "人工报告",
         "报告费"
       ],
+      "trigger_codes": [],
       "question": "开展肿瘤全身断层显像，重复收取人工报告费用。"
     },
     {
@@ -1126,6 +1241,9 @@
         "体表肿物切除",
         "皮下肿物",
         "切口数"
+      ],
+      "trigger_codes": [
+        "S331602004"
       ],
       "question": "开展体表肿物切除术等手术，未按照同一切口、不同切口手术计价标准收费。"
     },
@@ -1145,6 +1263,9 @@
         "瘤径",
         "病灶"
       ],
+      "trigger_codes": [
+        "S240700004"
+      ],
       "question": "高强度超声聚焦刀治疗，未按计价标准收费。"
     },
     {
@@ -1162,6 +1283,7 @@
         "放疗定位",
         "疗程"
       ],
+      "trigger_codes": [],
       "question": "开展简易定位、专用X线机模拟定位、专用X线机复杂模拟定位等，未按照计价单位收费。"
     },
     {
@@ -1173,6 +1295,7 @@
       "priority": "P2",
       "derived_from_template": null,
       "trigger_keywords": [],
+      "trigger_codes": [],
       "question": "将腹部体表良性病变切除，串换为腹壁肿瘤切除术收费。"
     },
     {
@@ -1190,6 +1313,10 @@
         "全麻费用",
         "麻醉记录",
         "诱导药物"
+      ],
+      "trigger_codes": [
+        "S330100005a",
+        "S330100005b"
       ],
       "question": "未开展相关诊疗项目，但收取对应诊疗费用。"
     },
@@ -1209,6 +1336,7 @@
         "麻醉起止",
         "诱导时间"
       ],
+      "trigger_codes": [],
       "question": "各种麻醉方式（如全身麻醉、神经阻滞麻醉、椎管内麻醉、局部麻醉等），收费时长大于实际麻醉记录时长。"
     },
     {
@@ -1228,6 +1356,7 @@
         "强化镇静",
         "麻醉记录"
       ],
+      "trigger_codes": [],
       "question": "开展基础麻醉，重复收取强化麻醉费用。"
     },
     {
@@ -1244,6 +1373,9 @@
         "PACU",
         "麻醉恢复室监护",
         "复苏监护"
+      ],
+      "trigger_codes": [
+        "S330100005c"
       ],
       "question": "医院无麻醉恢复室，收取麻醉恢复室监护费用。"
     },
@@ -1263,6 +1395,11 @@
         "局麻",
         "椎管内麻醉"
       ],
+      "trigger_codes": [
+        "S330100003",
+        "S330100005a",
+        "S330100005b"
+      ],
       "question": "向非全身麻醉状态的患者，收取麻醉深度电生理监测费用。"
     },
     {
@@ -1280,6 +1417,9 @@
         "罗库溴铵",
         "维库溴铵",
         "顺阿曲库铵"
+      ],
+      "trigger_codes": [
+        "XM03AC"
       ],
       "question": "对未使用肌肉松弛药物的全身麻醉患者，开展麻醉中肌松监测并收费。"
     },
@@ -1299,6 +1439,9 @@
         "鼻内镜手术",
         "中耳手术"
       ],
+      "trigger_codes": [
+        "S330100016"
+      ],
       "question": "对不符合控制性降压适用范围（如不能耐受、非保护重要脏器氧供等）的患者，收取控制性降压费用。"
     },
     {
@@ -1317,6 +1460,7 @@
         "全麻",
         "儿童 ICU"
       ],
+      "trigger_codes": [],
       "question": "对不符合脑电双频指数监测适用范围（如非全麻、非儿童重症监护病房镇静镇痛、深度睡眠等）的患者，收取脑电双频指数监测费用。"
     },
     {
@@ -1334,6 +1478,9 @@
         "视频喉镜",
         "经鼻气管插管",
         "Mallampati"
+      ],
+      "trigger_codes": [
+        "S330100014"
       ],
       "question": "医院无指征普遍开展特殊方法气管插管术。"
     },
@@ -1353,6 +1500,7 @@
         "光棒",
         "环甲膜穿刺"
       ],
+      "trigger_codes": [],
       "question": "开展气管插管术，但按照特殊方法气管插管术收费。"
     },
     {
@@ -1369,6 +1517,9 @@
         "血气分析",
         "床旁监测",
         "无尿"
+      ],
+      "trigger_codes": [
+        "S3106020"
       ],
       "question": "未开展相关诊疗项目，但收取对应诊疗费用。"
     },
@@ -1388,6 +1539,7 @@
         "脑卒中",
         "脊髓损伤"
       ],
+      "trigger_codes": [],
       "question": "对不符合康复治疗适应症范围的患者开展康复治疗项目，或未开展康复治疗但收取相应费用。"
     },
     {
@@ -1407,6 +1559,9 @@
         "PIVAS",
         "配液费",
         "配置费"
+      ],
+      "trigger_codes": [
+        "S120400008"
       ],
       "question": "开展静脉高营养治疗，重复收取静脉用药集中配置费用。"
     },
@@ -1428,6 +1583,10 @@
         "心理护理",
         "动静脉置管护理"
       ],
+      "trigger_codes": [
+        "S120100013",
+        "S12010001400"
+      ],
       "question": "医院开展重症监护等并对应收费，重复收取口腔护理、皮肤护理、会阴护理、肛周护理、心理护理、动静脉置管护理等费用。"
     },
     {
@@ -1447,6 +1606,7 @@
         "冷冻",
         "气管支架"
       ],
+      "trigger_codes": [],
       "question": "开展经纤支镜治疗，按照经纤支镜特殊治疗进行收费。"
     },
     {
@@ -1465,6 +1625,7 @@
         "造血干细胞移植",
         "粒细胞缺乏"
       ],
+      "trigger_codes": [],
       "question": "将普通病房床位，串换为层流洁净病房床位进行收费。"
     },
     {
@@ -1483,6 +1644,7 @@
         "烤瓷冠",
         "正畸"
       ],
+      "trigger_codes": [],
       "question": "将牙齿美容修复类（如种植牙、烤瓷/全瓷冠、正畸等）非医保支付项目，套用串换为口腔颌面部软组织缺损局部组织瓣修复术等口腔手术项目纳入医保结算，虚构诊疗服务，骗取医保基金。"
     },
     {
@@ -1501,6 +1663,7 @@
         "烤瓷冠",
         "正畸"
       ],
+      "trigger_codes": [],
       "question": "将牙齿美容修复类（如种植牙、烤瓷/全瓷冠、正畸等）非医保支付项目，套用串换为口腔颌面部巨大血管瘤淋巴管瘤切除术等口腔手术项目纳入医保结算，虚构诊疗服务，骗取医保基金。"
     },
     {
@@ -1519,6 +1682,7 @@
         "烤瓷冠",
         "正畸"
       ],
+      "trigger_codes": [],
       "question": "将牙齿美容修复类（如种植牙、烤瓷/全瓷冠、正畸等）非医保支付项目，套用串换为口腔颌面部骨缺损游离骨瓣移植修复术等口腔手术项目纳入医保结算，虚构诊疗服务，骗取医保基金。"
     },
     {
@@ -1537,6 +1701,7 @@
         "烤瓷冠",
         "正畸"
       ],
+      "trigger_codes": [],
       "question": "将牙齿美容修复类（如种植牙、烤瓷/全瓷冠、正畸等）非医保支付项目，套用串换为带血管游离骨移植颌骨重建术等口腔手术项目纳入医保结算，虚构诊疗服务，骗取医保基金。"
     },
     {
@@ -1555,6 +1720,7 @@
         "烤瓷冠",
         "正畸"
       ],
+      "trigger_codes": [],
       "question": "将牙齿美容修复类（如种植牙、烤瓷/全瓷冠、正畸等）非医保支付项目，套用串换为牙周组织瓣移植术等口腔手术项目纳入医保结算，虚构诊疗服务，骗取医保基金。"
     },
     {
@@ -1573,6 +1739,7 @@
         "烤瓷冠",
         "正畸"
       ],
+      "trigger_codes": [],
       "question": "将牙齿美容修复类（如种植牙、烤瓷/全瓷冠、正畸等）非医保支付项目，套用串换为显微根管治疗术等口腔治疗项目上传医保结算，虚构诊疗服务，骗取医保基金。"
     },
     {
@@ -1590,6 +1757,7 @@
         "烤瓷冠",
         "正畸"
       ],
+      "trigger_codes": [],
       "question": "将牙齿美容修复类（如种植牙、烤瓷/全瓷冠、正畸等）非医保支付项目，套用串换为根管再治疗术等口腔治疗项目上传医保结算，虚构诊疗服务，骗取医保基金。"
     },
     {
@@ -1607,6 +1775,7 @@
         "烤瓷冠",
         "正畸"
       ],
+      "trigger_codes": [],
       "question": "将牙齿美容修复类（如种植牙、烤瓷/全瓷冠、正畸等）非医保支付项目，套用串换为根管充填术等口腔治疗项目上传医保结算，虚构诊疗服务，骗取医保基金。"
     },
     {
@@ -1624,6 +1793,7 @@
         "烤瓷冠",
         "正畸"
       ],
+      "trigger_codes": [],
       "question": "将牙齿美容修复类（如种植牙、烤瓷/全瓷冠、正畸等）非医保支付项目，套用串换为牙髓失活术等口腔治疗项目上传医保结算，虚构诊疗服务，骗取医保基金。"
     },
     {
@@ -1642,6 +1812,7 @@
         "烤瓷冠",
         "正畸"
       ],
+      "trigger_codes": [],
       "question": "将牙齿美容修复类（如种植牙、烤瓷/全瓷冠、正畸等）非医保支付项目，套用串换为牙髓摘除术等口腔治疗项目上传医保结算，虚构诊疗服务，骗取医保基金。"
     },
     {
@@ -1660,6 +1831,7 @@
         "烤瓷冠",
         "正畸"
       ],
+      "trigger_codes": [],
       "question": "将牙齿美容修复类（如种植牙、烤瓷/全瓷冠、正畸等）非医保支付项目，套用串换为牙脱敏治疗等口腔治疗项目上传医保结算，虚构诊疗服务，骗取医保基金。"
     },
     {
@@ -1678,6 +1850,7 @@
         "烤瓷冠",
         "正畸"
       ],
+      "trigger_codes": [],
       "question": "将牙齿美容修复类（如种植牙、烤瓷/全瓷冠、正畸等）非医保支付项目，套用串换为牙体缺损粘接修复术等口腔治疗项目上传医保结算，虚构诊疗服务，骗取医保基金。"
     },
     {
@@ -1698,6 +1871,7 @@
         "牙髓炎",
         "普通拔牙"
       ],
+      "trigger_codes": [],
       "question": "开展普通拔牙、阻生牙拔除操作以及对牙龈炎、牙髓炎患者的普通诊治过程中，虚构服务收取口腔颌面软组织清创术等费用，虚计费用骗取医保基金。"
     },
     {
@@ -1716,6 +1890,7 @@
         "牙龈炎",
         "牙髓炎"
       ],
+      "trigger_codes": [],
       "question": "开展普通拔牙、阻生牙拔除操作以及对牙龈炎、牙髓炎患者的普通诊治过程中，虚构服务收取根尖搔刮术等费用，虚计费用骗取医保基金。"
     },
     {
@@ -1734,6 +1909,7 @@
         "牙龈炎",
         "牙髓炎"
       ],
+      "trigger_codes": [],
       "question": "开展普通拔牙、阻生牙拔除操作以及对牙龈炎、牙髓炎患者的普通诊治过程中，虚构服务收取分根术等费用，虚计费用骗取医保基金。"
     },
     {
@@ -1752,6 +1928,7 @@
         "牙龈炎",
         "牙髓炎"
       ],
+      "trigger_codes": [],
       "question": "开展普通拔牙、阻生牙拔除操作以及对牙龈炎、牙髓炎患者的普通诊治过程中，虚构服务收取牙龈切除术等费用，虚计费用骗取医保基金。"
     },
     {
@@ -1770,6 +1947,7 @@
         "牙龈炎",
         "牙髓炎"
       ],
+      "trigger_codes": [],
       "question": "开展普通拔牙、阻生牙拔除操作以及对牙龈炎、牙髓炎患者的普通诊治过程中，虚构服务收取龈瓣整形术等费用，虚计费用骗取医保基金。"
     },
     {
@@ -1789,6 +1967,7 @@
         "牙数",
         "根管数"
       ],
+      "trigger_codes": [],
       "question": "开展各种口腔检查或治疗项目，未按照计价单位收费。"
     },
     {
@@ -1807,6 +1986,7 @@
         "根面平整",
         "龈下刮治"
       ],
+      "trigger_codes": [],
       "question": "开展牙龈翻瓣术，重复收取根面平整术费用。"
     },
     {
@@ -1825,6 +2005,7 @@
         "末梢血糖",
         "葡萄糖测定"
       ],
+      "trigger_codes": [],
       "question": "将葡萄糖测定、床旁血糖仪检测串换为电脑血糖监测收费。"
     },
     {
@@ -1843,6 +2024,7 @@
         "TMAb",
         "抗甲状腺微粒体抗体"
       ],
+      "trigger_codes": [],
       "question": "无指征为住院患者普遍打包开展肾上腺皮质激素、性腺激素、血清生长激素、抗甲状腺球蛋白抗体(TGAb)、抗甲状腺微粒体抗体(TMAb)等多种内分泌相关检查并收费。"
     },
     {
@@ -1862,6 +2044,7 @@
         "FT3",
         "FT4"
       ],
+      "trigger_codes": [],
       "question": "为住院患者无指征普遍开展\"甲状腺功能三项\"或\"甲状腺功能五项\"检查并收费。"
     },
     {
@@ -1873,6 +2056,7 @@
       "priority": "P2",
       "derived_from_template": null,
       "trigger_keywords": [],
+      "trigger_codes": [],
       "question": "通过夸大病情、虚假宣传、隐瞒风险、恐吓威胁等方式，迫使或诱导患者及家属同意住院，强迫控制患者延长住院。"
     },
     {
@@ -1884,6 +2068,7 @@
       "priority": "P2",
       "derived_from_template": null,
       "trigger_keywords": [],
+      "trigger_codes": [],
       "question": "以免费体检、免除费用、上门接送、提供返利、转诊提成等方式，拉拢非必要住院的轻症患者或康养需求的非精神障碍老人群体、困难群体住院。"
     },
     {
@@ -1895,6 +2080,7 @@
       "priority": "P2",
       "derived_from_template": null,
       "trigger_keywords": [],
+      "trigger_codes": [],
       "question": "将未伴发精神行为症状的脑梗后遗症、癫痫、智力障碍、阿尔兹海默症、酒精依赖等疾病，夸大病情、虚假诊断为重性精神疾病并收治住院。"
     },
     {
@@ -1906,6 +2092,7 @@
       "priority": "P2",
       "derived_from_template": null,
       "trigger_keywords": [],
+      "trigger_codes": [],
       "question": "将健康人员、轻症患者诊断编造、篡改为重性精神疾病诊断；虚构自伤、自杀、木僵等风险以夸大病情、延长住院；虚增并发症导致ICD编码与临床实际不符。"
     },
     {
@@ -1917,6 +2104,7 @@
       "priority": "P2",
       "derived_from_template": null,
       "trigger_keywords": [],
+      "trigger_codes": [],
       "question": "患者实际未在院（挂床住院）、冒用他人信息虚构住院。"
     },
     {
@@ -1928,6 +2116,7 @@
       "priority": "P2",
       "derived_from_template": null,
       "trigger_keywords": [],
+      "trigger_codes": [],
       "question": "对未实施或仅部分实施的心理治疗、精神监护、工娱治疗、暗示疗法、森田疗法等诊疗项目进行计费。"
     },
     {
@@ -1939,6 +2128,7 @@
       "priority": "P2",
       "derived_from_template": null,
       "trigger_keywords": [],
+      "trigger_codes": [],
       "question": "虚构服务频次，记录的诊疗、护理、检查频次或总服务量，远超临床实际可能或医院最大服务能力（如量表测查总时长超医师工时）。"
     },
     {
@@ -1957,6 +2147,7 @@
         "精神病人护理",
         "BPRS"
       ],
+      "trigger_codes": [],
       "question": "开展精神科监护，未严格按照诊疗规范及项目内涵规定的适用对象、监护内容、病区环境、人员资质等要求提供服务，仍按该项目标准收费。"
     },
     {
@@ -1975,6 +2166,7 @@
         "复诊",
         "再次入院"
       ],
+      "trigger_codes": [],
       "question": "已诊断为精神疾病的住院患者，多次收取首诊精神病费用。"
     },
     {
@@ -1991,6 +2183,9 @@
         "治疗时长",
         "加收",
         "10分钟"
+      ],
+      "trigger_codes": [
+        "S3115030"
       ],
       "question": "开展心理治疗、精神康复治疗等时，未按照加收标准收费。"
     },
@@ -2009,6 +2204,7 @@
         "药物治疗监测",
         "精神药物监测"
       ],
+      "trigger_codes": [],
       "question": "开展精神科监护，重复收取抗精神病药物治疗监测费用"
     },
     {
@@ -2026,6 +2222,7 @@
         "日常生活动作训练",
         "ADL 训练"
       ],
+      "trigger_codes": [],
       "question": "开展精神障碍、身体功能障碍、辅助器具等各类作业疗法训练时，同时收取日常生活动作训练费用。"
     },
     {
@@ -2044,6 +2241,7 @@
         "进食训练",
         "卫生教育"
       ],
+      "trigger_codes": [],
       "question": "开展精神障碍作业疗法训练，重复收取日常生活动作训练费用。"
     },
     {
@@ -2062,6 +2260,7 @@
         "尿失禁治疗",
         "ADL 训练"
       ],
+      "trigger_codes": [],
       "question": "开展康复治疗，收取身体功能障碍、辅助器具等各种作业疗法训练费用，同时重复收取日常生活动作训练费用。"
     },
     {
@@ -2081,6 +2280,7 @@
         "NPI",
         "CMAI"
       ],
+      "trigger_codes": [],
       "question": "将实际提供的低价或非医保项目，记录并结算为高价或医保目录内的精神科项目，如将日常查房与平时看护串换为行为观察和治疗收费等。"
     },
     {
@@ -2099,6 +2299,7 @@
         "心理治疗师",
         "CBT"
       ],
+      "trigger_codes": [],
       "question": "将应用录音录像设备开展的治疗，串换为心理治疗收费。"
     },
     {
@@ -2117,6 +2318,7 @@
         "心理治疗师",
         "治疗室"
       ],
+      "trigger_codes": [],
       "question": "将常规查房过程，串换为心理治疗项目收费。"
     },
     {
@@ -2135,6 +2337,7 @@
         "抑郁",
         "睡眠障碍"
       ],
+      "trigger_codes": [],
       "question": "未严格执行精神科住院标准，将轻中度焦虑/抑郁、睡眠障碍、酒精依赖等可经门诊管控的非危急重症患者（门诊管控不佳的除外）违规收治住院。"
     },
     {
@@ -2152,6 +2355,7 @@
         "稳定期",
         "康复期"
       ],
+      "trigger_codes": [],
       "question": "违反项目内涵及适应证规定，为非重性精神病急性发作期、或无急性发作指征的患者常规化、全程化开展精神科监护并收费。"
     },
     {
@@ -2171,6 +2375,7 @@
         "精神分裂症",
         "抑郁症"
       ],
+      "trigger_codes": [],
       "question": "开展脑反射治疗时，超出脑波治疗仪说明书规定的适应症范围（仅限失眠及强迫症状），为精神分裂症、抑郁症、焦虑症等非适用病症患者进行治疗，并收取相应费用。"
     },
     {
@@ -2190,6 +2395,10 @@
         "氯氮平",
         "氟哌啶醇"
       ],
+      "trigger_codes": [
+        "XN05AH",
+        "XN05AX"
+      ],
       "question": "违反诊疗规范将抗精神病药物治疗监测普遍为无相关指征的患者开展并收费。"
     },
     {
@@ -2201,6 +2410,7 @@
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [],
+      "trigger_codes": [],
       "question": "申请医保支付的「超说明书类药品」，超出药品说明书适应症范围。"
     },
     {
@@ -2212,6 +2422,7 @@
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [],
+      "trigger_codes": [],
       "question": "申请医保支付的「限二线类药品」，无一线药失败/不耐受证据即作二线使用。"
     },
     {
@@ -2223,6 +2434,7 @@
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [],
+      "trigger_codes": [],
       "question": "申请医保支付的「禁忌症类药品」，用于存在该药说明书疾病禁忌的患者 (用药安全)。"
     },
     {
@@ -2230,12 +2442,13 @@
       "yaml_path": "configs/rules/RD10.yaml",
       "domain": "药品",
       "violation_type": "超医保限定支付适应症用药",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "人血白蛋白"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「人血白蛋白」，超出医保限定支付适应症范围。"
     },
     {
@@ -2243,13 +2456,14 @@
       "yaml_path": "configs/rules/RD11.yaml",
       "domain": "药品",
       "violation_type": "超医保限定支付适应症用药",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "聚桂醇注射液",
         "聚桂醇"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「聚桂醇注射液」，超出医保限定支付适应症范围。"
     },
     {
@@ -2257,13 +2471,14 @@
       "yaml_path": "configs/rules/RD12.yaml",
       "domain": "药品",
       "violation_type": "超医保限定支付适应症用药",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "果糖注射液",
         "果糖"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「果糖注射液」，超出医保限定支付适应症范围。"
     },
     {
@@ -2271,13 +2486,14 @@
       "yaml_path": "configs/rules/RD13.yaml",
       "domain": "药品",
       "violation_type": "超医保限定支付适应症用药",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "ω-3鱼油脂肪乳注射液",
         "ω-3鱼油"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「ω-3鱼油脂肪乳注射液」，超出医保限定支付适应症范围。"
     },
     {
@@ -2285,13 +2501,14 @@
       "yaml_path": "configs/rules/RD14.yaml",
       "domain": "药品",
       "violation_type": "超医保限定支付适应症用药",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "注射用盐酸万古霉素",
         "盐酸万古霉素"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「注射用盐酸万古霉素」，超出医保限定支付适应症范围。"
     },
     {
@@ -2299,12 +2516,13 @@
       "yaml_path": "configs/rules/RD15.yaml",
       "domain": "药品",
       "violation_type": "超医保限定支付适应症用药",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "复方氨基酸注射液(20AA)"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「复方氨基酸注射液(20AA)」，超出医保限定支付适应症范围。"
     },
     {
@@ -2312,13 +2530,14 @@
       "yaml_path": "configs/rules/RD16.yaml",
       "domain": "药品",
       "violation_type": "超医保限定支付适应症用药",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "恩替卡韦口服溶液",
         "恩替卡韦"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「恩替卡韦口服溶液」，超出医保限定支付适应症范围。"
     },
     {
@@ -2326,13 +2545,14 @@
       "yaml_path": "configs/rules/RD17.yaml",
       "domain": "药品",
       "violation_type": "超医保限定支付适应症用药",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "注射用福沙匹坦双葡甲胺",
         "福沙匹坦双葡甲胺"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「注射用福沙匹坦双葡甲胺」，超出医保限定支付适应症范围。"
     },
     {
@@ -2340,13 +2560,14 @@
       "yaml_path": "configs/rules/RD18.yaml",
       "domain": "药品",
       "violation_type": "超医保限定支付适应症用药",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "右酮洛芬氨丁三醇注射液",
         "右酮洛芬氨丁三醇"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「右酮洛芬氨丁三醇注射液」，超出医保限定支付适应症范围。"
     },
     {
@@ -2354,13 +2575,14 @@
       "yaml_path": "configs/rules/RD19.yaml",
       "domain": "药品",
       "violation_type": "超医保限定支付适应症用药",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "重组人血小板生成素注射液",
         "重组人血小板生成素"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「重组人血小板生成素注射液」，超出医保限定支付适应症范围。"
     },
     {
@@ -2368,13 +2590,14 @@
       "yaml_path": "configs/rules/RD20.yaml",
       "domain": "药品",
       "violation_type": "超医保限定支付适应症用药",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "注射用艾普拉唑钠",
         "艾普拉唑钠"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「注射用艾普拉唑钠」，超出医保限定支付适应症范围。"
     },
     {
@@ -2382,13 +2605,14 @@
       "yaml_path": "configs/rules/RD21.yaml",
       "domain": "药品",
       "violation_type": "超医保限定支付适应症用药",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "泽布替尼胶囊",
         "泽布替尼"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「泽布替尼胶囊」，超出医保限定支付适应症范围。"
     },
     {
@@ -2396,13 +2620,14 @@
       "yaml_path": "configs/rules/RD22.yaml",
       "domain": "药品",
       "violation_type": "超医保限定支付适应症用药",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "拓培非格司亭注射液",
         "拓培非格司亭"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「拓培非格司亭注射液」，超出医保限定支付适应症范围。"
     },
     {
@@ -2410,13 +2635,14 @@
       "yaml_path": "configs/rules/RD23.yaml",
       "domain": "药品",
       "violation_type": "超医保限定支付适应症用药",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "盐酸莫西沙星注射液",
         "盐酸莫西沙星"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「盐酸莫西沙星注射液」，超出医保限定支付适应症范围。"
     },
     {
@@ -2424,13 +2650,14 @@
       "yaml_path": "configs/rules/RD24.yaml",
       "domain": "药品",
       "violation_type": "超药品说明书适应症用药",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "甲状腺片",
         "甲状腺"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「甲状腺片」，超出药品说明书适应症范围。"
     },
     {
@@ -2438,13 +2665,14 @@
       "yaml_path": "configs/rules/RD25.yaml",
       "domain": "药品",
       "violation_type": "超药品说明书适应症用药",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "盐酸尼卡地平注射液",
         "盐酸尼卡地平"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「盐酸尼卡地平注射液」，超出药品说明书适应症范围。"
     },
     {
@@ -2452,13 +2680,14 @@
       "yaml_path": "configs/rules/RD26.yaml",
       "domain": "药品",
       "violation_type": "超药品说明书适应症用药",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "盐酸二甲双胍片",
         "盐酸二甲双胍"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「盐酸二甲双胍片」，超出药品说明书适应症范围。"
     },
     {
@@ -2466,13 +2695,14 @@
       "yaml_path": "configs/rules/RD27.yaml",
       "domain": "药品",
       "violation_type": "超药品说明书适应症用药",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "苯磺酸氨氯地平片",
         "苯磺酸氨氯地平"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「苯磺酸氨氯地平片」，超出药品说明书适应症范围。"
     },
     {
@@ -2480,13 +2710,14 @@
       "yaml_path": "configs/rules/RD28.yaml",
       "domain": "药品",
       "violation_type": "超药品说明书适应症用药",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "缬沙坦片",
         "缬沙坦"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「缬沙坦片」，超出药品说明书适应症范围。"
     },
     {
@@ -2494,13 +2725,14 @@
       "yaml_path": "configs/rules/RD29.yaml",
       "domain": "药品",
       "violation_type": "用药安全/禁忌",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "奥美拉唑肠溶片",
         "奥美拉唑"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「奥美拉唑肠溶片」，用于存在该药说明书疾病禁忌的患者 (用药安全)。"
     },
     {
@@ -2508,13 +2740,14 @@
       "yaml_path": "configs/rules/RD30.yaml",
       "domain": "药品",
       "violation_type": "用药安全/禁忌",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "葡萄糖酸钙片",
         "葡萄糖酸钙"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「葡萄糖酸钙片」，用于存在该药说明书疾病禁忌的患者 (用药安全)。"
     },
     {
@@ -2522,13 +2755,14 @@
       "yaml_path": "configs/rules/RD31.yaml",
       "domain": "药品",
       "violation_type": "用药安全/禁忌",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "碳酸钙片",
         "碳酸钙"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「碳酸钙片」，用于存在该药说明书疾病禁忌的患者 (用药安全)。"
     },
     {
@@ -2536,13 +2770,14 @@
       "yaml_path": "configs/rules/RD32.yaml",
       "domain": "药品",
       "violation_type": "用药安全/禁忌",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "对乙酰氨基酚片",
         "对乙酰氨基酚"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「对乙酰氨基酚片」，用于存在该药说明书疾病禁忌的患者 (用药安全)。"
     },
     {
@@ -2550,13 +2785,14 @@
       "yaml_path": "configs/rules/RD33.yaml",
       "domain": "药品",
       "violation_type": "用药安全/禁忌",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "乙酰半胱氨酸颗粒",
         "乙酰半胱氨酸"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「乙酰半胱氨酸颗粒」，用于存在该药说明书疾病禁忌的患者 (用药安全)。"
     },
     {
@@ -2564,13 +2800,14 @@
       "yaml_path": "configs/rules/RD34.yaml",
       "domain": "药品",
       "violation_type": "用药安全/禁忌",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "甲氧氯普胺片",
         "甲氧氯普胺"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「甲氧氯普胺片」，用于存在该药说明书疾病禁忌的患者 (用药安全)。"
     },
     {
@@ -2578,13 +2815,14 @@
       "yaml_path": "configs/rules/RD35.yaml",
       "domain": "药品",
       "violation_type": "用药安全/禁忌",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "阿司匹林片",
         "阿司匹林"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「阿司匹林片」，用于存在该药说明书疾病禁忌的患者 (用药安全)。"
     },
     {
@@ -2592,13 +2830,14 @@
       "yaml_path": "configs/rules/RD36.yaml",
       "domain": "药品",
       "violation_type": "用药安全/禁忌",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "瑞舒伐他汀钙片",
         "瑞舒伐他汀钙"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「瑞舒伐他汀钙片」，用于存在该药说明书疾病禁忌的患者 (用药安全)。"
     },
     {
@@ -2606,13 +2845,14 @@
       "yaml_path": "configs/rules/RD37.yaml",
       "domain": "药品",
       "violation_type": "超医保限定二线用药",
-      "status": "ready",
+      "status": "abandoned",
       "priority": "P1",
       "derived_from_template": "M8",
       "trigger_keywords": [
         "艾普拉唑肠溶片",
         "艾普拉唑"
       ],
+      "trigger_codes": [],
       "question": "申请医保支付的「艾普拉唑肠溶片」，无一线药失败/不耐受证据即作二线使用。"
     }
   ]

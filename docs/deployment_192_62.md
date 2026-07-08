@@ -41,6 +41,13 @@ JAVERT_SQL_DRIVER=ODBC Driver 18 for SQL Server
 JAVERT_SESSION_SECRET=<32+ 字符 token_urlsafe>
 JAVERT_SESSION_HTTPS_ONLY=false   # 内网 http; 上 nginx TLS 后切 true
 JAVERT_SESSION_MAX_AGE=2592000    # 30 天
+# ⚠ harden-onsite-redlines 起 SESSION_SECRET 为**硬性启动前提** (with_mssql 生产形态):
+# 缺失/仍是源码默认值时 create_app() 抛错拒绝启动 — `javert web` 与 `uvicorn ...main:app`
+# 直起同样拦截 (此前 uvicorn 直起可绕过 CLI 检查). 本地 dev 用 `javert web --no-mssql` 不受限.
+
+# raw 原文端点 (/api/patient/{pid}/raw) 每会话限流 — 默认 30/minute (slowapi 语法).
+# 专家逐个点开病历不受影响; 脚本枚举患者号被 429 (且 429 请求同样落审计日志可追查).
+# 现场误伤时一行调档: JAVERT_RAW_RATE_LIMIT=60/minute
 
 # 工作台
 JAVERT_WEB_HOST=0.0.0.0
@@ -272,6 +279,59 @@ scp "data/sy_检验.csv" "data/sy_patient_examination.csv" admin2@192.168.31.62:
 > 首次有用户打开检验记录 tab / 点检验命中项时, `LabLoader` 流式建索引 ≈6 s (进程内缓存, 仅首次; 392 MB 文件需 ~1-2 GB 临时内存峰值). 之后命中即时返回.
 
 **回归确认** (Mac 上已跑 464 passed / 1 skip): 改动覆盖 `tests/test_hit_resolver.py` (命中名提取 + lab/exam 归并 labs tab) + `tests/test_workbench_routes.py` (/raw 返回 labs/exams). 上线前在 62 `uv run pytest tests/test_hit_resolver.py tests/test_workbench_routes.py -q` 复核一遍.
+
+### 10.2 本次升级附加步骤 (2026-07-06 add-workbench-sql-raw-source: 工作台原文 hub SQL 源)
+
+本批改动 = `src/javert/{config.py, data/hub_source.py(新), web/hub_raw_source.py(新), web/api/routes_workbench.py}` + `scripts/etl_from_data_hub.py`(薄壳化). 按 §10 step 1-4 推 src + kill-9 重拉. 另需两步:
+
+**① `.env` 加开关 (开启 hub 原文源)**:
+
+```bash
+ssh admin2@192.168.31.62 'echo "JAVERT_HUB_RAW_ENABLED=true" >> ~/javert/.env'
+# 重拉后生效. 回滚 = 该行改 false (或删) + 再重拉, 一步回纯 CSV.
+```
+
+不加开关部署 = 行为与升级前完全一致 (开关默认 false).
+
+**② TP_data_hub 索引 (已于 2026-07-06 从 Mac 建好, 幂等可重跑)** — `scripts/sql/create_data_hub_indexes.sql` (9 个: 5 表 JZLSH + fee⋈EXT + LIS join + 2 RIS). 实测索引后单患者首查 2.44s → 0.31s.
+
+**效果**: 数据在 `TP_data_hub` 的患者 (如 szx2.0 批次 4680 人) 原文/费用/检验/主诊断**即查即得**, 不再需要拷 CSV 到 62 data_import / 不再需要重启; 62 的大 overlay 文件 (case_notes/shi_fee/lab_results 追加的 szx2 数据, ~1GB) 验证 hub 路径正常后可删除回收内存 (`*.bak.preszx2full` 为追加前备份, 恢复 = cp 回去).
+
+**验证**: 点一个只在 hub 的患者 (如 211318013) 原文 tab 应正常展示 (首次点开 <1s); 点 J66252 应与升级前一致; 断网 142 时老患者原文不受影响.
+
+### 10.3 本次升级附加步骤 (2026-07-07 harden-onsite-redlines: 进院红线 7 项)
+
+本批改动 = `src/javert/{config.py, cli.py, web/api/{main,routes_auth,routes_workbench,routes_audit}.py, tools/llm_provider.py, commands/audit_patient.py, data/{csv_loader,hub_source}.py}` + `scripts/sql/create_data_hub_indexes.sql` (追加 BA 四表索引) + `scripts/diff_fee_match.py` (新). 按 §10 step 1-4 推 src + kill-9 重拉. 注意事项:
+
+**① session secret 变硬性前提** — 重拉前确认 `.env` 里 `JAVERT_SESSION_SECRET` 存在且非默认值 (62 一直有, 只是从此**缺了起不来**, 报错信息会直说). 见 §2 注释.
+
+**② raw 端点限流 + 留痕** — 默认 30/minute/会话, 超限 429; 每次点开原文在 `javert_audit_logs` 落一行 (`action=raw_access`, target=患者号, payload.source ∈ csv|hub|rate_limited). 专家反馈被误伤时 `.env` 加 `JAVERT_RAW_RATE_LIMIT=60/minute` 重拉.
+
+**③ 142 BA 四表索引 (幂等)** — `create_data_hub_indexes.sql` 追加了 SYJBK/SYZDK(+ZDDM)/SYSSK/SYSSK_EXT 5 个索引, 在 142 `TP_data_hub` 重跑整个脚本即可 (已有的 9 个 IF NOT EXISTS 跳过). 跑完量一次单患者 hub 首查耗时, 对照基线 0.31s.
+
+**④ fees 匹配收紧核对** — 62 上跑一次 `uv run python scripts/diff_fee_match.py` (可加 `--overlay data_import`), 预期输出「新旧命中集合完全一致」或仅列出长号误归属短号的修正行 (Mac 本地快照实测: 完全一致).
+
+**⑤ ⚠ 2C BFF 契约通知 (SSE 只加不改)** — `/api/audit/run-batch` 新增语义, bff 侧需知悉 (升级由 bff 侧 change 承接):
+- `fail` 事件新增 `stage` 字段 ∈ `audit` (裁决失败) / `persist` (落库失败, **此时不再发 result** — 此前 persist 失败仍发 result, BFF 会拿到库中不存在的 run) / `unknown_rule` (请求了不存在的 rule_id, 此前静默丢弃)
+- `result` 事件字段逐字不变; `start`/`trace` 不变; `start.total` 仍只计已知规则
+- `done.completed` 语义收紧为**落库成功数** (persist 成功才 +1, 此前是审计成功数) — audit/persist 失败的规则不计入 completed 也不发 result; bff 若用 `completed==total` 判「全成功」语义等价, 若用它做进度条需知失败条不递增
+- bff 未升级前行为等价「该条无结果」, 无回退风险
+
+**冒烟**: 登录 → 点开任一患者原文 (查 `SELECT TOP 5 * FROM javert_audit_logs WHERE action='raw_access' ORDER BY id DESC` 见留痕) → curl 触发一条 run-batch (故意带一个不存在的 R999 看 `fail stage=unknown_rule` 回执) → 打开一个 szx 缺首页行患者详情页看诊断/手术非空.
+
+### 10.4 本次升级附加步骤 (2026-07-07 fix-scan-residuals: 复扫残余 6 项)
+
+本批改动 = `src/javert/{data/hub_source.py, web/patient_overview.py, audit/runner.py, audit/prompts/base.txt}` + 对应测试. 纯堵洞/口径, 零裁决漂移 (不改 LLM 对话行为). 按 §10 step 1-4 推 src + 重拉. 注意事项:
+
+**① fees 匹配差异核验留档 (csv_loader 两级精确匹配安全网)** — Mac 本地快照 (3309 键/695681 行) 实测 `diff_fee_match.py` **新旧命中集合完全一致**, 无「无分隔符 bah 患者丢费用」回归. 62 上再跑一次确认 (§10.3 ④ 同脚本): `uv run python scripts/diff_fee_match.py --overlay data_import`, 预期「完全一致」或仅列长号误归属短号的修正行.
+
+**② hub 空 ZYZD 兜底** — `hub_source.fetch_zd` 现在剔除 SYJBK 中 ZYZD 空串行: 有首页行但主诊为空的 szx 患者回退 IH 诊断 (此前被剔 IH + 生成一条空主诊, 比 per-patient 回退前更糟). 冒烟: 若批次内有此类患者, 详情页主诊非空且无空 code/名的伪主诊行. (实测当前 TP_data_hub szx 空 ZYZD 患者数可能为 0, 此闸护未来批次.)
+
+**③ gate 降级 confidence 口径** — verdict_gate 降级 (V→I/C) 落库 confidence 归一到 0.5, 原值写进 reasoning 的 `[gate: ... | 原 conf=x.xx]`. 工作台不再出现「INCONCLUSIVE conf=0.90」自相矛盾读数.
+
+**④ 必留头部上限 + marker 语义** — `_truncate` 必留头部超 `tool_result_max_chars` 时对头部也硬截 (防单条工具结果整体超预算 → context 溢出 400); `base.txt` 加一行解释 `====[必留头部结束]====` 标记语义. base.txt 是 src 一部分, 随 src 推送即生效.
+
+**⑤ build_overview 深拷贝护栏** — 概览缓存命中现返回深拷贝, 调用方就地改字段不再污染缓存. 无外部可见变化, 纯回归面收敛.
 
 ---
 

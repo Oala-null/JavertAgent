@@ -40,3 +40,14 @@ notes: |
   - v0.1: 由 javert init 生成时只有源字段; v0.2 由 operator 编写本 prompt_addon.
   - 待 dry-run 5 患者后回写 dry_run_report 到 docs/sample_run_R191.md.
 derived_from_template: M1
+precheck:
+  a_items:
+    - PET-CT 全身显像
+    - SPECT 全身骨显像
+    - 全身断层
+    - 肿瘤全身断层显像
+  b_items:
+    - 图文报告
+    - 人工报告
+    - PET-CT 报告
+    - SPECT 报告费

@@ -23,6 +23,14 @@ class LlmUnavailableError(RuntimeError):
     """LLM 端点不可达, 重试预算耗尽."""
 
 
+class LlmClientError(RuntimeError):
+    """HTTP 4xx (非 429): 请求本身有问题 (如 400 上下文超长), 重试无意义 — 立即失败.
+
+    刻意不继承 LlmUnavailableError: chat_with_retry 不重试它, audit-patient
+    串行/并发都按普通异常标 failed 继续, 不中断整患者.
+    """
+
+
 class Qwen35Provider:
     """Qwen3.5-35B-A3B sglang Provider (httpx 直连)."""
 
@@ -75,6 +83,15 @@ class Qwen35Provider:
 
         try:
             resp = client.post(url, json=body)
+        except Exception as exc:
+            raise LlmUnavailableError(f"sglang 请求失败: {exc}") from exc
+        if 400 <= resp.status_code < 500 and resp.status_code != 429:
+            # 4xx (非 429) 是请求自身的问题 (R103 实证: 400 上下文超长被当 503 重试 3 次)
+            # → 快速失败, 错误带 status + body 摘要可直接诊断
+            raise LlmClientError(
+                f"sglang HTTP {resp.status_code} (不重试): {resp.text[:300]}"
+            )
+        try:
             resp.raise_for_status()
         except Exception as exc:
             raise LlmUnavailableError(f"sglang 请求失败: {exc}") from exc

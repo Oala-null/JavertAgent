@@ -9,5 +9,5 @@ prompt_addon: ''
 trigger_keywords: []
 suggested_tools: []
 expected_signal: ''
-notes: 诱导住院 (赠送/返利) 行为审计, 工具不可见. 留 audit-behavior change.
+notes: 诱导住院 (赠送/返利) 行为审计, 工具不可见. 与 add-cross-patient-stats 无关 (行为信号非跨患者裁决聚合). 留 audit-behavior change.
 derived_from_template: null

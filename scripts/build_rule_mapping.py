@@ -61,17 +61,29 @@ JAVA_RULE_NAMES = {
 }
 
 
-def scan_javert_yamls() -> list[dict]:
-    """扫所有 yaml, 抽 router 用得到的字段.
+def _validate_trigger_codes(rule_id: str, raw_codes) -> list[str]:
+    """trigger_codes 每项去空白后 len≥2 且非空, 否则报错 (防短码前缀泛滥误召回)."""
+    codes = raw_codes or []
+    clean: list[str] = []
+    for c in codes:
+        s = str(c).strip()
+        if len(s) < 2:
+            raise ValueError(
+                f"{rule_id}: trigger_codes 含过短/空白项 {c!r} (需 len≥2 防前缀泛滥)"
+            )
+        clean.append(s)
+    return clean
 
-    applicable_* 字段全部 optional, yaml 没写就不输出 (router 默认不限制).
-    """
+
+def scan_javert_yamls() -> list[dict]:
+    """扫所有 yaml, 抽 router 用得到的字段."""
     out: list[dict] = []
     for path in sorted(YAML_DIR.glob("R*.yaml")):
         with open(path, encoding="utf-8") as f:
             raw = yaml.safe_load(f) or {}
+        rid = raw.get("rule_id", path.stem)
         record = {
-            "rule_id": raw.get("rule_id", path.stem),
+            "rule_id": rid,
             "yaml_path": f"configs/rules/{path.name}",
             "domain": raw.get("domain"),
             "violation_type": raw.get("violation_type"),
@@ -79,19 +91,9 @@ def scan_javert_yamls() -> list[dict]:
             "priority": raw.get("priority"),
             "derived_from_template": raw.get("derived_from_template"),
             "trigger_keywords": raw.get("trigger_keywords") or [],
+            "trigger_codes": _validate_trigger_codes(rid, raw.get("trigger_codes")),
             "question": (raw.get("question") or "")[:200],
         }
-        # router B 单闸 applicable_* 结构化 prune 字段 (灵感: Java engine ImsRuleCatch)
-        for k in (
-            "applicable_visit_type",
-            "applicable_gender",
-            "applicable_age_min",
-            "applicable_age_max",
-            "applicable_diag_codes",
-            "applicable_departments",
-        ):
-            if k in raw and raw[k] not in (None, "", [], ()):
-                record[k] = raw[k]
         out.append(record)
     return out
 

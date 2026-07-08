@@ -40,6 +40,8 @@ trigger_keywords:
   - 休克
   - 脓毒症
   - 酸碱平衡
+trigger_codes:
+  - S250302008
 suggested_tools:
   - note_diagnosis
   - search_fees

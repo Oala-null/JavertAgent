@@ -41,6 +41,8 @@ trigger_keywords:
   - 治疗时长
   - 加收
   - 10分钟
+trigger_codes:
+  - S3115030
 suggested_tools:
   - search_fees
   - search_notes

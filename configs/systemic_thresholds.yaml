@@ -1,0 +1,17 @@
+# 系统性违规判定阈值 (add-cross-patient-stats)
+#
+# 某规则被判「系统性违规」需同时满足:
+#   被审计患者数 >= min_patients  且  V 率 >= v_rate
+# V 率分母 = 该规则有 latest 裁决的不同患者数 (含 CLEAN), 非全院患者数.
+#
+# overrides 按 rule_id 覆盖全局阈值 (只填要改的字段).
+
+v_rate: 0.5          # 全局 V 率阈值 (0-1)
+min_patients: 10     # 全局最小样本数 (被审计患者数)
+
+overrides: {}
+  # 示例:
+  # R191:
+  #   v_rate: 0.7
+  # R007:
+  #   min_patients: 20

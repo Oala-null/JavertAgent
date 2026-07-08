@@ -40,9 +40,15 @@ class JavertConfig(BaseSettings):
     # Runner
     max_tool_calls: int = 10
     retry_budget: int = 3
+    # 单工具结果喂 LLM 前的截断上限 (fix-drug-audit-precision D2). 含必留标记的
+    # 工具结果只截明细段, 头部整段保全.
+    tool_result_max_chars: int = 2000
 
     # add-verdict-gate-layer: 裁决后确定性 gate 层开关. env JAVERT_VERDICT_GATE=off 直通 (回滚).
     verdict_gate: str = "on"
+
+    # pilot-deterministic-precheck: M1 确定性预检开关. env JAVERT_PRECHECK=off 直通 (回滚).
+    precheck: str = "on"
 
     # Paths (字符串, 相对项目根)
     data_dir: str = "data"
@@ -76,6 +82,10 @@ class JavertConfig(BaseSettings):
     # 快照桥 (scripts/etl_from_sql.py) 的源数据库: 投资人/外院兜底数据填这里的 6 张 intake_* 表.
     # 与结果归档库 sql_database=zadig 区分 (同台 142 / 同账号, 桥读 aidb, 审计结果仍写 zadig).
     sql_source_database: str = "aidb"
+    # add-workbench-sql-raw-source: 工作台原文 hub SQL 源 (env: JAVERT_HUB_RAW_ENABLED /
+    # JAVERT_HUB_DATABASE). 默认关 = 纯 CSV 行为不变; 开启后 CSV 双 miss 时按患者号查 hub.
+    hub_raw_enabled: bool = False
+    hub_database: str = "TP_data_hub"
     sql_driver: str = "ODBC Driver 18 for SQL Server"
     sql_pool_size: int = 5
     sql_max_overflow: int = 5
@@ -97,6 +107,10 @@ class JavertConfig(BaseSettings):
     # 注册开关 (env: JAVERT_ALLOW_REGISTER) — 默认关; 运维走 `javert mssql-user`
     # 或 SSMS 直接 INSERT
     allow_register: bool = False
+
+    # harden-onsite-redlines: /api/patient/{pid}/raw 每会话限流档位 (slowapi 语法).
+    # 30/min 不影响专家逐个点开病历; 现场误伤时 env JAVERT_RAW_RATE_LIMIT 一行可调.
+    raw_rate_limit: str = "30/minute"
 
     # 解析为绝对路径
     def resolve(self, path: str) -> Path:

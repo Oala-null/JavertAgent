@@ -6,7 +6,7 @@
 #   - single_instance_violation: ② 单次硬闸的例外集 (单次本身即违规, 穿透次数闸仍 V)
 #   - progress_sections: ⑤ scan_progress_indications 扫描的病程/查房 section 族
 #   - default_symptom_keywords: ⑤ 症状词默认表 (复用 experience.md 共识 7)
-#   - conf_floor / conf_ceiling: conf 底线硬闸区间 [floor, ceiling) 的 V → I
+#   - conf_ceiling: conf 底线硬闸 conf < ceiling 的 V → I (conf_floor 已弃用)
 
 # ① 文件依赖类规则 — V 仅靠「文件缺失」(etl_warning / ETL_GAP) 时降 I + 标签「缺文书」
 # (旧兜底闸; 现多数规则已由下方更具体的临床事实闸 / 不可确认文书闸优先接管)
@@ -20,10 +20,11 @@ file_dependent_rules:
   - R034   # 耗材条码 (串换项目)
 
 # ⑥ 麻醉真实性闸 (fix-anesthesia-false-positive) — 病案首页手术表有手术+麻醉医师/全麻
-#    → 全麻收费真实有据 → V 降 CLEAN. 专家 R203 ×6 "胡扯" / R205 ×4 "1手术1全麻=OK".
+#    → 全麻收费真实有据 → V 降 CLEAN. 专家 R203 ×6 "胡扯".
+# 注: R205 (1 台手术按次超收全麻) 是计数类规则 — 麻醉真实存在恰是其违规前提, 存在性
+#     证据不构成反证, 不适用存在性闸 (fix-drug-audit-precision: 出闸防造假阴性).
 anesthesia_reality_rules:
   - R203   # 虚构全身麻醉 (虚构医药服务项目)
-  - R205   # 全身麻醉按次超收 (重复收费)
 
 # ⑦ 术前心肺评估闸 — 病案首页有全麻手术 → 心脏彩超系列术前评估有指征 → V 降 CLEAN.
 #    专家 R131 ×8 "手术患者术前需排除心肺禁忌, 有检查必要性".
@@ -85,6 +86,7 @@ default_symptom_keywords:
   - 咳嗽
   - 心悸
 
-# conf 底线硬闸: [conf_floor, conf_ceiling) 区间内的 V → INCONCLUSIVE
+# conf 底线硬闸: conf < conf_ceiling 的 V → INCONCLUSIVE (含 conf 缺失归 0)
+# conf_floor 已弃用 (fix-drug-audit-precision 1c) — 保留仅为 schema 兼容, 不再参与判断.
 conf_floor: 0.70
 conf_ceiling: 0.85

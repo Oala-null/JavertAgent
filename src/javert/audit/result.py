@@ -51,3 +51,6 @@ class AuditResult(BaseModel):
     # add-verdict-gate-layer: 确定性 gate 降级标签 ∈ {"", 缺文书, 单次放过, 低置信降级}.
     # 空 = 未被 gate 降级 (verdict 即 LLM 原判).
     gate_tag: str = Field(default="")
+    # pilot-deterministic-precheck: 确定性预检标签 ∈ {"", 无A项, 无B项, A∩B并存待核反证}.
+    # 空 = 未走预检 (原 LLM 路径); 前两者 = 预检短路 CLEAN; 后者 = 预检事实成立后进 LLM.
+    precheck_tag: str = Field(default="")

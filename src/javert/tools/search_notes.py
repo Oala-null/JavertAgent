@@ -17,6 +17,7 @@ from typing import Callable
 
 import pandas as pd
 
+from javert.audit.runner import RETAIN_HEAD_MARKER  # 分段截断标记 (必留头部/可截明细)
 from javert.data.loader import DataLoader
 
 REQUIRES_PATIENT_ID = True
@@ -204,36 +205,48 @@ def create_executor(loader: DataLoader) -> Callable[..., str]:
                 ]
                 return "\n".join(lines)
 
-            lines = [
-                f"关键词'{keyword}'搜索结果 (共{len(matches)}条 hit; "
-                f"过滤噪音段 {filtered_count} 条, 保留 {len(real_hits)} 条):",
-                "",
-            ]
+            # 先算每条 hit 的标注/摘录/定位 — 需在组装前得知有无否认/选项框,
+            # 以把反向语义告警挪进必留头部 (fix-drug-audit-precision: 明细被截时告警不丢).
+            hit_rows: list[tuple[int, str, str, str, str]] = []  # (idx, sec, annotation, loc, excerpt)
+            has_reverse_flag = False
             for i, (sec, content) in enumerate(real_hits, 1):
                 annotation, excerpt = _annotate_keyword_hit(content, keyword)
+                if annotation:
+                    has_reverse_flag = True
                 # v0.9 (前向 locator): 关键词在该段内的 char 偏移 — 让新审计的锚点精确到字符.
                 # 附为机器可读 ⟨...⟩ 标记, 不改既有行结构 (纯文本契约不破坏).
                 pos = content.find(keyword)
                 loc = f" ⟨子阶段={sec} char={pos}⟩" if pos >= 0 else ""
-                lines.append(f"[{i}] 子阶段: {sec}{(' ' + annotation) if annotation else ''}{loc}")
-                lines.append(f"    {excerpt}")
-                lines.append("")
+                hit_rows.append((i, sec, annotation, loc, excerpt))
                 if i >= 10:
-                    lines.append(f"... 共{len(real_hits)}条真段, 已显示前 10 条. 可缩小关键词")
                     break
 
+            # 必留头部: 汇总行 + 反向语义告警 (告警自身带说明, 不依赖出现在明细末尾)
+            head = [
+                f"关键词'{keyword}'搜索结果 (共{len(matches)}条 hit; "
+                f"过滤噪音段 {filtered_count} 条, 保留 {len(real_hits)} 条):",
+            ]
+            if has_reverse_flag:
+                head.append(
+                    "⚠️ 部分命中标注 [否认段] (关键词前导有 '否认/未见/排除', 反向语义) "
+                    "或 [选项框] (关键词附近有 □ 选项框, 未必激活); 见下方各条标注, 都需谨慎对待."
+                )
+            head.append(RETAIN_HEAD_MARKER)
+            head.append("")
+
+            detail: list[str] = []
+            for i, sec, annotation, loc, excerpt in hit_rows:
+                detail.append(f"[{i}] 子阶段: {sec}{(' ' + annotation) if annotation else ''}{loc}")
+                detail.append(f"    {excerpt}")
+                detail.append("")
+            if len(real_hits) >= 10:
+                detail.append(f"... 共{len(real_hits)}条真段, 已显示前 10 条. 可缩小关键词")
             if filtered_count > 0:
-                lines.append(
+                detail.append(
                     f"⚠️ 已过滤 {filtered_count} 条噪音段 hit ({', '.join(sorted(noise_section_set))}). "
                     "这些段是手术风险告知/输血告知等, 通常不构成真实临床指征."
                 )
-            # 提示否认/选项框上下文
-            if any("[否认段]" in line or "[选项框]" in line for line in lines):
-                lines.append(
-                    "⚠️ 标注 [否认段] 表示关键词前导有 '否认/未见/排除' (反向语义); "
-                    "[选项框] 表示关键词附近有 □ 选项框, 未必激活. 都需谨慎对待."
-                )
-            return "\n".join(lines)
+            return "\n".join(head + detail)
 
         if section:
             if section_col is None:

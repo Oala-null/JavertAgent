@@ -821,6 +821,36 @@ class SqlServerStore:
         out.sort(key=lambda x: (-(1 if x.batch_tag else 0), -x.v_count, -x.i_count, x.patient_id))
         return out
 
+    def latest_verdict_rows(self, batch_tag: str | None = None) -> list[tuple[str, str, str]]:
+        """每 (rule_id, patient_id) 取最新一条 → (rule_id, patient_id, verdict).
+
+        跨患者统计 (add-cross-patient-stats) 的 latest 去重源. 复用与
+        list_patients_with_violations / dashboard_stats 完全一致的 ROW_NUMBER CTE 口径,
+        不另立 verdict filter. batch_tag 非空则只算该批次. 142 不可达 → 空列表.
+        """
+        engine = self.get_engine()
+        if engine is None:
+            return []
+        from sqlalchemy import text
+        tag_filter = "WHERE batch_tag = :tag" if batch_tag is not None else ""
+        sql = f"""
+            WITH latest AS (
+                SELECT rule_id, patient_id, verdict,
+                       ROW_NUMBER() OVER (PARTITION BY patient_id, rule_id ORDER BY created_at DESC) AS rn
+                FROM Javert_audit_runs
+                {tag_filter}
+            )
+            SELECT rule_id, patient_id, verdict FROM latest WHERE rn = 1
+        """
+        params = {"tag": batch_tag} if batch_tag is not None else {}
+        try:
+            with engine.connect() as conn:
+                rows = conn.execute(text(sql), params).fetchall()
+        except Exception as e:
+            logger.warning("latest_verdict_rows 失败: %s", e)
+            return []
+        return [(r[0], r[1], r[2]) for r in rows]
+
     def list_runs_for_patient(
         self,
         patient_id: str,
@@ -1473,6 +1503,31 @@ class SqlServerStore:
                     ]
         except Exception as e:
             logger.warning("fetch_export_rows 失败: %s", e)
+        # 系统性违规 sheet (add-cross-patient-stats) — 全量 latest 聚合;
+        # V 率需完整分母 (含 CLEAN), 故不受 scope 影响, 独立算.
+        try:
+            from javert.stats.cross_patient import (
+                aggregate,
+                compute_rule_stats,
+                load_thresholds,
+            )
+            sys_stats = compute_rule_stats(
+                aggregate(self.latest_verdict_rows()), load_thresholds(),
+            )
+            out["系统性违规"] = [
+                {
+                    "rule_id": s.rule_id,
+                    "被审计患者数": s.n_patients,
+                    "V": s.v,
+                    "I": s.i,
+                    "V率": f"{s.v_rate * 100:.0f}%",
+                    "金额": "不可计" if s.amount is None else s.amount,
+                    "系统性": s.systemic,
+                }
+                for s in sys_stats
+            ]
+        except Exception as e:  # noqa: BLE001
+            logger.warning("系统性违规 sheet 生成失败: %s", e)
         return out
 
 

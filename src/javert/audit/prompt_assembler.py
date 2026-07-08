@@ -81,7 +81,7 @@ def assemble_system_prompt(
     hospital_config: dict | None = None,
     experience_doc: str | None = None,
 ) -> str:
-    """组装 system prompt: base + experience.md + (可选)医院科室配置 + 规则信息 + 工具列表.
+    """组装 system prompt: base + experience.md + (可选)医院科室配置 + 工具列表 + 规则信息.
 
     v0.7+: experience_doc (configs/experience.md) 注入全局专家共识 +
     QKV trigger 机制提示, 让 LLM 跟专家裁决靠拢.
@@ -97,6 +97,14 @@ def assemble_system_prompt(
         sections.append("=" * 20)
         sections.append(format_hospital_config_block(hospital_config))
         sections.append("")
+
+    # boost-llm-efficiency: 静态工具段前置 — 公共前缀 = base+experience+hospital+tools,
+    # 规则个性化段之后才分叉, sglang prefix cache 跨规则命中 (段内容逐字不动, 只挪位置)
+    sections.append("=" * 20)
+    sections.append("# 可用工具")
+    sections.append("")
+    sections.append(tools_prompt)
+    sections.append("")
 
     sections.append("=" * 20)
     sections.append(f"# 当前审计规则: {rule.rule_id}")
@@ -127,15 +135,19 @@ def assemble_system_prompt(
         sections.append("## 预期信号 (操作者备注, 仅供参考, 不替代证据)")
         sections.append(rule.expected_signal)
 
-    sections.append("")
-    sections.append("=" * 20)
-    sections.append("# 可用工具")
-    sections.append("")
-    sections.append(tools_prompt)
     return "\n".join(sections)
 
 
-def initial_user_message(rule: Rule, patient_id: str) -> str:
+def initial_user_message(
+    rule: Rule, patient_id: str, precheck_facts: str | None = None
+) -> str:
+    if precheck_facts:
+        # pilot-deterministic-precheck: 费用事实已确定性给定, LLM 只答窄问题 (核实反证).
+        return (
+            f"请审计患者 {patient_id} 是否触发规则 {rule.rule_id}.\n\n"
+            f"{precheck_facts}\n\n"
+            f"按上述指引调用 search_notes 核实后, 输出 fenced JSON 裁决."
+        )
     return (
         f"请审计患者 {patient_id} 是否触发规则 {rule.rule_id}. "
         f"先思考你需要哪些证据, 然后用 <tool_call> 调用工具, "

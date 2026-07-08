@@ -16,6 +16,8 @@ trigger_keywords:
 - CT 平扫
 - MRI 平扫
 - 平扫
+trigger_codes:
+- S210300001
 suggested_tools:
 - note_diagnosis
 - search_fees

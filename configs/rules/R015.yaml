@@ -14,6 +14,8 @@ trigger_keywords:
 - 中心静脉压
 - PCWP
 - 心输出量监测
+trigger_codes:
+- S310702001
 suggested_tools:
 - search_fees
 - search_notes

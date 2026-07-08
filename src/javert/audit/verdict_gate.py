@@ -9,10 +9,11 @@
                 → V→INCONCLUSIVE + tag「缺文书」(待线下核查)
   ② 单次闸: M2 派生 ∧ 按 exam 关键词重算净不同收费次数 ≤1 ∧ 不在例外集
                 → V→CLEAN + tag「单次放过」; net 不可用 → fail-open (不降级)
-  ③ conf 底线闸: [conf_floor, conf_ceiling) 的 V → V→INCONCLUSIVE + tag「低置信降级」
+  ③ conf 底线闸: conf < conf_ceiling 的 V → V→INCONCLUSIVE + tag「低置信降级」
+                 (含 confidence 缺失/非法归 0; conf_floor 已弃用)
 
 配置来自 `configs/verdict_gate.yaml` (file_dependent_rules / single_instance_violation
-/ conf_floor / conf_ceiling), 不改 Rule schema.
+/ conf_ceiling; conf_floor 保留读取但不再参与判断), 不改 Rule schema.
 
 Source: 本项目原创 (add-verdict-gate-layer).
 """
@@ -53,7 +54,7 @@ class GateConfig:
     unconfirmable_doc_rules: set[str] = field(default_factory=set)
     progress_sections: list[str] = field(default_factory=list)
     default_symptom_keywords: list[str] = field(default_factory=list)
-    conf_floor: float = 0.70
+    conf_floor: float = 0.70  # 弃用 (fix-drug-audit-precision 1c): ③闸改为 conf < ceiling, 不再用 floor
     conf_ceiling: float = 0.85
 
 
@@ -132,10 +133,13 @@ _QUOTED_KW_RE = re.compile(r"[\"“]([^\"”]{2,30})[\"”]")
 def extract_exam_keywords(rule) -> list[str]:
     """从规则取该检查的 exam 关键词 (单次闸按它匹配 fee 行).
 
-    优先解析 prompt_addon 里 M2 模板渲染的「检索关键词: "A" / "B" / "C"」行
-    (= exam_kw_primary_list); 解析不到时回退 trigger_keywords (含指征词, 但 fee 名
-    通常不含指征词, 多匹配只会更保守 = 更不易误降).
+    优先读 rule.exam_keywords 显式字段 (make-rules-code-portable, 不再依赖模板措辞);
+    缺省时回退旧链: 解析 prompt_addon 里 M2 模板渲染的「检索关键词: "A" / "B" / "C"」行,
+    再解析不到时回退 trigger_keywords (含指征词, 但 fee 名通常不含指征词, 多匹配只会更保守).
     """
+    explicit = [k for k in (getattr(rule, "exam_keywords", []) or []) if k]
+    if explicit:
+        return explicit
     addon = getattr(rule, "prompt_addon", "") or ""
     for line in addon.splitlines():
         if "检索关键词" in line:
@@ -311,16 +315,18 @@ def apply_gate(
                     changed=True,
                 )
 
-    # ③ conf 底线闸
+    # ③ conf 底线闸: conf < ceiling 的 V 一律降 I (含 confidence 缺失/非法归 0).
+    # 原 [conf_floor, ceiling) 区间放过了 floor 以下的低置信 V (fix-drug-audit-precision 1c):
+    # floor 以下更该降不是更不该降. conf_floor 字段已弃用 (保留只为 yaml schema 兼容).
     try:
         conf = float(verdict_data.get("confidence", 0.0))
     except (TypeError, ValueError):
         conf = 0.0
-    if gate_cfg.conf_floor <= conf < gate_cfg.conf_ceiling:
+    if conf < gate_cfg.conf_ceiling:
         return GateOutcome(
             verdict=INCONCLUSIVE,
             tag="低置信降级",
-            reason=f"③低置信: conf={conf:.2f} 落在 [{gate_cfg.conf_floor}, {gate_cfg.conf_ceiling}), 强制改判不明",
+            reason=f"③低置信: conf={conf:.2f} < ceiling {gate_cfg.conf_ceiling}, 强制改判不明",
             changed=True,
         )
 

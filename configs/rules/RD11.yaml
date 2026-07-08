@@ -3,7 +3,7 @@ domain: 药品
 violation_type: 超医保限定支付适应症用药
 question: 申请医保支付的「聚桂醇注射液」，超出医保限定支付适应症范围。
 example: ''
-status: ready
+status: abandoned
 priority: P1
 prompt_addon: |+
   本规则关注: 聚桂醇注射液 (限适应症) 是否存在超出适应症 / 医保限定支付范围的用药.
@@ -48,6 +48,6 @@ suggested_tools:
 expected_signal: |+
   典型违规: 聚桂醇注射液 (限适应症) 命中, 但患者诊断完全不在限定/说明书适应症内 (如人血白蛋白用于无低蛋白血症/重症诊断者). 典型 CLEAN: 诊断落在依据内 (如甲状腺片用于甲状腺切除后甲减). 典型 INCONCLUSIVE: 诊断缺失或剂型存疑.
 
-notes: 精选药品规则 (M8 限适应症); 通用名「聚桂醇注射液」, router 触发词 ['聚桂醇注射液', '聚桂醇'].
+notes: 精选药品规则 (M8 限适应症); 通用名「聚桂醇注射液」, router 触发词 ['聚桂醇注射液', '聚桂醇']. 由 bulk R007/RD01-03 独占, 消重复计违规 (fix-drug-audit-precision).
 derived_from_template: M8
 drug_rule_type: 限适应症

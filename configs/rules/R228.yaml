@@ -29,6 +29,9 @@ trigger_keywords:
   - 肛周护理
   - 心理护理
   - 动静脉置管护理
+trigger_codes:
+  - S120100013
+  - S12010001400
 suggested_tools:
   - note_diagnosis
   - search_fees
@@ -38,3 +41,17 @@ expected_signal: |
   典型 CLEAN: 仅有重症监护单笔; 或护理记录明确指出某护理为感染隔离 / 创口换药独立操作.
 notes: ''
 derived_from_template: M1
+precheck:
+  a_items:
+    - 重症监护
+    - 综合 ICU 监护
+    - ICU 监护
+    - 重症医学科监护
+    - 重症加强护理
+  b_items:
+    - 口腔护理
+    - 皮肤护理
+    - 会阴护理
+    - 肛周护理
+    - 心理护理
+    - 动静脉置管护理

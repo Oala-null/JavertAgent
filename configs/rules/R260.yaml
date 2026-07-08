@@ -36,3 +36,12 @@ expected_signal: |
   典型 CLEAN: 仅有翻瓣术单笔; 或口腔记录明确不同象限 / 不同诊次分别开展独立计费.
 notes: ''
 derived_from_template: M1
+precheck:
+  a_items:
+    - 牙龈翻瓣术
+    - 翻瓣术
+    - 牙周翻瓣手术
+  b_items:
+    - 根面平整术
+    - 根面平整
+    - 龈下刮治

@@ -12,7 +12,7 @@ from click.testing import CliRunner
 
 from javert.audit.rule import Rule
 from javert.audit.rule_loader import load_rule
-from javert.audit.rule_writer import write_rule
+from javert.audit.rule_writer import compute_render_hash, write_rule
 from javert.cli import main
 from javert.templating.template_model import Template, TemplateField
 
@@ -299,3 +299,81 @@ def test_r191_round_trip_byte_equal():
     assert rendered == original, (
         f"R191 round-trip 失败: rendered={len(rendered)} chars, original={len(original)} chars"
     )
+
+
+# ==== harden-agent-loop: prompt-fit 覆盖护栏 ====
+
+def _tamper_prompt_addon(rule_path: Path, extra: str) -> None:
+    """人工手改 prompt_addon (保留旧 render_hash → 造成 hash 不符)."""
+    from ruamel.yaml import YAML
+    y = YAML()
+    with open(rule_path, encoding="utf-8") as f:
+        data = y.load(f)
+    data["prompt_addon"] = str(data["prompt_addon"]) + extra
+    with open(rule_path, "w", encoding="utf-8") as f:
+        y.dump(data, f)
+
+
+def _vars(isolated_project) -> Path:
+    p = isolated_project / "vars.json"
+    p.write_text(json.dumps({"noun": "肿瘤", "kws": ["a", "b"]}, ensure_ascii=False), encoding="utf-8")
+    return p
+
+
+def test_prompt_fit_refuses_after_manual_edit(isolated_project):
+    """手改 prompt_addon 后再 prompt-fit → hash 不符, 拒绝覆盖 (exit 1)."""
+    runner = CliRunner()
+    vars_path = _vars(isolated_project)
+    rule_path = isolated_project / "rules" / "R045.yaml"
+    r1 = runner.invoke(main, ["prompt-fit", "R045", "--template", "M9", "--vars", str(vars_path)])
+    assert r1.exit_code == 0, r1.output
+    _tamper_prompt_addon(rule_path, "\n【专家手改】额外指令")
+    r2 = runner.invoke(main, ["prompt-fit", "R045", "--template", "M9", "--vars", str(vars_path)])
+    assert r2.exit_code == 1
+    assert "拒绝覆盖" in r2.output
+    assert "专家手改" in load_rule(rule_path).prompt_addon  # 手改未被覆盖
+
+
+def test_prompt_fit_force_overrides_manual_edit(isolated_project):
+    """--force → 无视 hash 不符强制覆盖 + 更新 render_hash."""
+    runner = CliRunner()
+    vars_path = _vars(isolated_project)
+    rule_path = isolated_project / "rules" / "R045.yaml"
+    runner.invoke(main, ["prompt-fit", "R045", "--template", "M9", "--vars", str(vars_path)])
+    _tamper_prompt_addon(rule_path, "\n【专家手改】额外指令")
+    r = runner.invoke(main, ["prompt-fit", "R045", "--template", "M9", "--vars", str(vars_path), "--force"])
+    assert r.exit_code == 0, r.output
+    assert "✓ R045 written from M9" in r.output
+    rule = load_rule(rule_path)
+    assert "专家手改" not in rule.prompt_addon                       # 被覆盖
+    assert rule.render_hash == compute_render_hash(rule.prompt_addon)  # hash 已更新
+
+
+def test_prompt_fit_missing_hash_warns_only(isolated_project):
+    """旧规则无 render_hash 但 prompt_addon 非空 → 仅警告不拦截, 覆盖并补齐 hash."""
+    runner = CliRunner()
+    rule_path = isolated_project / "rules" / "R045.yaml"
+    write_rule(
+        Rule(rule_id="R045", domain="骨科", violation_type="重复收费",
+             question="q", prompt_addon="旧的手写内容"),
+        rule_path,
+    )
+    assert load_rule(rule_path).render_hash is None
+    vars_path = _vars(isolated_project)
+    r = runner.invoke(main, ["prompt-fit", "R045", "--template", "M9", "--vars", str(vars_path)])
+    assert r.exit_code == 0, r.output
+    assert "来源未知" in r.output
+    assert load_rule(rule_path).render_hash is not None  # 首次补齐
+
+
+def test_prompt_fit_consistent_hash_silent_overwrite(isolated_project):
+    """连续两次同 vars 渲染 → hash 一致 (round-trip 稳定), 静默覆盖, 无警告无拒绝."""
+    runner = CliRunner()
+    vars_path = _vars(isolated_project)
+    r1 = runner.invoke(main, ["prompt-fit", "R045", "--template", "M9", "--vars", str(vars_path)])
+    assert r1.exit_code == 0, r1.output
+    r2 = runner.invoke(main, ["prompt-fit", "R045", "--template", "M9", "--vars", str(vars_path)])
+    assert r2.exit_code == 0, r2.output
+    assert "来源未知" not in r2.output
+    assert "拒绝覆盖" not in r2.output
+    assert "✓ R045 written from M9" in r2.output

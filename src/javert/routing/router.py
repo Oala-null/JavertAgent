@@ -4,18 +4,15 @@
   - Java engine 14372 字典是"做得了"的违规 — 走单独 Track A (java_engine 模块, Phase 2)
   - Javert yaml 是"做不了"的违规 — 走本 Router B, 单闸用 yaml 自身 metadata 决定
 
-单闸三步:
+单闸两步:
   1) status / priority 高层 prune
-  2) applicable_* metadata prune (灵感来自 Java engine ImsRuleCatch + RuleItemBase.checkRuleValid):
-     - applicable_visit_type    (ipt / opt)
-     - applicable_gender         (M / F)
-     - applicable_age_min/max
-     - applicable_diag_codes     (ICD 前缀, 支持 *)
-     - applicable_departments
-     全 optional; 缺省 = 不限制
-  3) yaml.trigger_keywords 弹性命中 patient fee + diagnoses
-     - kw 长度 ≥3: 用 60% prefix (e.g. "病理检查" → "病理") 弹性命中
-     - kw 长度 ≤2: 精确包含 (防止 "钾" / "钠" 这种单字泛滥)
+  2) 命中 (名称命中 OR 编码命中, 任一即保留):
+     - yaml.trigger_keywords 弹性命中 patient fee 名 + diagnoses
+       (kw ≥3: 60% prefix 弹性; kw ≤2: 精确包含, 防单字泛滥)
+     - yaml.trigger_codes 前缀命中 patient fee 编码 token (国标码/本院码/类别标签)
+       (编码是 OR 加法, 换院命名不同仍可召回; 空 trigger_codes 退回纯 keyword, 零回归)
+
+  (旧 applicable_* 五段人口学硬过滤已删: 0 条规则声明 + 数据源恒 None = 死代码)
 
 旧 Case A overlapping (用 Java 字典 AND 闸 prune Javert yaml) 已废弃 — 因为
 两者本质不 overlap, AND 闸导致 fee-notes 模式 (M5/M6) 漏检.
@@ -53,7 +50,7 @@ DEFAULT_PATHS = {
 
 @dataclass(frozen=True)
 class _JavertMeta:
-    """单条 yaml 在 router 视角的精简元数据 (v2 含 applicable_* 结构化字段)."""
+    """单条 yaml 在 router 视角的精简元数据."""
 
     rule_id: str
     domain: Optional[str]
@@ -62,13 +59,7 @@ class _JavertMeta:
     priority: Optional[str]
     template: Optional[str]
     trigger_keywords: tuple[str, ...] = ()
-    # applicable_* — 全 optional, yaml 缺省即不限制 (false-negative 安全)
-    applicable_visit_type:   tuple[str, ...] = ()    # e.g. ("ipt",)
-    applicable_gender:       Optional[str] = None    # "M" / "F"
-    applicable_age_min:      Optional[int] = None
-    applicable_age_max:      Optional[int] = None
-    applicable_diag_codes:   tuple[str, ...] = ()    # ICD 前缀, e.g. ("C73", "D34")
-    applicable_departments:  tuple[str, ...] = ()
+    trigger_codes: tuple[str, ...] = ()    # 编码前缀/类别 token, 空=不参与 (编码命中 OR keyword 命中)
 
 
 class RuleRouter:
@@ -102,7 +93,7 @@ class RuleRouter:
         self.keyword_prefix_ratio = keyword_prefix_ratio
         self.keyword_short_threshold = keyword_short_threshold
 
-        # yaml index → _JavertMeta (含 applicable_* 字段, optional)
+        # yaml index → _JavertMeta
         self._yaml_meta: dict[str, _JavertMeta] = {}
         for y in javert_index["rules"]:
             self._yaml_meta[y["rule_id"]] = _JavertMeta(
@@ -113,12 +104,7 @@ class RuleRouter:
                 priority=y.get("priority"),
                 template=y.get("derived_from_template"),
                 trigger_keywords=tuple(y.get("trigger_keywords") or []),
-                applicable_visit_type=tuple(y.get("applicable_visit_type") or []),
-                applicable_gender=y.get("applicable_gender"),
-                applicable_age_min=y.get("applicable_age_min"),
-                applicable_age_max=y.get("applicable_age_max"),
-                applicable_diag_codes=tuple(y.get("applicable_diag_codes") or []),
-                applicable_departments=tuple(y.get("applicable_departments") or []),
+                trigger_codes=tuple(y.get("trigger_codes") or []),
             )
 
         # Phase 2 Track A 用 — route() 不调
@@ -166,46 +152,41 @@ class RuleRouter:
     # ────────────────────────── 主流程 (single-gate) ──────────────────────────
 
     def route(self, record: PatientRecord) -> RouterDecision:
-        """对单个病案返回 RouterDecision (single-gate v2).
+        """对单个病案返回 RouterDecision (single-gate).
 
-        三步 prune, 每一步都不过即跳:
+        两步 prune, 每一步都不过即跳:
           1) status / priority
-          2) applicable_* metadata (yaml 缺省即不限制)
-          3) yaml.trigger_keywords 弹性命中
+          2) 命中: yaml.trigger_keywords 名称弹性命中 OR yaml.trigger_codes 编码前缀命中
 
         Java engine Track A 走独立模块, 不在此处.
         """
         kept: list[str] = []
         pruned_status: list[str] = []
-        pruned_applicable: list[str] = []
-        pruned_no_keyword: list[str] = []
+        pruned_no_hit: list[str] = []
 
-        # patient fee + diag 文本合一, 加速 keyword 命中
+        # patient fee + diag 文本合一 (名称命中) + 编码 token 集 (编码命中)
         haystack = self._build_haystack(record)
+        code_set = self._build_code_set(record)
 
         for rid, meta in self._yaml_meta.items():
             if not self._passes_status_priority(meta):
                 pruned_status.append(rid)
                 continue
-            if not self._yaml_applicable_to_patient(meta, record):
-                pruned_applicable.append(rid)
-                continue
-            if not self._yaml_keyword_hit(meta, haystack):
-                pruned_no_keyword.append(rid)
+            if not (self._yaml_keyword_hit(meta, haystack)
+                    or self._yaml_code_hit(meta, code_set)):
+                pruned_no_hit.append(rid)
                 continue
             kept.append(rid)
 
         final_rules = self._rank(kept)
-        all_pruned = pruned_status + pruned_applicable + pruned_no_keyword
+        all_pruned = pruned_status + pruned_no_hit
 
         stats = {
             "total_yaml_scanned":    len(self._yaml_meta),
             "passed_status_priority": len(self._yaml_meta) - len(pruned_status),
-            "passed_applicable":      len(self._yaml_meta) - len(pruned_status) - len(pruned_applicable),
             "kept":                   len(kept),
             "pruned_status":          len(pruned_status),
-            "pruned_applicable":      len(pruned_applicable),
-            "pruned_no_keyword":      len(pruned_no_keyword),
+            "pruned_no_keyword":      len(pruned_no_hit),
             "final":                  len(final_rules),
             # Phase 2 Track A — 留 0 占位; Java engine track 独立填充
             "java_rules_triggered":   0,
@@ -215,9 +196,6 @@ class RuleRouter:
         return RouterDecision(
             patient_id=record.patient_id,
             final_rules=final_rules,
-            # legacy 字段: single-gate 下二者意义合并, overlapping_kept 已废
-            overlapping_kept=[],
-            javert_only_kept=final_rules,
             pruned_out=all_pruned,
             java_triggered={},   # Phase 2 Track A 用
             stats=stats,
@@ -232,57 +210,33 @@ class RuleRouter:
             return False
         return True
 
-    def _yaml_applicable_to_patient(
-        self, meta: _JavertMeta, record: PatientRecord,
-    ) -> bool:
-        """检查 yaml 的 applicable_* 字段是否与患者匹配.
-
-        全部 optional; yaml 没写就当不限制. 这是给 yaml 撰写者一个"硬过滤"
-        的能力, 比 trigger_keywords 单凭模糊匹配更精准.
-        """
-        # 1) visit_type — yaml 指定了 ipt/opt 就必须匹配
-        if meta.applicable_visit_type and record.visit_type:
-            if record.visit_type not in meta.applicable_visit_type:
-                return False
-
-        # 2) gender
-        if meta.applicable_gender and record.gender:
-            if meta.applicable_gender != record.gender:
-                return False
-
-        # 3) age range
-        if meta.applicable_age_min is not None and record.age is not None:
-            if record.age < meta.applicable_age_min:
-                return False
-        if meta.applicable_age_max is not None and record.age is not None:
-            if record.age > meta.applicable_age_max:
-                return False
-
-        # 4) diagnosis codes (ICD 前缀匹配, 支持 'C73' 命中 'C73.x00')
-        if meta.applicable_diag_codes and record.diagnosis_codes:
-            ok = False
-            for prefix in meta.applicable_diag_codes:
-                # 支持 * 通配 (e.g. "C73*" 等价于 "C73")
-                pure = prefix.rstrip("*").upper()
-                for code in record.diagnosis_codes:
-                    if code.upper().startswith(pure):
-                        ok = True
-                        break
-                if ok:
-                    break
-            if not ok:
-                return False
-
-        # 5) departments
-        if meta.applicable_departments and record.department:
-            if record.department not in meta.applicable_departments:
-                return False
-
-        return True
-
     def _build_haystack(self, record: PatientRecord) -> str:
         """把 fee_names + diagnoses 拼成一个字符串, 加速 substring 检索."""
         return " ".join(record.fee_item_names() + record.diagnoses)
+
+    def _build_code_set(self, record: PatientRecord) -> tuple[str, ...]:
+        """患者费用行的编码 token 集: 国标码 + 本院码 + 类别标签, 供 trigger_codes 前缀匹配."""
+        tokens: list[str] = []
+        for f in record.fee_items:
+            for v in (f.med_list_codg, f.medins_list_codg, f.chrgitm_type):
+                if v and v.strip():
+                    tokens.append(v.strip())
+        return tuple(tokens)
+
+    def _yaml_code_hit(self, meta: _JavertMeta, code_set: tuple[str, ...]) -> bool:
+        """meta.trigger_codes 任一项是患者任一编码 token 的前缀即命中.
+
+        空 trigger_codes → 恒 False (编码是 OR 加法, 不参与则退回纯 keyword 语义, 零回归).
+        """
+        if not meta.trigger_codes:
+            return False
+        for tc in meta.trigger_codes:
+            tc = tc.strip()
+            if not tc:
+                continue
+            if any(tok.startswith(tc) for tok in code_set):
+                return True
+        return False
 
     def _yaml_keyword_hit(
         self, meta: _JavertMeta, haystack: str,

@@ -9,5 +9,5 @@ prompt_addon: ''
 trigger_keywords: []
 suggested_tools: []
 expected_signal: ''
-notes: 虚构服务频次 (超工时) 跨患者统计, 工具不可见. 留 add-cross-patient-stats change.
+notes: 虚构服务频次 (超工时) 跨患者统计. add-cross-patient-stats 提供了系统性违规报表面, 但本规则需按原始费用频次逐日累加对比工时上限的专属检测器 — 该统计层只聚合已有 LLM 裁决, 不做原始频次计数. 仍 drafting, 待超工时频次检测 change.
 derived_from_template: null

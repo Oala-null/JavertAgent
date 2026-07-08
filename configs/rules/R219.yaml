@@ -39,6 +39,8 @@ trigger_keywords:
   - 罗库溴铵
   - 维库溴铵
   - 顺阿曲库铵
+trigger_codes:
+  - XM03AC
 suggested_tools:
   - note_diagnosis
   - search_fees

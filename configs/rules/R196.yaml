@@ -41,6 +41,8 @@ trigger_keywords:
   - 热消融
   - 瘤径
   - 病灶
+trigger_codes:
+  - S240700004
 suggested_tools:
   - search_fees
   - search_notes

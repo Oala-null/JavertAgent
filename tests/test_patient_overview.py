@@ -90,3 +90,37 @@ def test_build_overview_fee_category_items_consistency():
             assert items_sum == pytest.approx(c["sum"], abs=0.01), c["label"]
             checked += 1
     assert checked >= 1
+
+
+# =========================================================
+# boost-llm-efficiency: build_overview 真缓存
+# =========================================================
+def test_build_overview_cached_but_isolated_copies():
+    """同 (patient_id, loader) 二次调用: 内层缓存不重算, 但外层返回独立深拷贝.
+
+    fix-scan-residuals: 内层 _build_overview_cached 命中同一对象 (不重算), 公共
+    build_overview 返回 deepcopy → 两次结果值相等但非同一对象, 改一个不污染另一个.
+    """
+    cfg = get_config()
+    loader = CsvLoader(cfg.notes_path, cfg.fees_path)
+    first = build_overview("J66252", loader)
+    second = build_overview("J66252", loader)
+    assert first is not second                       # 独立对象
+    assert first["patient_id"] == second["patient_id"]
+    # 内层缓存命中 (不重算): 底层缓存 dict 是同一个
+    assert (po._build_overview_cached("J66252", loader)
+            is po._build_overview_cached("J66252", loader))
+    # 改 first 不污染 second (跨请求串数据回归面)
+    first["fee_categories"].append({"label": "污染"})
+    assert not any(c.get("label") == "污染" for c in second["fee_categories"])
+
+
+def test_build_overview_cache_cleared_by_reset():
+    """reset_caches() 后重算 (新对象) — onboarding 载入新数据的失效钩子."""
+    cfg = get_config()
+    loader = CsvLoader(cfg.notes_path, cfg.fees_path)
+    first = build_overview("J66252", loader)
+    po.reset_caches()
+    second = build_overview("J66252", loader)
+    assert first is not second
+    assert first["patient_id"] == second["patient_id"] == "J66252"

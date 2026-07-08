@@ -40,6 +40,9 @@ trigger_keywords:
   - 心衰
   - 心功能不全
   - 心衰标志物
+trigger_codes:
+  - S250306012
+  - S250306013
 suggested_tools:
   - note_diagnosis
   - search_fees

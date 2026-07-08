@@ -28,6 +28,7 @@ import re
 from pathlib import Path
 from typing import Any, Callable
 
+from javert.audit.runner import RETAIN_HEAD_MARKER  # 分段截断标记 (必留头部/可截明细)
 from javert.data.fee_netting import fee_group_key, fully_refunded_keys
 from javert.data.loader import DataLoader
 from javert.routing.adapter import _load_zd_index  # 复用 routing 的 shi_zd 缓存索引
@@ -353,21 +354,14 @@ def _format_bulk(result: dict[str, Any]) -> str:
             f"患者 {pid} 的 {result.get('total_drug_fees', 0)} 种用药里, "
             f"无任何药品命中监管知识库{filter_desc} → 本规则不适用 (建议 CLEAN)."
         )
+    # 必留头部: 汇总行 + 病案首页诊断 (ground truth). 命中药明细一多就会撑爆截断上限,
+    # 把判"有无适应症"的唯一硬证据放头部必留段 (fix-drug-audit-precision D1), 截断只砍明细.
     lines = [
         f"患者 {pid} 用药 ∩ 药品监管知识库 命中 {len(matches)} 条{filter_desc} "
         f"(共扫 {result.get('total_drug_fees', 0)} 种用药):",
         "",
-        "【命中药品 (命中知识库 ≠ 违规, 须结合诊断判定)】",
+        "【患者病案首页诊断 (shi_zd ground truth — 判定指征请优先用此)】",
     ]
-    for i, m in enumerate(matches, 1):
-        review_tag = " (名兜底, 需复核)" if m.get("needs_review") else ""
-        lines.append(f"{i}. 通用名「{m['generic_name']}」 [{m['rule_type']}]{review_tag}")
-        lines.append(f"   原始 fee 名: {' / '.join(m['fee_names'])}")
-        lines.append(f"   限定/说明书依据: {m['basis']}")
-        if m.get("detect_logic"):
-            lines.append(f"   检出逻辑: {m['detect_logic']}")
-    lines.append("")
-    lines.append("【患者病案首页诊断 (shi_zd ground truth — 判定指征请优先用此)】")
     diags = result.get("diagnoses", [])
     if diags:
         for d in diags:
@@ -376,6 +370,16 @@ def _format_bulk(result: dict[str, Any]) -> str:
             lines.append(f"  - {tag}{d['name']}{code}")
     else:
         lines.append("  (shi_zd 未收录该患者诊断, 请改用 note_diagnosis 工具取文书诊断)")
+    lines.append(RETAIN_HEAD_MARKER)
+    lines.append("")
+    lines.append("【命中药品 (命中知识库 ≠ 违规, 须结合诊断判定)】")
+    for i, m in enumerate(matches, 1):
+        review_tag = " (名兜底, 需复核)" if m.get("needs_review") else ""
+        lines.append(f"{i}. 通用名「{m['generic_name']}」 [{m['rule_type']}]{review_tag}")
+        lines.append(f"   原始 fee 名: {' / '.join(m['fee_names'])}")
+        lines.append(f"   限定/说明书依据: {m['basis']}")
+        if m.get("detect_logic"):
+            lines.append(f"   检出逻辑: {m['detect_logic']}")
     return "\n".join(lines)
 
 

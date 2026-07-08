@@ -28,6 +28,8 @@ trigger_keywords:
   - MRI 增强
   - 磁共振增强扫描
   - MRA
+trigger_codes:
+  - S210200005
 suggested_tools:
   - note_diagnosis
   - search_fees
@@ -37,3 +39,20 @@ expected_signal: |
   典型 CLEAN: 仅有引导单笔; 或影像报告明确术前 / 术后独立时间窗的扫描各自独立记录.
 notes: ''
 derived_from_template: M1
+precheck:
+  a_items:
+    - 磁共振引导
+    - MRI 引导
+    - 磁共振引导穿刺
+    - 磁共振引导消融
+    - 临床操作的磁共振引导
+  b_items:
+    - MRI 扫描
+    - MRI 平扫
+    - MRI 增强
+    - 磁共振扫描
+    - 磁共振平扫
+    - 磁共振增强扫描
+    - MRA
+    - 磁共振血管成象
+    - 磁共振心脏功能检查

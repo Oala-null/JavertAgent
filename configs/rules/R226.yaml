@@ -29,6 +29,8 @@ trigger_keywords:
   - PIVAS
   - 配液费
   - 配置费
+trigger_codes:
+  - S120400008
 suggested_tools:
   - note_diagnosis
   - search_fees
@@ -38,3 +40,15 @@ expected_signal: |
   典型 CLEAN: 仅有高营养单笔; 或文书明确化疗等高危药物由独立配液中心配制单独计费.
 notes: ''
 derived_from_template: M1
+precheck:
+  a_items:
+    - 静脉高营养治疗
+    - 全胃肠外营养
+    - TPN
+    - PN
+    - 肠外营养
+  b_items:
+    - 静脉用药集中配置
+    - PIVAS 配置
+    - 配液费
+    - 配置费

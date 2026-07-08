@@ -103,6 +103,7 @@ def build_patient_record_for_router(
             item_sn=str(row.get("feedetl_sn") or "").strip(),
             medins_list_name=name,
             medins_list_codg=(str(row.get("medins_list_codg") or "").strip() or None),
+            med_list_codg=(str(row.get("med_list_codg") or "").strip() or None),
             chrgitm_type=(str(row.get("medins_chrgitm_type") or "").strip() or None),
             inscp_scp_amt=_safe_float(row.get("inscp_scp_amt")),
             fee_ocur_time=(str(row.get("fee_ocur_time") or "").strip() or None),

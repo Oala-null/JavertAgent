@@ -280,6 +280,31 @@ class SqliteStore(AuditStore):
             }
         return out
 
+    def latest_verdict_rows(self, batch_tag: str | None = None) -> list[tuple[str, str, str]]:
+        """每 (rule_id, patient_id) 取 created_at 最新一条 → (rule_id, patient_id, verdict).
+
+        跨患者统计 (add-cross-patient-stats) 的 latest 去重源; batch_tag 非空则只算该批次.
+        ~5000 行 Python dedup 足够, 无需 window func. created_at 是 ISO/CURRENT_TIMESTAMP
+        文本, 字典序即时间序.
+        """
+        params: list = []
+        where = ""
+        if batch_tag is not None:
+            where = "WHERE batch_tag = ?"
+            params.append(batch_tag)
+        cur = self.conn.execute(
+            f"SELECT rule_id, patient_id, verdict, created_at FROM audit_runs {where}",
+            params,
+        )
+        latest: dict[tuple[str, str], tuple[str, str]] = {}  # (rule,patient)->(verdict,created_at)
+        for row in cur.fetchall():
+            key = (row["rule_id"], row["patient_id"])
+            ca = row["created_at"] or ""
+            prev = latest.get(key)
+            if prev is None or ca >= prev[1]:
+                latest[key] = (row["verdict"], ca)
+        return [(rid, pid, v) for (rid, pid), (v, _ca) in latest.items()]
+
     # =========================================================
     # v2: 142 同步状态管理
     # =========================================================

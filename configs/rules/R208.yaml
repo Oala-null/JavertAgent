@@ -37,3 +37,14 @@ expected_signal: |
   典型 CLEAN: 仅有基础麻醉单笔; 或麻醉记录明确两次麻醉间隔 >24h 独立实施.
 notes: ''
 derived_from_template: M1
+precheck:
+  a_items:
+    - 基础麻醉
+    - 小儿基础麻醉
+    - 不能配合基础麻醉
+    - 镇静镇痛麻醉
+  b_items:
+    - 强化麻醉
+    - MAC 麻醉
+    - 监护麻醉
+    - 强化镇静
