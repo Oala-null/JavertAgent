@@ -63,6 +63,17 @@ unconfirmable_doc_rules:
 single_instance_violation:
   - R156   # 女性患者收 PSA — 单次本身即错
 
+# ② 套餐类规则 (recover-deterministic-recall 2.0/2.1) — ②单次闸改计数口径:
+#    按「同日不同项目名数」而非收费发生次数; 达 min_distinct_items 阈值 → 不降级 (V 保留);
+#    不足阈值 → 降级目标 INCONCLUSIVE (进专家队列) 而非 CLEAN (黑洞); 费用不可得 fail-open 保留 V.
+#    入集判据: 违规形态确为"多项目单日打包"才入 (不实证不入, 误入代价 = 该规则降级目标变 I 放大 I 量).
+#      R155: 已实证 (211419211 同日 11 项细胞因子/干扰素测定打包, 收费仅 1 次 → 旧闸误杀).
+#      R151 (乙肝/丙肝多次测定): 违规形态是"多次(跨日)测定", 单次本身非违规, 原次数闸口径正确 → 不入.
+#      R132 (内镜色素检查): 2 项捆绑 (胃镜+色素), 非"多项目单日打包", 未实证 → 不入.
+panel_rules:
+  R155: {min_distinct_items: 3}
+panel_downgrade_to: INCONCLUSIVE
+
 # ⑤ 病程/查房 section 族 — scan_progress_indications 扫描范围 (ETL 劈碎, 无干净「日常查房记录」)
 progress_sections:
   - 病程记录内容

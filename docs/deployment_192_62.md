@@ -335,6 +335,37 @@ ssh admin2@192.168.31.62 'echo "JAVERT_HUB_RAW_ENABLED=true" >> ~/javert/.env'
 
 ---
 
+### 10.5 本次升级附加步骤 (2026-07-09 recover-deterministic-recall: 确定性召回回收)
+
+本批改动 = `src/javert/{config.py, data/fee_netting.py, audit/verdict_gate.py, audit/runner.py, store/result_persister.py, tools/search_fees.py}` + `configs/{verdict_gate.yaml, rules/R063.yaml}` + `data/router/javert_rules_index.json` + `static/{app.js, style.css}` + `templates/patient_detail.html` + 新脚本 `scripts/{rescreen_gated.py, drift_report.py}` + 对应测试. 含 `.py` + configs + static 改动, 按 §10 step 1-4 推 (src + configs + scripts + static) + **kill-9 重拉进程**. 三个开关全默认 on, 各自独立回滚 (`JAVERT_VERDICT_GATE=off` / `JAVERT_DRIFT_GUARD=off` / gate yaml 删 `panel_rules` 节). 升级后附加步骤:
+
+**① 存量单次放过重筛 (dry-run 先行 → 定阈值 → 落库)** — 套餐口径 (R155 同日不同项目名数 ≥ `min_distinct_items`) 把误杀的「单次放过」CLEAN 行回收为 INCONCLUSIVE (进专家队列). **先 sqlite 后 142, dry-run 先出分布**:
+```bash
+# 1. dry-run 出翻转量 + 同日项目数分布 (>100 条 → 收紧 min_distinct_items 再落)
+uv run python scripts/rescreen_gated.py --target sqlite --dry-run
+# 2. 与用户确认阈值后落 sqlite (source-of-truth)
+uv run python scripts/rescreen_gated.py --target sqlite
+# 3. 落 142 (工作台读的库; 自动跳过已有专家 review 的行)
+set -a && source .env && set +a
+uv run python scripts/rescreen_gated.py --target mssql
+# 验证: 211419211×R155 → INCONCLUSIVE + gate_tag「单次闸重筛回升(原C)」; 工作台默认视图可见
+```
+**还原 (一键可逆)**: `uv run python scripts/rescreen_gated.py --target mssql --revert` (凭可逆标签把翻转行恢复 CLEAN/单次放过). sqlite 同理 `--target sqlite --revert`.
+
+**② 存量漂移只读清单 (不自动改, 交专家)** — 列出全库 (rule,patient) 历史曾判 V 而当前 C 的漂移 (含 2026-07-08 晨 211440399 R063/R155):
+```bash
+uv run python scripts/drift_report.py --target mssql --out output/drift_142.csv
+```
+只读, 不写库. 结果交专家人裁 (存量翻转可能是新代码修对了, 机器分不清).
+
+**③ 工作台「只看被闸降级」facet** — `patient_detail.html` + `app.js` + `style.css` 改动随 src/static 推送即生效 (kill-9 重拉后). 验证: 患者详情页勾「只看被闸降级」→ 列表只剩 gate_tag 非空卡片 (含降级标签 + LLM 原始推理), 与 verdict filter 正交叠加.
+
+**④ FN 回归 62 复跑** — `uv run python scripts/fn_regression.py --against-baseline`: 重筛落库后 **FN-003 (211419211×R155) 应升档翻 I**; **FN-005 (R225) 保持 full** (gate 改动仅作用 R155, R225 路径逐字不变).
+
+**⑤ search_fees 输出形状变化 (聚合按项目名净额)** — 关键词/类别/目录检索现按项目名聚合净额 (退费自动相抵 + 「含 N 次退费已抵消」注记 + 数量小数保真). 既有规则 prompt 依赖行式形态 → 只改聚合行内容不改结构. 抽查: 任意 M1/M4 精选规则 dry-run 看 search_fees 结果仍逐行可读.
+
+---
+
 ## 11. 实测性能 (2026-05-21 50 病人 batch)
 
 ```

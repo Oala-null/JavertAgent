@@ -157,6 +157,8 @@ class Runner:
         self._clinical_ctx_cache: dict[str, Any] = {}
         # 单次闸净费上下文 per-patient 缓存 (同策略, None 也缓存) — 免同患者多条 V 重复全表扫 fee.
         self._net_fee_ctx_cache: dict[str, Any] = {}
+        # 套餐闸原始费用帧 per-patient 缓存 (同日不同项目名数需按日期分组, net ctx 拿不到).
+        self._fee_df_cache: dict[str, Any] = {}
 
     # --- 公共 API ---
     def audit(
@@ -206,6 +208,19 @@ class Runner:
                 logger.warning("net_fee_ctx 构建失败 patient=%s: %s (单次闸 fail-open)", patient_id, exc)
         self._net_fee_ctx_cache[patient_id] = ctx
         return ctx
+
+    def _build_fee_df(self, patient_id: str):
+        """该 patient 的原始费用帧 (套餐闸按日期分组用); 取数失败 → None (fail-open). per-patient 缓存."""
+        if patient_id in self._fee_df_cache:
+            return self._fee_df_cache[patient_id]
+        df = None
+        if self.loader is not None:
+            try:
+                df = self.loader.get_fees(patient_id)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("fee_df 构建失败 patient=%s: %s (套餐闸 fail-open)", patient_id, exc)
+        self._fee_df_cache[patient_id] = df
+        return df
 
     def _build_clinical_ctx(self, patient_id: str):
         """该 patient 的病案首页临床事实 (手术/麻醉/诊断 + 检查报告确认); 构建失败 → None
@@ -496,6 +511,7 @@ class Runner:
                 self._build_net_fee_ctx(patient_id),
                 get_gate_config(),
                 self._build_clinical_ctx(patient_id),
+                fee_df=self._build_fee_df(patient_id),
             )
             if outcome.changed:
                 self.emit(f"[Gate] {verdict} → {outcome.verdict} ({outcome.tag}): {outcome.reason}")

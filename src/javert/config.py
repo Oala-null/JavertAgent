@@ -50,6 +50,10 @@ class JavertConfig(BaseSettings):
     # pilot-deterministic-precheck: M1 确定性预检开关. env JAVERT_PRECHECK=off 直通 (回滚).
     precheck: str = "on"
 
+    # recover-deterministic-recall: persist 层重跑漂移防护开关 (老 V 新 C → 落 I + 标签).
+    # env JAVERT_DRIFT_GUARD=off 直通 (回滚, 落库行为与本 change 之前逐字一致).
+    drift_guard: str = "on"
+
     # Paths (字符串, 相对项目根)
     data_dir: str = "data"
     rules_dir: str = "configs/rules"

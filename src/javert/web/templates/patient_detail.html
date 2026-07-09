@@ -58,6 +58,9 @@
         <label class="hide-missing-toggle" title="默认隐藏被 gate 判为「缺文书」的待线下核查项 (前端过滤, 可翻看)">
           <input type="checkbox" id="hide-missing-doc" checked onchange="toggleHideMissingDoc(this)"> 隐藏缺文书
         </label>
+        <label class="gated-only-toggle" title="只看被确定性 gate 降级的裁决 (单次放过/缺文书/低置信/漂移防护等), 抽查 gate 击杀">
+          <input type="checkbox" id="gated-only" onchange="toggleGatedOnly(this)"> 只看被闸降级
+        </label>
       </div>
 
       {% for g in _groups %}

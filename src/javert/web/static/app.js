@@ -436,6 +436,14 @@
     refreshGroupVisibility();
   };
 
+  // recover-deterministic-recall 3.3: 「只看被闸降级」facet — body.show-gated-only 隐藏
+  // gate_tag 为空 (未被闸降级) 的卡片, 专家可抽查确定性 gate 的击杀 (降级标签 + LLM 原始推理).
+  // 与 verdict filter / 缺文书 / only-i 正交叠加, 默认关.
+  window.toggleGatedOnly = function (cb) {
+    document.body.classList.toggle("show-gated-only", !!(cb && cb.checked));
+    refreshGroupVisibility();
+  };
+
   // 默认只看「违规」卡片: 不明 / 干净卡片默认隐藏 (body.hide-inconclusive / hide-clean),
   // 勾选 toggle 才显示. 偏好 localStorage 记住 (默认隐藏, 开过就保持开).
   window.toggleShowInconclusive = function (cb) {

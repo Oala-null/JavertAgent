@@ -364,3 +364,60 @@ def test_exam_keywords_absent_falls_back_to_prompt_grep():
     )
     # 未填 exam_keywords → 回退旧链 (grep prompt_addon)
     assert extract_exam_keywords(rule) == ["CT", "增强"]
+
+
+# ========== recover-deterministic-recall: 套餐类规则单次闸改口径 ==========
+import pandas as pd  # noqa: E402
+
+
+def _panel_cfg() -> GateConfig:
+    return GateConfig(
+        panel_rules={"R155": 3}, panel_downgrade_to="INCONCLUSIVE", conf_ceiling=0.85
+    )
+
+
+def _panel_fee_df(n_items: int, day: str = "1/8/2024 00:00:00") -> pd.DataFrame:
+    return pd.DataFrame({
+        "medins_list_name": [f"干扰素测定项{i}" for i in range(n_items)],
+        "med_list_codg": [f"IFN{i}" for i in range(n_items)],
+        "cnt": [1.0] * n_items,
+        "fee_ocur_time": [day] * n_items,
+    })
+
+
+def test_panel_many_items_same_day_preserves_violation():
+    # 11 项细胞因子单日打包 (≥ min_distinct_items=3) → V 保留, 不被单次闸误杀
+    out = apply_gate(
+        dict(_VD_V), _rule("R155", template="M2", triggers=["干扰素"]),
+        None, _panel_cfg(), None, fee_df=_panel_fee_df(11),
+    )
+    assert not out.changed and out.verdict == "VIOLATION"
+
+
+def test_panel_few_items_downgrades_to_inconclusive():
+    # 2 项 (< 3) → 降 INCONCLUSIVE (进专家队列), 不落 CLEAN 黑洞
+    out = apply_gate(
+        dict(_VD_V), _rule("R155", template="M2", triggers=["干扰素"]),
+        None, _panel_cfg(), None, fee_df=_panel_fee_df(2),
+    )
+    assert out.changed and out.verdict == "INCONCLUSIVE" and out.tag == "单次放过"
+
+
+def test_panel_fee_unavailable_fail_open_keeps_violation():
+    # 费用不可得 → fail-open 保留 V (不因数据缺失放大降级)
+    out = apply_gate(
+        dict(_VD_V), _rule("R155", template="M2", triggers=["干扰素"]),
+        None, _panel_cfg(), None, fee_df=None,
+    )
+    assert not out.changed and out.verdict == "VIOLATION"
+
+
+def test_non_panel_m2_rule_single_instance_unchanged():
+    # 非 panel 规则口径逐字不变: 净次数 1 → 仍降 CLEAN
+    net = {"K": NetItem(name="某检查", code="K", net_qty=1.0,
+                        distinct_billing_dates=1, has_refund=False)}
+    out = apply_gate(
+        dict(_VD_V), _rule("R151", template="M2", triggers=["某检查"]),
+        net, _panel_cfg(), None,
+    )
+    assert out.changed and out.verdict == "CLEAN" and out.tag == "单次放过"

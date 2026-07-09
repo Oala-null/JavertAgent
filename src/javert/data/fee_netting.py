@@ -125,3 +125,45 @@ def net_fee_items(fee_df: pd.DataFrame | None) -> dict[str, NetItem]:
 def fully_refunded_keys(fee_df: pd.DataFrame | None) -> set[str]:
     """净额 ≤ 0 的分组键集合 — 消费方据此整组剔除 (完全充退项)."""
     return {k for k, item in net_fee_items(fee_df).items() if item.is_full_refund}
+
+
+def max_same_day_distinct_items(
+    fee_df: pd.DataFrame | None, keywords: list[str]
+) -> int | None:
+    """套餐口径计数 (recover-deterministic-recall 2.1): 关键词族命中的净正收费项目,
+    按 `fee_ocur_time` 日期分组, 返回**单日不同项目名数的最大值**.
+
+    与 ②单次闸的"净不同收费次数"是不同口径: 11 项细胞因子同日打包 = 11 项 (≠ 1 次),
+    据此判「多项目单日打包」的套餐形态。
+
+    完全充退组整组剔除; 退费行 (cnt<0) 不计; 无匹配 / 无费用数据 → None (fail-open)。
+    缺日期列时全部归一到同一天 (退化为全程不同项目名数)。
+    """
+    kws = [k for k in keywords if k]
+    if fee_df is None or len(fee_df) == 0 or NAME_COL not in fee_df.columns or not kws:
+        return None
+    has_code = CODE_COL in fee_df.columns
+    has_cnt = CNT_COL in fee_df.columns
+    has_date = DATE_COL in fee_df.columns
+    refunded = fully_refunded_keys(fee_df)
+
+    per_day: dict[str, set[str]] = {}
+    for _, r in fee_df.iterrows():
+        name = str(r.get(NAME_COL) or "").strip()
+        if not name or name.lower() == "nan":
+            continue
+        if not any(kw in name for kw in kws):
+            continue
+        code = str(r.get(CODE_COL) or "").strip() if has_code else ""
+        if code.lower() == "nan":
+            code = ""
+        if fee_group_key(code, name) in refunded:
+            continue
+        if has_cnt and _safe_float(r.get(CNT_COL)) <= 0:
+            continue  # 退费行 / 零量行不计
+        day = _date_part(r.get(DATE_COL)) if has_date else ""
+        per_day.setdefault(day, set()).add(name)
+
+    if not per_day:
+        return None
+    return max(len(names) for names in per_day.values())

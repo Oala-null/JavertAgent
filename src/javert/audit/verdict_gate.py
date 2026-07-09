@@ -31,7 +31,7 @@ import yaml
 
 from javert.config import get_config
 from javert.data.clinical_context import PatientClinicalContext
-from javert.data.fee_netting import NetItem
+from javert.data.fee_netting import NetItem, max_same_day_distinct_items
 
 logger = logging.getLogger("javert.audit.verdict_gate")
 
@@ -46,6 +46,9 @@ class GateConfig:
 
     file_dependent_rules: set[str] = field(default_factory=set)
     single_instance_violation: set[str] = field(default_factory=set)
+    # 套餐类规则 (recover-deterministic-recall) — {rule_id: min_distinct_items}
+    panel_rules: dict[str, int] = field(default_factory=dict)
+    panel_downgrade_to: str = INCONCLUSIVE
     # 临床事实闸 (fix-anesthesia-false-positive, 判据来自 shi_ss/shi_zd 病案首页)
     anesthesia_reality_rules: set[str] = field(default_factory=set)
     preop_cardiopulmonary_rules: set[str] = field(default_factory=set)
@@ -79,9 +82,16 @@ def load_gate_config(path: Path | None = None) -> GateConfig:
         raw = yaml.safe_load(f) or {}
     if not isinstance(raw, dict):
         return GateConfig()
+    panel_raw = raw.get("panel_rules") or {}
+    panel_rules = {
+        str(rid): int((spec or {}).get("min_distinct_items", 3))
+        for rid, spec in panel_raw.items()
+    }
     return GateConfig(
         file_dependent_rules=set(raw.get("file_dependent_rules") or []),
         single_instance_violation=set(raw.get("single_instance_violation") or []),
+        panel_rules=panel_rules,
+        panel_downgrade_to=str(raw.get("panel_downgrade_to") or INCONCLUSIVE),
         anesthesia_reality_rules=set(raw.get("anesthesia_reality_rules") or []),
         preop_cardiopulmonary_rules=set(raw.get("preop_cardiopulmonary_rules") or []),
         tumor_marker_rules=set(raw.get("tumor_marker_rules") or []),
@@ -182,6 +192,7 @@ def apply_gate(
     net_fee_ctx: dict[str, NetItem] | None,
     gate_cfg: GateConfig,
     clinical_ctx: PatientClinicalContext | None = None,
+    fee_df: Any = None,
 ) -> GateOutcome:
     """对一条已解析的 verdict 应用确定性闸. 纯函数, 不写库.
 
@@ -297,8 +308,30 @@ def apply_gate(
             changed=True,
         )
 
-    # ② 单次闸 (M2 派生, 非例外集)
-    if (
+    # ② 单次闸 — 套餐口径 (panel) 优先 (recover-deterministic-recall 2.1)
+    # 套餐类规则按「同日不同项目名数」计数: ≥阈值 → 保留 V (多项目单日打包正是违规形态);
+    # 不足阈值 → 降 INCONCLUSIVE (进专家队列, 不落 CLEAN 黑洞); 费用不可得 → fail-open 保留 V.
+    panel_min = gate_cfg.panel_rules.get(rule_id)
+    if panel_min is not None:
+        if rule_id in gate_cfg.single_instance_violation:
+            pass  # 例外集穿透, 保留 V
+        else:
+            n = max_same_day_distinct_items(fee_df, extract_exam_keywords(rule))
+            if n is None:
+                logger.debug("套餐闸 fail-open: 费用不可得 rule=%s", rule_id)
+            elif n < panel_min:
+                return GateOutcome(
+                    verdict=gate_cfg.panel_downgrade_to,
+                    tag="单次放过",
+                    reason=(
+                        f"②单次(套餐口径): 同日不同项目数={n} (<{panel_min}), "
+                        f"非多项目单日打包形态, 降{gate_cfg.panel_downgrade_to}待核"
+                    ),
+                    changed=True,
+                )
+            # n >= panel_min → 保留 V (不落普通 M2 单次闸)
+    # ② 单次闸 (M2 派生, 非例外集, 非套餐)
+    elif (
         getattr(rule, "derived_from_template", None) == "M2"
         and rule_id not in gate_cfg.single_instance_violation
     ):

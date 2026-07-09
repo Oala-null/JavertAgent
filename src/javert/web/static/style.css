@@ -1264,6 +1264,8 @@ body.hide-clean .violation-card.verdict-c { display: none; }
   white-space: nowrap;
 }
 body.hide-missing-doc .violation-card[data-gate-tag="缺文书"] { display: none; }
+/* recover-deterministic-recall 3.3: 只看被闸降级 — 隐藏未被 gate 降级 (gate_tag 空) 的卡片 */
+body.show-gated-only .violation-card[data-gate-tag=""] { display: none; }
 
 /* gate 降级标签 badge */
 .gate-badge {

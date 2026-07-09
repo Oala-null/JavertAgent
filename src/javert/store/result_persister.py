@@ -24,6 +24,44 @@ from .sqlserver_store import get_sqlserver_store
 
 logger = logging.getLogger("javert.store.result_persister")
 
+DRIFT_TAG = "漂移防护(历史曾判V)"
+
+
+def _expert_rejected_violation(run_id: str, sql_enabled: bool) -> bool:
+    """老 V 是否被专家 latest review 驳回 (review_verdict=='C', 即专家已裁定非违规).
+
+    驳回 → 新 C 是修正而非漂移, 放行 (不拦截). SQL 不可用/异常 → False (无豁免, 照常拦).
+    只认 'C' (专家明确判净) 为驳回; 'I' (存疑) 不算 — 落 I 与专家立场一致, 无害且更保守.
+    """
+    if not sql_enabled:
+        return False
+    try:
+        reviews = get_sqlserver_store().list_reviews_for_run(run_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("drift guard 驳回豁免查询失败 run_id=%s: %s (照常拦)", run_id, exc)
+        return False
+    return any(r.is_latest and r.review_verdict == "C" for r in reviews)
+
+
+def _apply_drift_guard(result: AuditResult, sqlite_store: SqliteStore, sql_enabled: bool) -> None:
+    """重跑漂移防护 (recover-deterministic-recall D4): 老 V 新 C → 就地改判 I + 标签.
+
+    只升到 INCONCLUSIVE (绝不恢复 V); 历史行不改写; 专家已驳回的老 V 放行 C.
+    """
+    if result.verdict != "CLEAN":
+        return
+    prior = sqlite_store.find_by_rule_patient_latest(result.rule_id, result.patient_id)
+    if prior is None or prior.verdict != "VIOLATION":
+        return
+    if _expert_rejected_violation(prior.run_id, sql_enabled):
+        return
+    result.verdict = "INCONCLUSIVE"
+    result.gate_tag = result.gate_tag or DRIFT_TAG
+    result.reasoning = (
+        f"{result.reasoning}\n[{DRIFT_TAG}: 历史最新 (run={prior.run_id}) 判 VIOLATION, "
+        f"本次重跑判 CLEAN, 落 INCONCLUSIVE 待专家裁定 (只升 I 不复活 V)]"
+    ).strip()
+
 
 def persist_one(
     result: AuditResult,
@@ -60,6 +98,10 @@ def persist_one(
         sqlite_store.init_schema()
 
     try:
+        # 0. 重跑漂移防护 (recover-deterministic-recall): 老 V 新 C → 就地改判 I (写前).
+        if str(cfg.drift_guard).lower() != "off":
+            _apply_drift_guard(result, sqlite_store, cfg.sql_enabled)
+
         # 1. 本地写 (source-of-truth)
         sqlite_store.write(result, batch_tag=tag)
 
