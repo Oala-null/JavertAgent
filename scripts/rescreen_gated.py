@@ -56,6 +56,56 @@ def _panel_context():
     return panel, rules, loader
 
 
+def _hub_fees_for(pids: set[str]) -> dict[str, object]:
+    """hub 兜底: CSV 取不到费用的患者 (hub-only, 如 szx2.0 批) 按 JZLSH 批量拉 TP_data_hub.
+
+    修复静默漏: 无兜底时这些患者重算得 0 项 → 永远低于阈值 → 该回收的行悄悄留在 CLEAN。
+    hub 不可达时返回 {} 并 WARN 列出患者 (绝不静默)。
+    """
+    if not pids:
+        return {}
+    try:
+        from javert.data import hub_source as hs
+        cn = hs.connect(get_config())
+        try:
+            yq2org = hs.fetch_hospital_map(cn)
+            df = hs.fetch_fees(cn, sorted(pids), yq2org)
+        finally:
+            cn.close()
+        tail = df["bah"].astype(str).str.rsplit("-", n=1).str[-1]
+        out = {pid: df[tail == pid] for pid in pids}
+        logger.info("hub 兜底取费用: %d 患者, %d 行", len(pids), len(df))
+        return out
+    except Exception as e:  # noqa: BLE001
+        logger.warning("hub 兜底取费用失败 (%s); %d 患者按无费用跳过: %s",
+                       e, len(pids), sorted(pids)[:10])
+        return {}
+
+
+def _build_fee_cache(loader, pids: list[str]) -> dict[str, object]:
+    """CSV 优先, 空/异常患者集中走一次 hub 批量兜底; 仍无数据的 WARN 列出."""
+    cache: dict[str, object] = {}
+    missing: set[str] = set()
+    for pid in pids:
+        try:
+            df = loader.get_fees(pid)
+        except Exception:  # noqa: BLE001
+            df = None
+        if df is None or len(df) == 0:
+            missing.add(pid)
+        cache[pid] = df
+    if missing:
+        hub = _hub_fees_for(missing)
+        for pid, df in hub.items():
+            if df is not None and len(df) > 0:
+                cache[pid] = df
+                missing.discard(pid)
+    if missing:
+        logger.warning("无费用数据患者 %d 个 (CSV+hub 双 miss, 保守不翻): %s",
+                       len(missing), sorted(missing)[:10])
+    return cache
+
+
 def _report(dist: dict[str, Counter], flips: int, skipped: int, total: int) -> None:
     logger.info("重筛候选 (panel · gate_tag=单次放过 · CLEAN): %d 行", total)
     for rid, c in sorted(dist.items()):
@@ -81,16 +131,11 @@ def rescreen_sqlite(db_path, panel, rules, loader, *, dry_run=False, revert=Fals
         ).fetchall()
         dist: dict[str, Counter] = defaultdict(Counter)
         flips = 0
-        fee_cache: dict[str, object] = {}
+        fee_cache = _build_fee_cache(loader, sorted({r[2] for r in rows}))
         for run_id, rule_id, pid in rows:
             rule = rules.get(rule_id)
             if rule is None:
                 continue
-            if pid not in fee_cache:
-                try:
-                    fee_cache[pid] = loader.get_fees(pid)
-                except Exception:  # noqa: BLE001
-                    fee_cache[pid] = None
             flip, n = should_flip(rule, fee_cache[pid], panel[rule_id])
             if not flip:
                 continue
@@ -167,7 +212,7 @@ def rescreen_mssql(panel, rules, loader, *, dry_run=False, revert=False) -> int:
 
         dist: dict[str, Counter] = defaultdict(Counter)
         flips = skipped = 0
-        fee_cache: dict[str, object] = {}
+        fee_cache = _build_fee_cache(loader, sorted({r[2] for r in rows}))
         upd = text("UPDATE Javert_audit_runs SET verdict='INCONCLUSIVE', gate_tag=:g WHERE run_id=:rid")
         for r in rows:
             run_id, rule_id, pid = r[0], r[1], r[2]
@@ -178,11 +223,6 @@ def rescreen_mssql(panel, rules, loader, *, dry_run=False, revert=False) -> int:
             if store.list_reviews_for_run(run_id):
                 skipped += 1
                 continue
-            if pid not in fee_cache:
-                try:
-                    fee_cache[pid] = loader.get_fees(pid)
-                except Exception:  # noqa: BLE001
-                    fee_cache[pid] = None
             flip, n = should_flip(rule, fee_cache[pid], panel[rule_id])
             if not flip:
                 continue
