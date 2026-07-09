@@ -1,5 +1,5 @@
 {
-  "count": 156,
+  "count": 158,
   "rules": [
     {
       "rule_id": "R003",
@@ -1536,6 +1536,11 @@
         "早期康复",
         "ICU 康复",
         "床旁康复",
+        "关节松动训练",
+        "关节松动",
+        "运动疗法",
+        "作业疗法",
+        "日常生活动作训练",
         "脑卒中",
         "脊髓损伤"
       ],
@@ -2400,6 +2405,44 @@
         "XN05AX"
       ],
       "question": "违反诊疗规范将抗精神病药物治疗监测普遍为无相关指征的患者开展并收费。"
+    },
+    {
+      "rule_id": "R317",
+      "yaml_path": "configs/rules/R317.yaml",
+      "domain": "神经内科",
+      "violation_type": "虚构医药服务项目",
+      "status": "ready",
+      "priority": "P0",
+      "derived_from_template": "M5",
+      "trigger_keywords": [
+        "溶栓术",
+        "脑血管腔内溶栓",
+        "动脉溶栓",
+        "尿激酶",
+        "阿替普酶",
+        "取栓"
+      ],
+      "trigger_codes": [],
+      "question": "未开展相关诊疗项目，但收取对应诊疗费用。"
+    },
+    {
+      "rule_id": "R318",
+      "yaml_path": "configs/rules/R318.yaml",
+      "domain": "消化内科",
+      "violation_type": "虚构医药服务项目",
+      "status": "ready",
+      "priority": "P0",
+      "derived_from_template": "M5",
+      "trigger_keywords": [
+        "经胃镜特殊治疗",
+        "内镜下治疗",
+        "黏膜切除",
+        "黏膜下剥离",
+        "色素",
+        "抬举征"
+      ],
+      "trigger_codes": [],
+      "question": "未开展相关诊疗项目，但收取对应诊疗费用。"
     },
     {
       "rule_id": "RD01",

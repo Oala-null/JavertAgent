@@ -36,6 +36,9 @@ CLEAN = "clean"
 FACTS = "facts"
 SKIP = "skip"
 
+COEXIST = "coexist"
+COMPANION = "companion"
+
 
 @dataclass
 class FeeHit:
@@ -129,6 +132,25 @@ def _build_fact_block(a_hits: list[FeeHit], b_hits: list[FeeHit]) -> str:
     return "\n".join(lines)
 
 
+def _build_companion_fact_block(a_hits: list[FeeHit], b_items: list[str]) -> str:
+    """companion 模式事实块: 收了术式 A 但全费用单无任何必备配套 B (虚构信号, 非证明)."""
+    lines = ["【系统预检费用事实 (确定性, 已净退费)】"]
+    lines += _fact_lines("术式类命中 (A)", a_hits)
+    kw = " / ".join(it for it in b_items if it.strip())
+    lines += [
+        f"必备配套 (B) 检索词: {kw}",
+        "→ 全费用单无任何上述配套的净正收费命中。",
+        "说明: 该术式若真实开展, 通常伴随上述配套药/耗材收费。配套全缺是虚构信号 (非证明)。",
+        "请调用 search_notes 核实操作/手术记录, 按举证责任裁决:",
+        "- 记录正面显示该操作确实执行 (配套缺失仅系记录/收费遗漏) → 视证据 CLEAN/INCONCLUSIVE。",
+        "- 记录显示实际为其它操作 (如取栓而非溶栓) / 明确未执行该操作 → VIOLATION, "
+        "evidence 引上列术式费用行 (系统已给编码锚点)。",
+        "- 证据不足以正面反证操作已执行 → INCONCLUSIVE (证据缺失待人工)。",
+        "配套缺失为确定性事实, 核实操作文书用 search_notes 即可, 通常不必再调 search_fees。",
+    ]
+    return "\n".join(lines)
+
+
 def _hits_to_evidence(hits: list[FeeHit]) -> list[Evidence]:
     """命中费用行 → Evidence(source=search_fees, locator=项目名); hit_resolver 据此 join 码+锚点."""
     out: list[Evidence] = []
@@ -142,20 +164,8 @@ def _hits_to_evidence(hits: list[FeeHit]) -> list[Evidence]:
     return out
 
 
-def run_precheck(spec: PrecheckSpec, fee_df: pd.DataFrame | None) -> PrecheckResult:
-    """对一条 M1 规则的 A/B 项目集 + 患者费用做确定性预检. 纯函数.
-
-    Args:
-        spec: 规则的 PrecheckSpec (a_items / b_items).
-        fee_df: 该患者全量费用切片; None/空/缺列 → skip (fail-open).
-    """
-    if not spec.a_items or not spec.b_items:
-        # 迁移不全的规则 (缺 A 或 B 集) → 无法预检, 走原路径
-        return PrecheckResult(outcome=SKIP, reason="precheck spec 缺 A 或 B 项目集")
-
-    if fee_df is None or len(fee_df) == 0 or NAME_COL not in fee_df.columns:
-        return PrecheckResult(outcome=SKIP, reason="费用数据不可用 (缺表/缺列)")
-
+def _extract_rows(fee_df: pd.DataFrame) -> list[dict]:
+    """费用表 → 净正收费行 (剔除完全充退项 + 负 cnt 退费行). 纯提取, 不判命中."""
     refunded = fully_refunded_keys(fee_df)
     has_code = CODE_COL in fee_df.columns
     has_cnt = CNT_COL in fee_df.columns
@@ -180,10 +190,11 @@ def run_precheck(spec: PrecheckSpec, fee_df: pd.DataFrame | None) -> PrecheckRes
             "amount": _safe_float(r.get(amt_col)) if amt_col else 0.0,
             "date": _date_part(r.get(DATE_COL)) if has_date else "",
         })
+    return rows
 
-    a_hits = _match_hits(spec.a_items, rows)
-    b_hits = _match_hits(spec.b_items, rows)
 
+def _coexist_result(a_hits: list[FeeHit], b_hits: list[FeeHit]) -> PrecheckResult:
+    """M1 语义: A 或 B 空 → clean; A∩B 并存 → facts (核反证)."""
     if not a_hits:
         return PrecheckResult(
             outcome=CLEAN, precheck_tag="无A项",
@@ -194,7 +205,6 @@ def run_precheck(spec: PrecheckSpec, fee_df: pd.DataFrame | None) -> PrecheckRes
             outcome=CLEAN, precheck_tag="无B项", a_hits=a_hits,
             reason="预检: A 类命中但无 B 类 (附属) 费用, 未重复收费 → CLEAN",
         )
-
     return PrecheckResult(
         outcome=FACTS,
         precheck_tag="A∩B并存待核反证",
@@ -204,3 +214,53 @@ def run_precheck(spec: PrecheckSpec, fee_df: pd.DataFrame | None) -> PrecheckRes
         fact_block=_build_fact_block(a_hits, b_hits),
         evidence=_hits_to_evidence(a_hits) + _hits_to_evidence(b_hits),
     )
+
+
+def _companion_result(
+    a_hits: list[FeeHit], b_hits: list[FeeHit], b_items: list[str]
+) -> PrecheckResult:
+    """companion 语义: A 无 → clean; A 有 B 无 → facts (虚构信号); A、B 均有 → skip 不注偏置."""
+    if not a_hits:
+        return PrecheckResult(
+            outcome=CLEAN, precheck_tag="无术式项",
+            reason="预检: 未见 A 类 (术式) 费用命中, 规则不适用 → CLEAN",
+        )
+    if b_hits:
+        return PrecheckResult(
+            outcome=SKIP, a_hits=a_hits, b_hits=b_hits,
+            reason="预检: 术式与配套均在场, 虚构信号消失, 走原路径不注偏置",
+        )
+    return PrecheckResult(
+        outcome=FACTS,
+        precheck_tag="收术式无配套待核反证",
+        reason="预检: 收术式但全费用单无必备配套, 事实成立, 交 LLM 核实操作文书反证",
+        a_hits=a_hits,
+        fact_block=_build_companion_fact_block(a_hits, b_items),
+        evidence=_hits_to_evidence(a_hits),
+    )
+
+
+def run_precheck(spec: PrecheckSpec, fee_df: pd.DataFrame | None) -> PrecheckResult:
+    """对一条规则的 A/B 项目集 + 患者费用做确定性预检. 纯函数.
+
+    mode=coexist (M1 重复收费, 缺省): A∩B 并存缺失 → clean, 并存 → facts.
+    mode=companion (术式↔配套): A 无 → clean, A 有 B 无 → facts, 双有 → skip.
+
+    Args:
+        spec: 规则的 PrecheckSpec (a_items / b_items / mode).
+        fee_df: 该患者全量费用切片; None/空/缺列 → skip (fail-open).
+    """
+    if not spec.a_items or not spec.b_items:
+        # 迁移不全的规则 (缺 A 或 B 集) → 无法预检, 走原路径
+        return PrecheckResult(outcome=SKIP, reason="precheck spec 缺 A 或 B 项目集")
+
+    if fee_df is None or len(fee_df) == 0 or NAME_COL not in fee_df.columns:
+        return PrecheckResult(outcome=SKIP, reason="费用数据不可用 (缺表/缺列)")
+
+    rows = _extract_rows(fee_df)
+    a_hits = _match_hits(spec.a_items, rows)
+    b_hits = _match_hits(spec.b_items, rows)
+
+    if (spec.mode or COEXIST).lower() == COMPANION:
+        return _companion_result(a_hits, b_hits, spec.b_items)
+    return _coexist_result(a_hits, b_hits)

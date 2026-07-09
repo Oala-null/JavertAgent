@@ -5,27 +5,23 @@ question: 未开展相关诊疗项目，但收取对应诊疗费用。
 example: 示例：某医院重症监护室，向所有住院患者收取尿常规检验费用，但实际有些患者无尿，未开展检测，属于虚构医药服务项目。
 status: ready
 priority: P0
-prompt_addon: "⚡ v1.7 强 INCONCLUSIVE 默认 (修 v1.6 找到 lab 就 CLEAN):\nwangxin baseline 是 I (= \"未见医嘱单/检验报告单\"), 不是 C.\n- fee 命中监护项目 + 找到 lab 检验报告 → **仍走 INCONCLUSIVE conf 0.55**\n  → wangxin 标准: 即便找到检验报告, \"医嘱单\" 缺失就应 I (需线下核查)\n- 唯一 V 路径: fee 显示按数值分项收费 (如同日血压 + 心率 + 呼吸 3 项分开收) → V\n- 唯一 CLEAN 路径: fee 0 命中 (规则不适用)\n\n⚠️ R224 默认 I, 不要因 search_lab_results 拿到检验数据就给 C.\n\n\U0001F525 v1.6 INCONCLUSIVE 强化:\nwangxin (I=5) + jiweihui/zhoulihong (V=8) 分歧 → 走中位 I.\n- fee 命中监护项目 + 文书无 ICU/重症记录 → **I conf 0.55** (wangxin: \"未见医嘱单, 未见检验报告单\")\n- 仅在 fee 显示\"按数值/参数分项收费\"(如血压收 1 次 + 心率收 1 次同日) 才 V.\n\nR224 默认走 I, 不要 C 不要 V.\n\n\U0001F6A8 v1.5 INCONCLUSIVE 硬规则 (wangxin I 优先):\n- 监护类费用收 N 次 + 文书无 ICU/重症记录 + 病程无生命体征危机 → **INCONCLUSIVE conf 0.50**\n- wangxin: \"未见医嘱单, 未见检验报告单\" → 应 I 不是 C\n- jiweihui V 模式: 监测数值分解收取 (血压/心率/呼吸分开收) — 仅在能在 fee 看到分项才 V\n\n⚠️ R224 默认走 INCONCLUSIVE, 除非看到明确\"分解收费\"模式才 V.\n\n本规则关注: 患者本次住院里, 费用中有「重症监护期间常规检验 (尿常规等)」, 但文书中没有对应的\n执行记录, 即 \"虚构 重症监护期间常规检验 (尿常规等) 项目骗取医保基金\".\n按医保政策, 重症监护期间检验应针对患者实际状况\
-  \ (如无尿患者不应收尿常规). 对所有重症患者无差别打包检验 = 虚构.\n\n审计步骤:\n1. 用 search_fees 查 fee 是否命中. 检索关键词: \"尿常规\" / \"重症监护检验\" / \"血气分析\" / \"床旁监测\"\n2. 若 fee 无命中 → CLEAN (规则不适用, 患者未被收取该费用).\n3. 用 search_notes 检查文书是否有该服务的执行记录:\n   - 重点检查 section: \"重症监护记录\" / \"辅助检查\"\n   - 执行证据关键词: \"检验报告\" / \"检验单号\" / \"监测数值\" / \"床旁记录\"\n4. 若文书有任一执行证据命中 → CLEAN (服务实际开展).\n5. 若 fee 有 + 文书无执行证据 → VIOLATION,\n   evidence: 引 fee 项目名 + 价格 + \"在 重症监护记录 等 section 中未检索到 检验报告 等执行描述\".\n6. 文书 section 不完整 (例如手术记录缺失) / 描述模糊 → INCONCLUSIVE.\n\n特殊条件: 若文书无 重症医学科 科室介入痕迹 (例: 该科记录段为空 / 该科入院记录未生成), 强支持 VIOLATION.\n\n特殊注意:\n- 若诊断含'少尿'/'无尿'还收尿常规 → 强支持 VIOLATION (生理上不可能采样).\n\n注意: 甲状腺手术患者一般不进 ICU, 若 fee 命中重症监护检验需关注是否走过 ICU.\n\n\U0001F4CC 专家共识触发器 (v0.7, wangxin I, jiweihui/zhoulihong V, 加权 8V/5I/0C):\n\nINCONCLUSIVE 触发器 (wangxin):\n- 监护类费用收 N 次 + 文书无 ICU/重症记录 + 病程无生命体征危机描述 → **INCONCLUSIVE conf 0.5**\n  → wangxin: \"未见医嘱单, 未见检验报告单\"\n\nV 触发器 (jiweihui):\n- 监测项目按数值/参数分解收费 (如收血压 + 收心率 + 收呼吸 = 3 次, 而非 1 次\"生命体征监测\") → V\n  → jiweihui: \"监测数值分解收取\"\
-  \n"
+prompt_addon: "⚡ v1.7 强 INCONCLUSIVE 默认 (修 v1.6 找到 lab 就 CLEAN):\nwangxin baseline 是 I (= \"未见医嘱单/检验报告单\"), 不是 C.\n- fee 命中监护项目 + 找到 lab 检验报告 → **仍走 INCONCLUSIVE conf 0.55**\n  → wangxin 标准: 即便找到检验报告, \"医嘱单\" 缺失就应 I (需线下核查)\n- 唯一 V 路径: fee 显示按数值分项收费 (如同日血压 + 心率 + 呼吸 3 项分开收) → V\n- 唯一 CLEAN 路径: fee 0 命中 (规则不适用)\n\n⚠️ R224 默认 I, 不要因 search_lab_results 拿到检验数据就给 C.\n\n🔥 v1.6 INCONCLUSIVE 强化:\nwangxin (I=5) + jiweihui/zhoulihong (V=8) 分歧 → 走中位 I.\n- fee 命中监护项目 + 文书无 ICU/重症记录 → **I conf 0.55** (wangxin: \"未见医嘱单, 未见检验报告单\")\n- 仅在 fee 显示\"按数值/参数分项收费\"(如血压收 1 次 + 心率收 1 次同日) 才 V.\n\nR224 默认走 I, 不要 C 不要 V.\n\n🚨 v1.5 INCONCLUSIVE 硬规则 (wangxin I 优先):\n- 监护类费用收 N 次 + 文书无 ICU/重症记录 + 病程无生命体征危机 → **INCONCLUSIVE conf 0.50**\n- wangxin: \"未见医嘱单, 未见检验报告单\" → 应 I 不是 C\n- jiweihui V 模式: 监测数值分解收取 (血压/心率/呼吸分开收) — 仅在能在 fee 看到分项才 V\n\n⚠️ R224 默认走 INCONCLUSIVE, 除非看到明确\"分解收费\"模式才 V.\n\n本规则关注: 患者本次住院里, 费用中有「重症监护期间常规检验 (尿常规等)」, 但文书中没有对应的\n执行记录, 即 \"虚构 重症监护期间常规检验 (尿常规等) 项目骗取医保基金\".\n按医保政策, 重症监护期间检验应针对患者实际状况 (如无尿患者不应收尿常规). 对所有重症患者无差别打包检验 = 虚构.\n\n【裁决基准 (举证责任, M5 虚构类通则 — 优先于下列步骤)】\n- 治疗/手术类收费项目存在 = 医院已就该操作向基金收费, 举证\"该操作确实开展\"的责任在收费方。\n- 文书找不到该操作的执行证据时, 默认下限为 INCONCLUSIVE (证据缺失待人工核查);\n  MUST NOT 因\"文书未提及 / 未检索到执行描述\"就判 CLEAN。\n- 仅当文书**正面反证**该操作确实执行 (操作记录 / 治疗单 / 麻醉记录 / 执行记载, 含操作名+时间+过程)\n  → CLEAN。\n- 若文书正面显示该操作实际**未执行** (记录为其它操作 / 明确未做 / 诊断无支持且执行痕迹全缺)\n  → VIOLATION。\n- 名称警示: 收费项目名与文书术式名常不一致 (如「肘关节截骨术」↔「尺骨截骨术」),\n  MUST NOT 仅因名称不同就断言\"未收费\"或\"未执行\"; 用解剖部位与操作类别交叉核对。\n\n审计步骤:\n1. 用 search_fees 查 fee 是否命中. 检索关键词: \"尿常规\" / \"重症监护检验\" / \"血气分析\" / \"床旁监测\"\n2. 若 fee 无命中 → CLEAN (规则不适用, 患者未被收取该费用).\n3. 用 search_notes 检查文书是否有该服务的执行记录:\n   - 重点检查 section: \"重症监护记录\" / \"辅助检查\"\n   - 执行证据关键词: \"检验报告\" / \"检验单号\" / \"监测数值\" / \"床旁记录\"\n4. 若文书有任一执行证据命中 → CLEAN (服务实际开展).\n5. 若 fee 有 + 文书无执行证据 → VIOLATION,\n   evidence: 引 fee 项目名 + 价格 + \"在 重症监护记录 等 section 中未检索到 检验报告 等执行描述\".\n6. 文书 section 不完整 (例如手术记录缺失) / 描述模糊 → INCONCLUSIVE.\n\n特殊条件: 若文书无 重症医学科 科室介入痕迹 (例: 该科记录段为空 / 该科入院记录未生成), 强支持 VIOLATION.\n\n特殊注意:\n- 若诊断含'少尿'/'无尿'还收尿常规 → 强支持 VIOLATION (生理上不可能采样).\n\n注意: 甲状腺手术患者一般不进 ICU, 若 fee 命中重症监护检验需关注是否走过 ICU.\n\n📌 专家共识触发器 (v0.7, wangxin I, jiweihui/zhoulihong V, 加权 8V/5I/0C):\n\nINCONCLUSIVE 触发器 (wangxin):\n- 监护类费用收 N 次 + 文书无 ICU/重症记录 + 病程无生命体征危机描述 → **INCONCLUSIVE conf 0.5**\n  → wangxin: \"未见医嘱单, 未见检验报告单\"\n\nV 触发器 (jiweihui):\n- 监测项目按数值/参数分解收费 (如收血压 + 收心率 + 收呼吸 = 3 次, 而非 1 次\"生命体征监测\") → V\n  → jiweihui: \"监测数值分解收取\"\n"
 trigger_keywords:
-- 尿常规
-- 重症监护检验
-- 血气分析
-- 床旁监测
-- 无尿
+  - 尿常规
+  - 重症监护检验
+  - 血气分析
+  - 床旁监测
+  - 无尿
 trigger_codes:
-- S3106020
+  - S3106020
+exam_keywords: []
 suggested_tools:
-- search_fees
-- search_notes
-- note_diagnosis
-expected_signal: '典型违规: ICU 无尿患者诊断含''急性肾衰无尿''还收尿常规 ¥10/天 × 7 天.
-
-  典型 CLEAN: ICU 患者多次尿常规监测有对应检验报告.
-
-  典型 INCONCLUSIVE: ICU 监测记录简略, 无明确检验数值.
-
-  '
+  - search_fees
+  - search_notes
+  - note_diagnosis
+expected_signal: "典型违规: ICU 无尿患者诊断含'急性肾衰无尿'还收尿常规 ¥10/天 × 7 天.\n典型 CLEAN: ICU 患者多次尿常规监测有对应检验报告.\n典型 INCONCLUSIVE: ICU 监测记录简略, 无明确检验数值.\n"
 notes: ''
 derived_from_template: M5
+drug_rule_type:
+render_hash:
+precheck:

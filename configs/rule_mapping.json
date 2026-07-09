@@ -1,9 +1,9 @@
 {
   "version": "1.0",
-  "generated_at": "2026-07-08T04:02:30+00:00",
+  "generated_at": "2026-07-09T08:29:32+00:00",
   "summary": {
-    "total_javert_rules": 156,
-    "overlapping_rules": 148,
+    "total_javert_rules": 158,
+    "overlapping_rules": 152,
     "javert_only_rules": 82,
     "by_template": {
       "_no_template": {
@@ -16,7 +16,7 @@
         "javert_only": 20
       },
       "M5": {
-        "RULE36": 7,
+        "RULE36": 9,
         "RULE2": 1
       },
       "M1": {
@@ -49,9 +49,11 @@
         "R105",
         "R134",
         "R203",
-        "R224"
+        "R224",
+        "R317",
+        "R318"
       ],
-      "javert_count": 8,
+      "javert_count": 10,
       "routing": "deterministic — javert rules execute ONLY if this java rule triggers"
     },
     "RULE3": {
@@ -257,9 +259,11 @@
         "R105",
         "R134",
         "R203",
-        "R224"
+        "R224",
+        "R317",
+        "R318"
       ],
-      "javert_count": 8,
+      "javert_count": 10,
       "routing": "deterministic — javert rules execute ONLY if this java rule triggers"
     }
   },
@@ -698,6 +702,14 @@
     "R313": [
       "RULE17",
       "RULE7"
+    ],
+    "R317": [
+      "RULE36",
+      "RULE2"
+    ],
+    "R318": [
+      "RULE36",
+      "RULE2"
     ],
     "RD01": [],
     "RD02": [],

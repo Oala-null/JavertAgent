@@ -85,6 +85,61 @@ def test_empty_or_missing_data_skips():
     )).outcome == SKIP
 
 
+# ========== companion 模式 (add-fabrication-burden-of-proof) ==========
+_SPEC_COMP = PrecheckSpec(
+    a_items=["溶栓术"], b_items=["尿激酶", "阿替普酶", "rt-PA"], mode="companion"
+)
+
+
+def test_companion_no_a_clean():
+    """companion: 无术式命中 → clean 短路."""
+    df = _fee_df([{"medins_list_name": "取栓术", "cnt": 1, "det_item_fee_sumamt": 900}])
+    r = run_precheck(_SPEC_COMP, df)
+    assert r.outcome == CLEAN
+    assert r.precheck_tag == "无术式项"
+
+
+def test_companion_a_no_b_facts_with_anchor():
+    """companion: 收术式但无配套 → facts + A 命中费用行机器锚点."""
+    df = _fee_df([{
+        "medins_list_name": "经皮穿刺脑血管腔内溶栓术", "cnt": 1,
+        "det_item_fee_sumamt": 1100, "fee_ocur_time": "2024-12-22 00:00:00",
+    }])
+    r = run_precheck(_SPEC_COMP, df)
+    assert r.outcome == FACTS
+    assert r.precheck_tag == "收术式无配套待核反证"
+    assert "search_notes" in r.fact_block and "配套" in r.fact_block
+    locs = {(e.source, e.locator) for e in r.evidence}
+    assert ("search_fees", "经皮穿刺脑血管腔内溶栓术") in locs
+    # B 无命中 → evidence 只含 A
+    assert all(e.source == "search_fees" for e in r.evidence)
+
+
+def test_companion_a_and_b_skip_no_bias():
+    """companion: 术式 + 配套均在场 → skip, 无事实块 (不注偏置)."""
+    df = _fee_df([
+        {"medins_list_name": "经皮穿刺脑血管腔内溶栓术", "cnt": 1, "det_item_fee_sumamt": 1100},
+        {"medins_list_name": "注射用阿替普酶", "cnt": 1, "det_item_fee_sumamt": 5000},
+    ])
+    r = run_precheck(_SPEC_COMP, df)
+    assert r.outcome == SKIP
+    assert r.fact_block == ""
+
+
+def test_default_mode_is_coexist_byte_identical():
+    """未声明 mode 的 spec 与显式 coexist 结果逐字一致 (companion 分支不影响 M1)."""
+    default_spec = PrecheckSpec(a_items=["PET-CT"], b_items=["图文报告"])
+    coexist_spec = PrecheckSpec(a_items=["PET-CT"], b_items=["图文报告"], mode="coexist")
+    df = _fee_df([
+        {"medins_list_name": "PET-CT全身断层显像", "cnt": 1, "det_item_fee_sumamt": 3000},
+        {"medins_list_name": "PET-CT图文报告费", "cnt": 1, "det_item_fee_sumamt": 50},
+    ])
+    d, c = run_precheck(default_spec, df), run_precheck(coexist_spec, df)
+    assert d.outcome == c.outcome == FACTS
+    assert d.fact_block == c.fact_block
+    assert [(e.source, e.locator) for e in d.evidence] == [(e.source, e.locator) for e in c.evidence]
+
+
 # ========== 迁移解析 (Task 4.2) ==========
 _R191_ADDON = (
     "本规则关注: ...\n"

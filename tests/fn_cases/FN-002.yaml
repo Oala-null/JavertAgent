@@ -1,7 +1,7 @@
 # FN 回归案例 — 一例一文件. schema 见 scripts/fn_regression.py::FnCase
 case_id: FN-002
 patient_id: "211427558"
-rule_id: TBD-内镜治疗虚构      # 覆盖空白: 虚构治疗收费尚无规则, 落规则后回填
+rule_id: R318      # 内镜治疗虚构 (add-fabrication-burden-of-proof 新建; 0325 无内镜治疗虚构条目, R132 只管色素过度检查)
 expected_verdict: VIOLATION
 expected_evidence_keywords: [经胃镜特殊治疗]
 data_source: hub

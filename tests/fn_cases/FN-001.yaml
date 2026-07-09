@@ -1,7 +1,7 @@
 # FN 回归案例 — 一例一文件. schema 见 scripts/fn_regression.py::FnCase
 case_id: FN-001
 patient_id: "211351896"
-rule_id: TBD-溶栓虚构        # 覆盖空白: 虚构术式收费尚无规则, 落规则后回填 (案例先于规则)
+rule_id: R317        # 脑血管介入溶栓虚构 (add-fabrication-burden-of-proof 新建; 0325 无神经溶栓虚构条目)
 expected_verdict: VIOLATION
 expected_evidence_keywords: [溶栓]
 data_source: hub

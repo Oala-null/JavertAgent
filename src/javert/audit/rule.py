@@ -20,6 +20,11 @@ class PrecheckSpec(BaseModel):
 
     a_items: list[str] = Field(default_factory=list, description="主项 (A 类) 项目名列表")
     b_items: list[str] = Field(default_factory=list, description="附属 (B 类) 项目名列表")
+    mode: str = Field(
+        default="coexist",
+        description="coexist=M1 重复收费 (A∩B 并存→facts); companion=术式↔配套 (A 有 B 无→facts). "
+        "缺省 coexist, 既有 M1 规则行为逐字不变",
+    )
 
 
 class Rule(BaseModel):
