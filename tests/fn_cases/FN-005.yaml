@@ -1,0 +1,9 @@
+# FN 回归案例 — 一例一文件. schema 见 scripts/fn_regression.py::FnCase
+case_id: FN-005
+patient_id: "211318013"
+rule_id: R225
+expected_verdict: VIOLATION
+expected_evidence_keywords: [关节松动训练, 颈椎]
+data_source: hub
+found_by: 专家协查 2026-07-08
+attribution: 规则粒度不足 (已修) — 原 R225 关键词摸不到「关节松动训练(颈椎)」禁忌收费; 细化后 dry-run V conf=0.90. 本例为防退化 anchor

@@ -1,0 +1,9 @@
+# FN 回归案例 — 一例一文件. schema 见 scripts/fn_regression.py::FnCase
+case_id: FN-003
+patient_id: "211419211"
+rule_id: R155
+expected_verdict: VIOLATION
+expected_evidence_keywords: [干扰素测定]
+data_source: hub
+found_by: 专家协查 2026-07-08
+attribution: gate 单次放过闸误杀 — 干扰素测定过度检查, 同违规在 211440399 (收费次数更多) 被判出, 本例次数少被单次放过. 需跨患者比对解除 (recover-deterministic-recall)
