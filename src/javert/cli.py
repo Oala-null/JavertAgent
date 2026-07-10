@@ -299,7 +299,7 @@ main.add_command(_mssql_user_group)
 @click.option("--batch-size", "batch_size", type=click.IntRange(1, 1000), default=200,
               show_default=True, help="单批大小")
 def sync_to_mssql_cmd(dry_run: bool, pending_only: bool, batch_size: int) -> None:
-    """sqlite audit_runs → 142 Javert_audit_runs 一次性 / 增量同步."""
+    """sqlite audit_runs → 142 javert_audit_runs 一次性 / 增量同步."""
     from .commands.sync_to_mssql import run_sync_to_mssql
     sys.exit(run_sync_to_mssql(
         dry_run=dry_run,

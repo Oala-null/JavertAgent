@@ -30,7 +30,7 @@ class JavertConfig(BaseSettings):
     )
 
     # LLM
-    llm_endpoint: str = "http://192.168.31.62:30000/v1"
+    llm_endpoint: str = "http://127.0.0.1:30000/v1"  # 环境指向由 .env 提供, 代码不带内网地址
     llm_model: str = "Qwen/Qwen3.6-35B-A3B-FP8"
     llm_temperature: float = 0.0
     llm_max_tokens: int = 8192
@@ -76,9 +76,9 @@ class JavertConfig(BaseSettings):
 
     # SQL Server 142 双写归档 (env: JAVERT_SQL_*)
     sql_enabled: bool = True
-    sql_host: str = "192.168.31.142"
+    sql_host: str = "127.0.0.1"
     sql_port: int = 1433
-    sql_user: str = "machendong"
+    sql_user: str = "sa"
     # 凭证不入源码 (进院前红区修复): 从 JAVERT_SQL_PASSWORD 环境变量注入 (source .env).
     # 未设置时 142 双写自动降级不可用 (sqlserver_store warn), 本地 SQLite 不受影响.
     sql_password: str = ""
@@ -89,7 +89,7 @@ class JavertConfig(BaseSettings):
     # add-workbench-sql-raw-source: 工作台原文 hub SQL 源 (env: JAVERT_HUB_RAW_ENABLED /
     # JAVERT_HUB_DATABASE). 默认关 = 纯 CSV 行为不变; 开启后 CSV 双 miss 时按患者号查 hub.
     hub_raw_enabled: bool = False
-    hub_database: str = "TP_data_hub"
+    hub_database: str = "sh_yb_platform"
     sql_driver: str = "ODBC Driver 18 for SQL Server"
     sql_pool_size: int = 5
     sql_max_overflow: int = 5

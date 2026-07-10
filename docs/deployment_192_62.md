@@ -364,6 +364,8 @@ uv run python scripts/drift_report.py --target mssql --out output/drift_142.csv
 
 **⑤ search_fees 输出形状变化 (聚合按项目名净额)** — 关键词/类别/目录检索现按项目名聚合净额 (退费自动相抵 + 「含 N 次退费已抵消」注记 + 数量小数保真). 既有规则 prompt 依赖行式形态 → 只改聚合行内容不改结构. 抽查: 任意 M1/M4 精选规则 dry-run 看 search_fees 结果仍逐行可读.
 
+**§10.5 实测落地记录 (2026-07-09)**: 部署 (git archive HEAD 干净包) + kill-9 重拉 ✓ http 200. ① 重筛已落: sqlite 4 行 + 142 6 行 (全部同日 11-12 项, 0 review 冲突, 阈值 3 保持). ⚠ 首轮暴露漏筛洞: R155 候选 75 行中 **69 行为 szx2.0 hub-only 患者** (CSV 取不到费用被当 0 项静默跳过, 含 211419211) — ec669df 已加 hub 批量兜底 + 双 miss WARN; 兜底依赖 `TB_HIS_ZY_FEE_DETAIL_EXT` (v2.2 恢复中), 就绪后**重跑 `rescreen_gated.py --target mssql` 回收 69 户** (211419211 单日 11 项必翻). ② `output/drift_142.csv` 506 对已出交专家. ④ FN 回归 62 实测: FN-001/002/005 full; FN-003 重跑 miss = **非闸问题** — R155 症状扫描豁免口把病程「肢体乏力」(脑梗神经科症状) 当炎症指征, LLM 自判 C; prompt 收紧列 follow-up. R317/R318 已正式重跑上工作台 (batch_tag=fn-fix-0709, 各 1 V).
+
 ---
 
 ## 11. 实测性能 (2026-05-21 50 病人 batch)

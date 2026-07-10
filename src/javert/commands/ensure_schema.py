@@ -17,8 +17,8 @@ IF OBJECT_ID(N'dbo.javert_audit_logs', N'U') IS NOT NULL
     DROP TABLE javert_audit_logs;
 IF OBJECT_ID(N'dbo.javert_vio_review', N'U') IS NOT NULL
     DROP TABLE javert_vio_review;
-IF OBJECT_ID(N'dbo.Javert_audit_runs', N'U') IS NOT NULL
-    DROP TABLE Javert_audit_runs;
+IF OBJECT_ID(N'dbo.javert_audit_runs', N'U') IS NOT NULL
+    DROP TABLE javert_audit_runs;
 IF OBJECT_ID(N'dbo.javert_users', N'U') IS NOT NULL
     DROP TABLE javert_users;
 """
@@ -63,12 +63,12 @@ def run_ensure_schema(*, drop_first: bool = False) -> int:
     if engine is None:
         return 1
     from sqlalchemy import text
-    expected = ["Javert_audit_runs", "javert_users", "javert_vio_review", "javert_audit_logs"]
+    expected = ["javert_audit_runs", "javert_users", "javert_vio_review", "javert_audit_logs"]
     with engine.connect() as conn:
         rows = conn.execute(
             text(
                 "SELECT name FROM sys.tables WHERE name IN "
-                "('Javert_audit_runs', 'javert_users', 'javert_vio_review', 'javert_audit_logs')"
+                "('javert_audit_runs', 'javert_users', 'javert_vio_review', 'javert_audit_logs')"
             )
         ).fetchall()
         found = {r[0] for r in rows}

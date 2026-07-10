@@ -16,7 +16,7 @@
 | 4 | 诊断与手术 (临床版) | TB_IH_DIAGNOSIS_DETAIL · TB_OPRATION_DETAIL |
 | 5 | 检验 (LIS) | TB_LIS_REPORT · TB_LIS_INDICATORS |
 | 6 | 检查 (RIS) | TB_RIS_REPORT · TB_RIS_REPORT2 |
-| 7 | 病案首页 | TB_BA_SYJBK · TB_BA_SYZDK · TB_BA_SYSSK · TB_BA_SYSSK_EXT ⁺ |
+| 7 | 病案首页 | TB_BA_SYJBK · TB_BA_SYZDK · TB_BA_SYSSK |
 | 8 | 医保结算清单 | TB_YB_JLC_CBRZDXX |
 | 9 | 基础字典 | TB_DIC_DEPARTMENT · TB_DIC_PRACTITIONER · TB_DIC_MEDICINES · TB_DIC_MATERIALS |
 
@@ -43,7 +43,6 @@
 | 10.1 | TB_BA_SYJBK | 病案首页 | 一次住院一行 (233 列) | 233 |
 | 10.2 | TB_BA_SYZDK | 病案首页其他诊断 | 一个诊断一行 | 15 |
 | 10.3 | TB_BA_SYSSK | 病案首页手术 | 一台手术一行 | 25 |
-| 10.4 | TB_BA_SYSSK_EXT ⁺ | 首页手术医保双码扩展 | 与 SYSSK 1:1 挂接 | 14 |
 | 11.1 | TB_YB_JLC_CBRZDXX | 医保结算清单-诊断信息 | 一个诊断一行 | 5 |
 | 12.1 | TB_DIC_DEPARTMENT | 科室字典 | 一科室一行 | 19 |
 | 12.2 | TB_DIC_PRACTITIONER | 医护人员字典 | 一人一行 | 29 |
@@ -58,12 +57,12 @@
 |---|------|------|
 | 1 | **JZLSH 全库唯一患者关联键** | 住院就诊流水号。**所有表同一患者用同一值**, 一次住院一个值 |
 | 2 | **YLJGYQDM 院区代码** | varchar(8)。用 4 位短码 (如 `0001`); 12 位国标机构码放 TB_DIC_HOSPITAL.YYJC |
-| 3 | **SYXH = JZLSH** | 病案首页四表 (SYJBK/SYZDK/SYSSK/SYSSK_EXT) 的首页序号与 JZLSH 取同值; 结算清单 LSH 亦同值 |
+| 3 | **SYXH = JZLSH** | 病案首页三表 (SYJBK/SYZDK/SYSSK) 的首页序号与 JZLSH 取同值; 结算清单 LSH 亦同值 |
 | 4 | **流水号必须真唯一** | SFMXID / WSLSH / ZYZDLSH / SSMXLSH / JYZBLSH; 源流水号跨患者重复时合成 `{JZLSH}-{流水号}-{序号}` |
 | 5 | **日期格式 ISO** | `YYYY-MM-DD HH:MM:SS`; BGRQ/CSRQ 类列为 `YYYYMMDD` |
 | 6 | **1900-01-01 哨兵语义固定** | = "尚未发生" (未出院 / 医嘱未终止), 不能当"时间未知"乱填 |
 | 7 | **退费行** | STFBZ=2 单独成行, 数量/金额存正值 (符号由 STFBZ 表达) |
-| 8 | **两套编码不许混** | 临床版 ICD (诊断明细/手术明细) 与医保版编码 (SYSSK_EXT / 费用 MXXMBMYB / 结算清单) 各归各列 |
+| 8 | **两套编码不许混** | 临床版 ICD (诊断明细/手术明细) 与医保版编码 (费用 MXXMBMYB / 结算清单; 医保版手术双码走 zadig_agent 请求体) 各归各列 |
 | 9 | **NOT NULL 无源兜底** | 字符列填 `'-'`; 时间列取最近真实业务时间, 不造假时间 |
 | 10 | **脱敏** | 患者姓名可填 `'-'`; 身份证不需要; 卡号 KH=`'-'` 或患者号、卡类型 KLX=`'99'` |
 | 11 | **文书按段落拆行** | 整份文书拆成 主诉/现病史/既往史… 一段一行; 拆不了整文一行 |
@@ -209,15 +208,15 @@
 
 | # | 字段 | 类型 | 非空 | 审计 | 说明 (DDL 注释) |
 |---|------|------|:----:|:----:|------|
-| 1 | YLJGYQDM | varchar(8) | 非空 | ● | 医疗机构院区代码 |
-| 2 | JZLSH | varchar(64) | 非空 | ● | 住院就诊流水号 |
-| 3 | WSLSH | varchar(64) | 非空 | ● | 文书流水号 (PK) |
-| 4 | WSLB | varchar(2) | 非空 | ● | 文书类别码 (见 _dictionaries/wslb_码表.csv) |
-| 5 | WSMC | nvarchar(256) | 非空 | ● | 文书名称 (原始) |
-| 6 | DLBT | nvarchar(128) |  | ○ | 段落标题 (如 主诉/现病史) |
-| 7 | DLXH | int |  | ○ | 段落序号 |
-| 8 | JLSJ | datetime |  | ○ | 记录时间 |
-| 9 | ZW | nvarchar(max) |  | ● | 正文 |
+| 1 | YLJGYQDM | varchar(8) | 非空 | ● | 医疗机构院区代码                       [必填] |
+| 2 | JZLSH | varchar(64) | 非空 | ● | 住院就诊流水号                         [必填] |
+| 3 | WSLSH | varchar(64) | 非空 | ● | 文书流水号 (PK)                        [必填] |
+| 4 | WSLB | varchar(2) |  | ● | 文书类别码 (可空; 接入按 WSMC 派生, 码表见 _dictionaries/wslb_码表.csv) |
+| 5 | WSMC | nvarchar(256) | 非空 | ● | 文书名称 (原始, 如 入院记录/首次病程记录) [必填] |
+| 6 | DLBT | nvarchar(128) |  | ○ | 段落标题 (可空; 医院整篇一行即可, 正文含【段落】标记时接入自动拆) |
+| 7 | DLXH | int |  | ○ | 段落序号 (可空) |
+| 8 | JLSJ | datetime |  | ○ | 记录时间 (可空) |
+| 9 | ZW | nvarchar(max) |  | ● | 正文                                   [必填(业务上)] |
 | 10 | XGBZ | varchar(1) | 非空 |  |  |
 
 ### 5.2 TB_CIS_LEAVEHOSPITAL_SUMMARY — 出院小结 【一次住院一行】
@@ -314,31 +313,31 @@
 | 1 | YLJGYQDM | varchar(8) | 非空 | ● | 医疗机构院区代码 |
 | 2 | SFMXID | varchar(32) | 非空 | ● | 1:1 挂 TB_HIS_ZY_FEE_DETAIL_FS.SFMXID |
 | 3 | JZLSH | varchar(64) | 非空 | ● | 住院就诊流水号(患者号) |
-| 4 | CHRGITM_LV | varchar(8) |  | ○ | 收费项目等级(甲乙丙) |
-| 5 | LIST_TYPE | varchar(32) |  | ○ | 目录类别 |
-| 6 | MED_LIST_CODG | varchar(64) |  | ○ | 国家医保编码 |
-| 7 | MEDINS_LIST_CODG | varchar(64) |  | ○ | 院内项目编码 (完整值; FS.MXXMBM varchar(32) 截断兜底) |
-| 8 | PRODNAME | nvarchar(256) |  | ○ | 药品通用名 |
-| 9 | SPEC | nvarchar(128) |  | ○ | 规格 |
-| 10 | DOSFORM_NAME | nvarchar(64) |  | ○ | 剂型 |
-| 11 | BILG_DEPT_CODG | varchar(32) |  | ○ | 计费科室编码 |
-| 12 | BILG_DEPT_NAME | nvarchar(128) |  | ○ | 计费科室名称 |
-| 13 | BILG_DR_CODG | varchar(32) |  | ○ | 计费医生编码 |
-| 14 | BILG_DR_NAME | nvarchar(64) |  | ○ | 计费医生姓名 |
-| 15 | ACORD_DEPT_CODG | varchar(32) |  | ○ | 开单(受单)科室编码 |
-| 16 | ACORD_DEPT_NAME | nvarchar(128) |  | ○ | 开单(受单)科室名称 |
-| 17 | ORDERS_DR_CODE | varchar(32) |  | ○ | 开单医生编码 |
-| 18 | ORDERS_DR_NAME | nvarchar(64) |  | ○ | 开单医生姓名 |
-| 19 | DSCG_TKDRUG_FLAG | varchar(2) |  | ○ | 出院带药标志 |
-| 20 | FEE_TYPE | varchar(8) |  | ○ | 费用类型(源枚举) |
-| 21 | MEDINS_CHRGITM_TYPE | nvarchar(16) |  | ○ | 源费用类别(中文) |
-| 22 | HOSP_APPR_FLAG | varchar(2) |  | ○ | 医院审批标志 |
-| 23 | PRIC_UPLMT_AMT | decimal(15,3) |  | ○ | 限价 |
-| 24 | SELFPAY_PROP | decimal(6,4) |  | ○ | 自付比例 |
-| 25 | FULAMT_OWNPAY_AMT | decimal(15,3) |  | ○ | 全自费金额 |
-| 26 | OVERLMT_AMT | decimal(15,3) |  | ○ | 超限价金额 |
-| 27 | PRESELFPAY_AMT | decimal(15,3) |  | ○ | 先行自付金额 |
-| 28 | INSCP_SCP_AMT | decimal(15,3) |  | ○ | 医保范围内金额 |
+| 4 | INSCP_SCP_AMT | decimal(15,3) |  | ○ | 医保范围内金额        [性能: Router 预筛精度] |
+| 5 | PRODNAME | nvarchar(256) |  | ○ | 药品通用名            [性能: LLM 证据/展示, FS 只有项目名称] |
+| 6 | SPEC | nvarchar(128) |  | ○ | 规格                  [性能: 同上] |
+| 7 | FEE_TYPE | varchar(8) |  | ○ | 费用类型(源枚举)      [性能: zadig fee_signal 治疗类降权] |
+| 8 | MEDINS_CHRGITM_TYPE | nvarchar(16) |  | ○ | 源费用类别(中文)      [性能: 类别主源, MXFYLB 码表为回退] |
+| 9 | BILG_DEPT_CODG | varchar(32) |  | ○ | 计费科室编码          [上下文] |
+| 10 | BILG_DEPT_NAME | nvarchar(128) |  | ○ | 计费科室名称          [性能: 审计证据上下文] |
+| 11 | BILG_DR_CODG | varchar(32) |  | ○ | 计费医生编码          [上下文] |
+| 12 | BILG_DR_NAME | nvarchar(64) |  | ○ | 计费医生姓名          [上下文] |
+| 13 | ACORD_DEPT_CODG | varchar(32) |  | ○ | 开单(受单)科室编码    [上下文] |
+| 14 | ACORD_DEPT_NAME | nvarchar(128) |  | ○ | 开单(受单)科室名称    [上下文] |
+| 15 | ORDERS_DR_CODE | varchar(32) |  | ○ | 开单医生编码          [上下文] |
+| 16 | ORDERS_DR_NAME | nvarchar(64) |  | ○ | 开单医生姓名          [上下文] |
+| 17 | CHRGITM_LV | varchar(8) |  | ○ | 收费项目等级(甲乙丙)  [M4] |
+| 18 | PRIC_UPLMT_AMT | decimal(15,3) |  | ○ | 限价                  [M4] |
+| 19 | SELFPAY_PROP | decimal(6,4) |  | ○ | 自付比例              [M4] |
+| 20 | FULAMT_OWNPAY_AMT | decimal(15,3) |  | ○ | 全自费金额            [M4] |
+| 21 | OVERLMT_AMT | decimal(15,3) |  | ○ | 超限价金额            [M4] |
+| 22 | PRESELFPAY_AMT | decimal(15,3) |  | ○ | 先行自付金额          [M4] |
+| 23 | MED_LIST_CODG | varchar(64) |  | ○ | 国家医保编码          [冗余兜底: FS.MXXMBMYB 为主源] |
+| 24 | MEDINS_LIST_CODG | varchar(64) |  | ○ | 院内项目编码完整值    [冗余兜底: FS.MXXMBM varchar(32) 截断时] |
+| 25 | LIST_TYPE | varchar(32) |  | ○ | 目录类别              [可选] |
+| 26 | DOSFORM_NAME | nvarchar(64) |  | ○ | 剂型                  [可选] |
+| 27 | DSCG_TKDRUG_FLAG | varchar(2) |  | ○ | 出院带药标志          [可选] |
+| 28 | HOSP_APPR_FLAG | varchar(2) |  | ○ | 医院审批标志          [可选] |
 
 ## 七、诊断与手术 (临床版)
 
@@ -950,27 +949,6 @@
 | 23 | SFJHSS | varchar(1) |  |  | 是否“非计划 再 次 手术” 1：是；0：否 |
 | 24 | GDRQ | datetime | 非空 |  | 归档日期 格式 YYYY-MM-DD HH:MM:SS |
 | 25 | GDBBH | varchar(16) | 非空 |  | 归档版本号 |
-
-### 10.4 TB_BA_SYSSK_EXT ⁺ — 首页手术医保双码扩展 【与 SYSSK 1:1 挂接】
-
-主键: `YLJGYQDM + SYXH + SSXH`
-
-| # | 字段 | 类型 | 非空 | 审计 | 说明 (DDL 注释) |
-|---|------|------|:----:|:----:|------|
-| 1 | YLJGYQDM | varchar(8) | 非空 | ● | 医疗机构院区代码 |
-| 2 | SYXH | varchar(32) | 非空 | ● | 同 TB_BA_SYSSK.SYXH (患者号) |
-| 3 | SSXH | varchar(8) | 非空 | ● | 同 TB_BA_SYSSK.SSXH |
-| 4 | HISSDM | varchar(64) |  | ● | 医保版手术编码 (DRG/DIP) |
-| 5 | HISSMC | nvarchar(256) |  | ● | 医保版手术名称 |
-| 6 | SSBW | nvarchar(128) |  | ○ | 手术部位 |
-| 7 | SSBWDM | varchar(32) |  | ○ | 手术部位编码 |
-| 8 | SSYSBM | varchar(32) |  | ○ | 术者编码 |
-| 9 | MZYSBM | varchar(32) |  | ○ | 麻醉医师编码 (比姓名可靠) |
-| 10 | QXSSBZ | varchar(2) |  | ○ | 取消手术标志 |
-| 11 | SSKSSJ | datetime |  | ○ | 手术开始时间 |
-| 12 | SSJSSJ | datetime |  | ○ | 手术结束时间 |
-| 13 | MZKSSJ | datetime |  | ○ | 麻醉开始时间 |
-| 14 | MZJSSJ | datetime |  | ○ | 麻醉结束时间 |
 
 ## 十一、医保结算清单
 

@@ -75,7 +75,7 @@
 
   {% if overview.surgeries %}
   <div class="subblock">
-    <strong>手术列表 <span class="muted">· 来源: 病案首页 shi_ss (ICD-9-CM3)</span></strong>
+    <strong>手术列表 <span class="muted">· 来源: 病案首页 (ICD-9-CM3)</span></strong>
     <table class="data-table">
       <thead><tr>
         <th>主/次</th><th>手术名称</th><th>ICD-9 临床</th><th>ICD-9 医保</th><th>日期</th><th>等级/麻醉/术者</th>
@@ -105,7 +105,7 @@
     </table>
   </div>
   {% elif overview.actual_surgery %}
-  <div class="subblock"><strong>手术 <span class="muted">· 来源: 病历文书 (无 shi_ss)</span></strong>
+  <div class="subblock"><strong>手术 <span class="muted">· 来源: 病历文书 (病案首页无手术记录)</span></strong>
     <div class="note-box">{{ overview.actual_surgery[:300] }}</div></div>
   {% endif %}
 

@@ -25,7 +25,6 @@ def parse_ext(sql):
 EXT = parse_ext(EXT_SQL)
 EXT['TB_CIS_MEDICAL_DOCUMENT'].setdefault('table_desc', '病历文书 (全文, 按段落拆行)')
 EXT['TB_HIS_ZY_FEE_DETAIL_EXT'].setdefault('table_desc', '住院费用明细医保分解扩展')
-EXT['TB_BA_SYSSK_EXT'].setdefault('table_desc', '病案首页手术医保双码扩展')
 
 # ---- 表级元信息: (中文名, 粒度, 简介行, ●集合, ○集合) ----
 # ● = 我方审计/DRG 链路直接消费, 缺了对应能力跑不了; ○ = 建议提供, 提升精度
@@ -62,7 +61,7 @@ META = {
    intro='诊断指征判断 + `drug_audit_lookup` + verdict_gate 假阳性闸的诊断依据。编码用 ICD-10 **临床版** (约定 8)。',
    core={'YLJGYQDM','JZLSH','ZYZDLSH','ZDBM','ZDSM','CYZDBZ'}, sugg={'ZDLB','ZDSJ','RYBQ'}),
  'TB_OPRATION_DETAIL': dict(zh='手术明细', grain='一台手术/操作一行',
-   intro='手术类规则 + verdict_gate 麻醉/手术判据。编码用 ICD-9-CM3 **临床版**; 医保版双码走 TB_BA_SYSSK_EXT。',
+   intro='手术类规则 + verdict_gate 麻醉/手术判据。编码用 ICD-9-CM3 **临床版**; 医保版手术双码走 zadig_agent 重确认请求体 (v2.2 起不入中台)。',
    core={'YLJGYQDM','JZLSH','SSMXLSH','SSCZMC','SSCZBM','ZCBZ'},
    sugg={'SSKSSJ','SSJSSJ','SSJB','MZFS','SXYHRYXM','MZYHRYXM','QKYHDJ'}),
  'TB_LIS_REPORT': dict(zh='检验报告', grain='一份报告一行',
@@ -92,9 +91,6 @@ META = {
    intro='首页口径手术 ground truth; verdict_gate 麻醉/术前判据来源之一。',
    core={'YLJGYQDM','SYXH','SSXH','SSDM','SSMC','SFZYSS'},
    sugg={'SSRQ','SSJB','MZFS','SSYS','MZYS','MZKSSJ','MZJSSJ'}),
- 'TB_BA_SYSSK_EXT': dict(zh='首页手术医保双码扩展 ⁺', grain='与 SYSSK 1:1 挂接',
-   intro='**zadig_agent DRG/DIP 刚需**: 医保版手术编码 (与临床版双码并存, 约定 8)。',
-   core={'YLJGYQDM','SYXH','SSXH','HISSDM','HISSMC'}, sugg=None),
  'TB_YB_JLC_CBRZDXX': dict(zh='医保结算清单-诊断信息', grain='一个诊断一行',
    intro='医保结算清单口径诊断 (医保版 ICD), 与临床版诊断明细互补, 用于医保口径核对。本表无院区列: LSH 与 JZLSH 同值, XH 为诊断唯一序号。',
    core={'XH','LSH','ZDNO','ZDMC'}, sugg=set()),
@@ -128,7 +124,7 @@ GROUPS = [
  ('诊断与手术 (临床版)', ['TB_IH_DIAGNOSIS_DETAIL','TB_OPRATION_DETAIL']),
  ('检验 (LIS)', ['TB_LIS_REPORT','TB_LIS_INDICATORS']),
  ('检查 (RIS)', ['TB_RIS_REPORT','TB_RIS_REPORT2']),
- ('病案首页', ['TB_BA_SYJBK','TB_BA_SYZDK','TB_BA_SYSSK','TB_BA_SYSSK_EXT']),
+ ('病案首页', ['TB_BA_SYJBK','TB_BA_SYZDK','TB_BA_SYSSK']),
  ('医保结算清单', ['TB_YB_JLC_CBRZDXX']),
  ('基础字典', ['TB_DIC_DEPARTMENT','TB_DIC_PRACTITIONER','TB_DIC_MEDICINES','TB_DIC_MATERIALS']),
 ]
@@ -204,12 +200,12 @@ w('| # | 约定 | 说明 |')
 w('|---|------|------|')
 w('| 1 | **JZLSH 全库唯一患者关联键** | 住院就诊流水号。**所有表同一患者用同一值**, 一次住院一个值 |')
 w('| 2 | **YLJGYQDM 院区代码** | varchar(8)。用 4 位短码 (如 `0001`); 12 位国标机构码放 TB_DIC_HOSPITAL.YYJC |')
-w('| 3 | **SYXH = JZLSH** | 病案首页四表 (SYJBK/SYZDK/SYSSK/SYSSK_EXT) 的首页序号与 JZLSH 取同值; 结算清单 LSH 亦同值 |')
+w('| 3 | **SYXH = JZLSH** | 病案首页三表 (SYJBK/SYZDK/SYSSK) 的首页序号与 JZLSH 取同值; 结算清单 LSH 亦同值 |')
 w('| 4 | **流水号必须真唯一** | SFMXID / WSLSH / ZYZDLSH / SSMXLSH / JYZBLSH; 源流水号跨患者重复时合成 `{JZLSH}-{流水号}-{序号}` |')
 w('| 5 | **日期格式 ISO** | `YYYY-MM-DD HH:MM:SS`; BGRQ/CSRQ 类列为 `YYYYMMDD` |')
 w('| 6 | **1900-01-01 哨兵语义固定** | = "尚未发生" (未出院 / 医嘱未终止), 不能当"时间未知"乱填 |')
 w('| 7 | **退费行** | STFBZ=2 单独成行, 数量/金额存正值 (符号由 STFBZ 表达) |')
-w('| 8 | **两套编码不许混** | 临床版 ICD (诊断明细/手术明细) 与医保版编码 (SYSSK_EXT / 费用 MXXMBMYB / 结算清单) 各归各列 |')
+w('| 8 | **两套编码不许混** | 临床版 ICD (诊断明细/手术明细) 与医保版编码 (费用 MXXMBMYB / 结算清单; 医保版手术双码走 zadig_agent 请求体) 各归各列 |')
 w("| 9 | **NOT NULL 无源兜底** | 字符列填 `'-'`; 时间列取最近真实业务时间, 不造假时间 |")
 w("| 10 | **脱敏** | 患者姓名可填 `'-'`; 身份证不需要; 卡号 KH=`'-'` 或患者号、卡类型 KLX=`'99'` |")
 w('| 11 | **文书按段落拆行** | 整份文书拆成 主诉/现病史/既往史… 一段一行; 拆不了整文一行 |')

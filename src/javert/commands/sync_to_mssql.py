@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""javert sync-to-mssql — sqlite audit_runs → 142 Javert_audit_runs 一次性/增量同步.
+"""javert sync-to-mssql — sqlite audit_runs → 142 javert_audit_runs 一次性/增量同步.
 
 设计上和 web SyncWorker 同源 (write_audit + mark_synced/mark_sync_failed), 但用于
 CLI 一次性 import (3345 条) 与 --pending-only 补漏.
@@ -63,7 +63,7 @@ def run_sync_to_mssql(
             existing = {
                 r[0]
                 for r in conn142.execute(
-                    text("SELECT run_id FROM Javert_audit_runs")
+                    text("SELECT run_id FROM javert_audit_runs")
                 ).fetchall()
             }
         with sqlite3.connect(cfg.audit_db_path) as conn_l:

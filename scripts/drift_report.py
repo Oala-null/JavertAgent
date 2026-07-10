@@ -77,7 +77,7 @@ def _read_mssql() -> list[tuple]:
         return []
     with engine.connect() as conn:
         rows = conn.execute(text(
-            "SELECT rule_id, patient_id, run_id, verdict, created_at, batch_tag FROM Javert_audit_runs"
+            "SELECT rule_id, patient_id, run_id, verdict, created_at, batch_tag FROM javert_audit_runs"
         )).fetchall()
         conn.commit()
     return [tuple(r) for r in rows]

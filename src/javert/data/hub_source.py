@@ -5,7 +5,7 @@
 共用本模块的 fetch_* 函数 — 映射逻辑只此一份, 改列契约只改这里.
 
 产出列契约 = configs/schema_manifest.yaml 各 spoke 的 output_schema (v0.7 外部数据同一契约).
-连接凭据复用 config sql_* (同台 142), 库名走 cfg.hub_database (默认 TP_data_hub).
+连接凭据复用 config sql_* (同台 142), 库名走 cfg.hub_database (默认 sh_yb_platform).
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ SENT = "1900-01-01 00:00:00"
 
 # 病案首页三表 (TB_BA_SYJBK/SYZDK/SYSSK) 为 ground truth 的院区.
 # szx(0003): IH_DIAGNOSIS_DETAIL 的 CYZDBZ 不是主诊语义 (与首页主诊几乎零一致, 2026-07-06 实measured),
-# 主诊断锚 = SYJBK.ZYZD (与 IH 主诊 83% 同码), 诊断列表 = SYZDK, 手术 = SYSSK⋈EXT.
+# 主诊断锚 = SYJBK.ZYZD (与 IH 主诊 83% 同码), 诊断列表 = SYZDK, 手术 = SYSSK⋈OPRATION_DETAIL (v2.2).
 # sy(0001): 首页库回填不全 (J66252 仅 1 行且主诊错), 维持 IH/OPRATION 现状.
 BA_HOSPS = ("0003",)
 
@@ -70,21 +70,35 @@ def fetch_hospital_map(cn) -> dict[str, str]:
     return dict(zip(hosp["YLJGYQDM"], hosp["YYJC"]))
 
 
+# v3 (2026-07-10): EXT 只留"值与国标 FS 列不重复"的原始字段。
+# 已剔除: MED/MEDINS_LIST_CODG(与 FS 逐值重复 99.6%/100%) + 3 全空占位 + 5 死列(源头全零, 实测)
+_FEE_EXT_COLS = [
+    "CHRGITM_LV", "LIST_TYPE", "PRODNAME", "SPEC",
+    "BILG_DEPT_CODG", "BILG_DEPT_NAME", "BILG_DR_CODG", "BILG_DR_NAME",
+    "ACORD_DEPT_CODG", "ACORD_DEPT_NAME", "ORDERS_DR_CODE", "ORDERS_DR_NAME",
+    "FEE_TYPE", "MEDINS_CHRGITM_TYPE", "SELFPAY_PROP",
+]
+
+
 def fetch_fees(cn, pids: list[str] | None, yq2org: dict[str, str]) -> pd.DataFrame:
-    """费用: FS ⋈ EXT → shi_fee (36 列契约)."""
+    """费用: FS (⋈ EXT 若存在) → shi_fee (36 列契约).
+
+    v3: 编码两列直取 FS 原生列 (MXXMBMYB 国家码 / MXXMBM 院内码); EXT 只装原始补充字段
+    (通用名/规格/科室医生/原始类别/自付比例)。EXT 缺表容忍 (医院数据未就绪时 FS 单表可跑);
+    已剔除列 (医保分解死列/剂型等) 契约位置保留、恒空。"""
+    has_ext = len(q(cn, "SELECT 1 x FROM sys.tables WHERE name='TB_HIS_ZY_FEE_DETAIL_EXT'")) > 0
+    ext_sel = ", ".join(f"e.{c}" for c in _FEE_EXT_COLS)
     fee = q(cn, f"""
         SELECT f.YLJGYQDM, f.SFMXID, f.STFBZ, f.JZLSH, f.MXFYLB, f.FYFSSJ, f.MXXMBM, f.MXXMBMYB,
-               f.MXXMMC, f.MXXMDJ, f.MXXMSL, f.MXXMJE,
-               e.CHRGITM_LV, e.LIST_TYPE, e.MED_LIST_CODG, e.MEDINS_LIST_CODG, e.PRODNAME, e.SPEC,
-               e.DOSFORM_NAME, e.BILG_DEPT_CODG, e.BILG_DEPT_NAME, e.BILG_DR_CODG, e.BILG_DR_NAME,
-               e.ACORD_DEPT_CODG, e.ACORD_DEPT_NAME, e.ORDERS_DR_CODE, e.ORDERS_DR_NAME,
-               e.DSCG_TKDRUG_FLAG, e.FEE_TYPE, e.MEDINS_CHRGITM_TYPE, e.HOSP_APPR_FLAG,
-               e.PRIC_UPLMT_AMT, e.SELFPAY_PROP, e.FULAMT_OWNPAY_AMT, e.OVERLMT_AMT,
-               e.PRESELFPAY_AMT, e.INSCP_SCP_AMT
+               f.MXXMMC, f.MXXMDJ, f.MXXMSL, f.MXXMJE{', ' + ext_sel if has_ext else ''}
         FROM TB_HIS_ZY_FEE_DETAIL_FS f
-        LEFT JOIN TB_HIS_ZY_FEE_DETAIL_EXT e ON f.YLJGYQDM=e.YLJGYQDM AND f.SFMXID=e.SFMXID
+        {'LEFT JOIN TB_HIS_ZY_FEE_DETAIL_EXT e ON f.YLJGYQDM=e.YLJGYQDM AND f.SFMXID=e.SFMXID' if has_ext else ''}
         WHERE {in_clause(pids, 'f.JZLSH')}""")
+    if not has_ext:
+        for c in _FEE_EXT_COLS:
+            fee[c] = ""
     sign = fee["STFBZ"].map(lambda v: -1 if v == "2" else 1)
+    empty = pd.Series("", index=fee.index)
     cat = fee["MEDINS_CHRGITM_TYPE"].where(fee["MEDINS_CHRGITM_TYPE"] != "",
                                            fee["MXFYLB"].map(MXFYLB2CN).fillna("其他"))
     return pd.DataFrame({
@@ -94,28 +108,54 @@ def fetch_fees(cn, pids: list[str] | None, yq2org: dict[str, str]) -> pd.DataFra
         "cnt": pd.to_numeric(fee["MXXMSL"], errors="coerce").fillna(0) * sign,
         "pric": fee["MXXMDJ"],
         "det_item_fee_sumamt": pd.to_numeric(fee["MXXMJE"], errors="coerce").fillna(0) * sign,
-        "pric_uplmt_amt": fee["PRIC_UPLMT_AMT"], "selfpay_prop": fee["SELFPAY_PROP"],
-        "fulamt_ownpay_amt": fee["FULAMT_OWNPAY_AMT"], "overlmt_amt": fee["OVERLMT_AMT"],
-        "preselfpay_amt": fee["PRESELFPAY_AMT"], "inscp_scp_amt": fee["INSCP_SCP_AMT"],
+        "pric_uplmt_amt": empty, "selfpay_prop": fee["SELFPAY_PROP"],
+        "fulamt_ownpay_amt": empty, "overlmt_amt": empty,
+        "preselfpay_amt": empty, "inscp_scp_amt": empty,
         "chrgitm_lv": fee["CHRGITM_LV"], "list_type": fee["LIST_TYPE"],
-        "med_list_codg": fee["MED_LIST_CODG"].where(fee["MED_LIST_CODG"] != "", fee["MXXMBMYB"]),
-        "medins_list_codg": fee["MEDINS_LIST_CODG"].where(fee["MEDINS_LIST_CODG"] != "", fee["MXXMBM"]),
+        "med_list_codg": fee["MXXMBMYB"],
+        "medins_list_codg": fee["MXXMBM"],
         "medins_list_name": fee["MXXMMC"],
         "med_chrgitm_type": "", "prodname": fee["PRODNAME"], "spec": fee["SPEC"],
-        "dosform_name": fee["DOSFORM_NAME"],
+        "dosform_name": empty,
         "bilg_dept_codg": fee["BILG_DEPT_CODG"], "bilg_dept_name": fee["BILG_DEPT_NAME"],
         "bilg_dr_codg": fee["BILG_DR_CODG"], "bilg_dr_name": fee["BILG_DR_NAME"],
         "acord_dept_codg": fee["ACORD_DEPT_CODG"], "acord_dept_name": fee["ACORD_DEPT_NAME"],
         "orders_dr_code": fee["ORDERS_DR_CODE"], "orders_dr_name": fee["ORDERS_DR_NAME"],
-        "dscg_tkdrug_flag": fee["DSCG_TKDRUG_FLAG"], "fee_type": fee["FEE_TYPE"],
-        "medins_chrgitm_type": cat, "hosp_appr_flag": fee["HOSP_APPR_FLAG"],
+        "dscg_tkdrug_flag": empty, "fee_type": fee["FEE_TYPE"],
+        "medins_chrgitm_type": cat, "hosp_appr_flag": empty,
         "hospital": fee["YLJGYQDM"].map(yq2org).fillna(""),
         "create_time": "", "id": fee["SFMXID"],
     })
 
 
+# LEAVEHOSPITAL_SUMMARY 列 → 出院小结 子阶段 (build_data_hub_filled SY_SEC2COL 的逆向, 名称保持 sy canonical)
+SUMMARY_COL2SEC = [
+    ("RYZD", "入院诊断"), ("CYZD", "出院诊断"), ("RYZZTZ", "入院时主要症状和体征"),
+    ("JCHZ", "主要实验室检查和特殊检查"), ("ZLGC", "治疗经过"), ("HBZ", "合并症"),
+    ("CYQKMS", "出院时症状和体征"), ("CYYZ", "出院医嘱"), ("ZLJGSM", "治疗结果"),
+]
+
+
+def _summary_to_notes(summ: pd.DataFrame) -> list[dict]:
+    """标准表出院小结行 → case_notes 行 (阶段=出院小结, 一列一子阶段; '-'/'' 兜底值跳过)."""
+    rows: list[dict] = []
+    for r in summ.itertuples(index=False):
+        ts = "" if str(r.CYSJ).startswith("1900-01-01") else r.CYSJ
+        pairs = [(sec, getattr(r, col)) for col, sec in SUMMARY_COL2SEC]
+        pairs += [(r.YYZTBBT1, r.YYZTB1), (r.YYZTBBT2, r.YYZTB2)]  # 动态标题块 (健康教育/病理报告)
+        for sec, body in pairs:
+            if sec and sec != "-" and body and body != "-":
+                rows.append({"住院号": r.JZLSH, "事件时间": ts, "阶段": "出院小结",
+                             "子阶段": sec, "内容": body, "来源文件": "data_hub"})
+    return rows
+
+
 def fetch_notes(cn, pids: list[str] | None) -> pd.DataFrame:
-    """文书: MEDICAL_DOCUMENT → case_notes (6 列契约).
+    """文书: 标准表 LEAVEHOSPITAL_SUMMARY (出院小结) + 扩展表 MEDICAL_DOCUMENT → case_notes (6 列契约).
+
+    46表标准化: 出院小结的标准承载 = LEAVEHOSPITAL_SUMMARY。患者在扩展表有 WSLB=05 行
+    (自建全文, 信息最全) → 用扩展表; 只有标准表行 (医院按国标 DDL 灌库的形态) → 列反拆重建.
+    医院只给标准表不给扩展表 05 也能跑.
 
     szx 侧整篇文书一行且 DLBT(段落标题) 全空 → note_diagnosis 等按子阶段匹配的工具全瞎.
     修复: DLBT 空且正文含【段落】标记时按标记拆行 (复用 v0.7/v0.10 已验证拆分);
@@ -124,9 +164,16 @@ def fetch_notes(cn, pids: list[str] | None) -> pd.DataFrame:
     from javert.onboarding.etl_engine import split_sections
 
     doc = q(cn, f"""
-        SELECT JZLSH, JLSJ, WSMC, DLBT, ZW FROM TB_CIS_MEDICAL_DOCUMENT
+        SELECT JZLSH, JLSJ, WSMC, WSLB, DLBT, ZW FROM TB_CIS_MEDICAL_DOCUMENT
         WHERE {in_clause(pids, 'JZLSH')} ORDER BY JZLSH, WSLSH""")
-    rows: list[dict] = []
+    summ = q(cn, f"""
+        SELECT JZLSH, CYSJ, YYZTBBT1, YYZTB1, YYZTBBT2, YYZTB2,
+               {', '.join(c for c, _ in SUMMARY_COL2SEC)}
+        FROM TB_CIS_LEAVEHOSPITAL_SUMMARY WHERE {in_clause(pids, 'JZLSH')}""")
+    # 05 判定: WSLB 或 WSMC 正则 (v2 医院侧 WSLB 可空, 按文书名称派生)
+    is05 = (doc["WSLB"] == "05") | doc["WSMC"].str.contains("出院小结|出院记录", regex=True, na=False)
+    ext05_pids = set(doc.loc[is05, "JZLSH"])
+    rows: list[dict] = _summary_to_notes(summ[~summ["JZLSH"].isin(ext05_pids)])
     for r in doc.itertuples(index=False):
         ts = "" if str(r.JLSJ).startswith("1900-01-01") else r.JLSJ
         sections = split_sections(str(r.ZW)) if (not r.DLBT and "【" in str(r.ZW)) else []
@@ -258,8 +305,11 @@ def _ss_frame(ba_id, name, code, mainflag, date, lv, anst, dr, anst_dr) -> pd.Da
 
 
 def fetch_ss(cn, pids: list[str] | None, yq2org: dict[str, str]) -> pd.DataFrame:
-    """手术 → shi_ss (9 列契约). BA_HOSPS 走病案首页 SYSSK⋈EXT (SFZYSS 主手术标志),
+    """手术 → shi_ss (9 列契约). BA_HOSPS 走病案首页 SYSSK⋈OPRATION_DETAIL (SFZYSS 主手术标志),
     其他院区维持 OPRATION_DETAIL 现状.
+
+    v2 (46表标准化): SSKSSJ 日期回退改标准表 OPRATION_DETAIL (旧 SYSSK_EXT join 实测 0 行生效,
+    且术者/麻醉/时间标准表已承载) — 医院无需提供 SYSSK_EXT.
 
     harden-onsite-redlines D5: per-patient 源选择 — 只有 SYSSK 真有行的患者剔除
     OPRATION 行, 缺首页手术行的 szx 患者保留 IH 侧手术."""
@@ -273,10 +323,11 @@ def fetch_ss(cn, pids: list[str] | None, yq2org: dict[str, str]) -> pd.DataFrame
 
     ba = q(cn, f"""
         SELECT s.YLJGYQDM, s.SYXH, s.SSXH, s.SSRQ, s.SSDM, s.SSMC, s.SSJB, s.MZFS,
-               s.SSYS, s.MZYS, s.SFZYSS, e.SSKSSJ
+               s.SSYS, s.MZYS, s.SFZYSS, o.SSKSSJ
         FROM TB_BA_SYSSK s
-        LEFT JOIN TB_BA_SYSSK_EXT e
-          ON s.YLJGYQDM=e.YLJGYQDM AND s.SYXH=e.SYXH AND s.SSXH=e.SSXH
+        LEFT JOIN (SELECT YLJGYQDM, JZLSH, SSXH, MIN(SSKSSJ) AS SSKSSJ
+                   FROM TB_OPRATION_DETAIL GROUP BY YLJGYQDM, JZLSH, SSXH) o
+          ON s.YLJGYQDM=o.YLJGYQDM AND s.SYXH=o.JZLSH AND s.SSXH=o.SSXH
         WHERE s.YLJGYQDM IN ({ba_in}) AND {in_clause(pids, 's.SYXH')}
         ORDER BY s.SYXH, s.SSXH""")
 

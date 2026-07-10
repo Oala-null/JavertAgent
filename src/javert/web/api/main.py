@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
     if cfg.sql_enabled:
         if sql142.init_schema():
             logger.info(
-                "142 Javert_audit_runs 已确认: %s/%s",
+                "142 javert_audit_runs 已确认: %s/%s",
                 cfg.sql_host, cfg.sql_database,
             )
         else:

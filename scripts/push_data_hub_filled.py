@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""把 Scriv/data_hub_filled/*.csv 推到 142 的 TP_data_hub 库.
+"""把 data_hub_filled/*.csv 推到 cfg.hub_database 库 (默认 sh_yb_platform; host/凭据走 .env).
 
 用法:
     uv run python scripts/push_data_hub_filled.py             # 全量 (已存在且行数一致的表跳过)
@@ -21,12 +21,19 @@ from pathlib import Path
 import pandas as pd
 import pyodbc
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+from javert.config import load_config  # noqa: E402
+
 SCRIV = Path("/Users/shane/26er/Scriv")
 DATA = SCRIV / "data_hub_filled"
 SCHEMA = json.loads((SCRIV / "data_hub_schema.json").read_text(encoding="utf-8"))
 
-CS = ("DRIVER={ODBC Driver 18 for SQL Server};SERVER=192.168.31.142,1433;DATABASE=%s;"
-      "UID=machendong;PWD=Jyn_Machendong;TrustServerCertificate=yes;Encrypt=no;LoginTimeout=60")
+# 凭证不入源码 (v3): 复用 config sql_* (.env 提供 JAVERT_SQL_PASSWORD 等)
+_cfg = load_config()
+if not _cfg.sql_password:
+    sys.exit("JAVERT_SQL_PASSWORD 未配置 — source .env 后重试")
+CS = (f"DRIVER={{{_cfg.sql_driver}}};SERVER={_cfg.sql_host},{_cfg.sql_port};DATABASE=%s;"
+      f"UID={_cfg.sql_user};PWD={_cfg.sql_password};TrustServerCertificate=yes;Encrypt=no;LoginTimeout=60")
 
 # 扩展表的非 varchar 列 (与 _ext_tables.sql 保持一致)
 EXT_TYPED = {
@@ -67,24 +74,26 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--only")
     ap.add_argument("--recreate", action="store_true")
+    ap.add_argument("--data-dir", help="改用其他数据目录 (如 data_hub_filled_5p 测试子集)")
     args = ap.parse_args()
+    data = Path(args.data_dir) if args.data_dir else DATA
 
     master = pyodbc.connect(CS % "master", timeout=60, autocommit=True)
     mc = master.cursor()
-    if not mc.execute("SELECT 1 FROM sys.databases WHERE name='TP_data_hub'").fetchone():
-        mc.execute("CREATE DATABASE TP_data_hub COLLATE Chinese_PRC_CI_AS")
-        print("已建库 TP_data_hub (Chinese_PRC_CI_AS)")
+    if not mc.execute("SELECT 1 FROM sys.databases WHERE name=?", _cfg.hub_database).fetchone():
+        mc.execute(f"CREATE DATABASE [{_cfg.hub_database}] COLLATE Chinese_PRC_CI_AS")
+        print(f"已建库 {_cfg.hub_database} (Chinese_PRC_CI_AS)")
     master.close()
 
-    cn = pyodbc.connect(CS % "TP_data_hub", timeout=60, autocommit=False)
+    cn = pyodbc.connect(CS % _cfg.hub_database, timeout=60, autocommit=False)
     cur = cn.cursor()
     cur.fast_executemany = True
 
-    csvs = sorted(DATA.glob("TB_*.csv"), key=lambda p: p.stat().st_size)  # 小表先行, 快速反馈
+    csvs = sorted(data.glob("TB_*.csv"), key=lambda p: p.stat().st_size)  # 小表先行, 快速反馈
     if args.only:
         csvs = [p for p in csvs if p.stem == args.only]
 
-    ext_sql = (DATA / "_ext_tables.sql").read_text(encoding="utf-8")
+    ext_sql = (data / "_ext_tables.sql").read_text(encoding="utf-8")
 
     summary = []
     for path in csvs:

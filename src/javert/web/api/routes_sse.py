@@ -3,7 +3,7 @@
 
 两类事件:
   - review_submitted: routes_workbench.submit_review 触发 (asyncio 同进程)
-  - new_audit_run:    audit_watcher 任务 (poll Javert_audit_runs 每秒) 触发
+  - new_audit_run:    audit_watcher 任务 (poll javert_audit_runs 每秒) 触发
 
 EventBus 单进程内 fan-out, 无外部依赖. 多 web 进程 (未来) 各自 poll 各自 fan-out.
 """

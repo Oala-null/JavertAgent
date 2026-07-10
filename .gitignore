@@ -31,6 +31,7 @@ docs/javert_vio_review.csv
 # 凭证 / 密钥
 # ============================================================
 .env
+.env.*
 configs/llm.local.yaml
 *.local.yaml
 

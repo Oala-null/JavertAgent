@@ -41,7 +41,7 @@ class ReviewRecord(BaseModel):
     # JOIN javert_users 时回填; 非持久化字段
     reviewer_username: str | None = None
     reviewer_display_name: str | None = None
-    # JOIN Javert_audit_runs 时回填 (submit_review 顺手取);
+    # JOIN javert_audit_runs 时回填 (submit_review 顺手取);
     # SSE 广播需要靠 patient_id 找 sidebar 卡片
     patient_id: str | None = None
     rule_id: str | None = None

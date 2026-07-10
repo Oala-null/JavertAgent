@@ -1,6 +1,6 @@
-# CLAUDE.md (Javert)
+# AGENTS.md (Javert)
 
-本文件为 Claude Code (claude.ai/code) 在 Javert 项目内工作时提供导航.
+本文件为 Codex (Codex.ai/code) 在 Javert 项目内工作时提供导航.
 
 **语言**: 全中文开发 (与 26er/CLAUDE.md 顶层约定一致).
 

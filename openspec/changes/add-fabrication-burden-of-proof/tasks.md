@@ -22,5 +22,5 @@
 ## 4. 端到端 + 部署
 
 - [x] 4.1 `uv run pytest tests/ -v` 全绿; FN 回归 --against-baseline: FN-001/002 升档, 其余不跌档
-- [ ] 4.2 62 部署 (tar src+configs), 正式重跑 211351896 / 211427558 (SQL_ENABLED=true) 上工作台交专家复核
+- [x] 4.2 62 部署 (tar src+configs), 正式重跑 211351896 / 211427558 (SQL_ENABLED=true) 上工作台交专家复核 — 2026-07-09 git archive HEAD 部署 + kill-9 重拉 (http 200); R317→V / R318→V 各 1/1 同步 142, batch_tag=fn-fix-0709; 62 live FN 回归 FN-001/002/005 full
 - [x] 4.3 `Javert/CLAUDE.md` 变更日志; `Javert问题汇总.md` 案例①②标注结论

@@ -600,12 +600,12 @@ def _build_overview_cached(patient_id: str, loader: CsvLoader) -> dict[str, Any]
     if zd["main"]:
         m = zd["main"][0]
         primary_dx = f"{m['name']} ({m['code']})" if m["code"] else m["name"]
-        primary_source = "病案首页 shi_zd"
+        primary_source = "病案首页"
     else:
         cand = (diags.get("出院诊断") or diags.get("主要诊断")
                 or diags.get("入院诊断") or diags.get("临床诊断") or [])
         primary_dx = cand[0] if cand else "(无)"
-        primary_source = "病历文书 (无首页 ground truth)"
+        primary_source = "病历文书 (病案首页无主诊断)"
 
     other_dx = (
         [f"{o['name']} ({o['code']})" if o["code"] else o["name"] for o in zd["others"][:10]]

@@ -217,7 +217,7 @@ class SqlServerStore:
             return False
 
     # =========================================================
-    # 写入: AuditResult → Javert_audit_runs
+    # 写入: AuditResult → javert_audit_runs
     # =========================================================
     def write_audit(
         self,
@@ -285,7 +285,7 @@ class SqlServerStore:
             with engine.connect() as conn:
                 # 业务唯一键 run_id 去重 (避免重写)
                 existing = conn.execute(
-                    text("SELECT 1 FROM Javert_audit_runs WHERE run_id = :rid"),
+                    text("SELECT 1 FROM javert_audit_runs WHERE run_id = :rid"),
                     {"rid": result.run_id},
                 ).fetchone()
                 if existing:
@@ -295,7 +295,7 @@ class SqlServerStore:
                 conn.execute(
                     text(
                         """
-                        INSERT INTO Javert_audit_runs (
+                        INSERT INTO javert_audit_runs (
                             run_id, rule_id, patient_id, verdict, confidence,
                             reasoning, evidence_json, tool_calls_json,
                             duration_ms, model, rule_yaml_snapshot, rule_status,
@@ -368,7 +368,7 @@ class SqlServerStore:
                 f"SELECT TOP ({limit_int}) "
                 "id, run_id, rule_id, patient_id, verdict, confidence, "
                 "duration_ms, model, triggered_by, started_at, created_at "
-                "FROM Javert_audit_runs"
+                "FROM javert_audit_runs"
                 + where_clause
                 + " ORDER BY created_at DESC"
             )
@@ -589,7 +589,7 @@ class SqlServerStore:
             # 1. run_id 必须存在 + 顺便取 patient_id + rule_id (denormalize 进 vio_review)
             #    + verdict (AI 裁决, SSE 增量计数判定是否落在当前 filter 命中集)
             run_row = conn.execute(
-                text("SELECT patient_id, rule_id, verdict FROM Javert_audit_runs WHERE run_id = :rid"),
+                text("SELECT patient_id, rule_id, verdict FROM javert_audit_runs WHERE run_id = :rid"),
                 {"rid": run_id},
             ).fetchone()
             if not run_row:
@@ -718,12 +718,12 @@ class SqlServerStore:
             WITH latest AS (
                 SELECT patient_id, rule_id, verdict, run_id, batch_tag, created_at,
                        ROW_NUMBER() OVER (PARTITION BY patient_id, rule_id ORDER BY created_at DESC) AS rn
-                FROM Javert_audit_runs
+                FROM javert_audit_runs
             ),
             patient_tag AS (
                 SELECT patient_id, batch_tag,
                        ROW_NUMBER() OVER (PARTITION BY patient_id ORDER BY created_at DESC) AS rn_tag
-                FROM Javert_audit_runs
+                FROM javert_audit_runs
             )
             SELECT latest.patient_id,
                    SUM(CASE WHEN verdict = N'VIOLATION' THEN 1 ELSE 0 END) AS v_count,
@@ -743,7 +743,7 @@ class SqlServerStore:
             WITH latest AS (
                 SELECT patient_id, rule_id, verdict, run_id,
                        ROW_NUMBER() OVER (PARTITION BY patient_id, rule_id ORDER BY created_at DESC) AS rn
-                FROM Javert_audit_runs
+                FROM javert_audit_runs
             )
             SELECT l.patient_id, l.verdict, COUNT(DISTINCT l.run_id) AS n
             FROM latest l
@@ -837,7 +837,7 @@ class SqlServerStore:
             WITH latest AS (
                 SELECT rule_id, patient_id, verdict,
                        ROW_NUMBER() OVER (PARTITION BY patient_id, rule_id ORDER BY created_at DESC) AS rn
-                FROM Javert_audit_runs
+                FROM javert_audit_runs
                 {tag_filter}
             )
             SELECT rule_id, patient_id, verdict FROM latest WHERE rn = 1
@@ -872,7 +872,7 @@ class SqlServerStore:
                    reasoning, evidence_json, tool_calls_json,
                    duration_ms, model, started_at, created_at, triggered_by, batch_tag,
                    gate_tag
-            FROM Javert_audit_runs
+            FROM javert_audit_runs
             WHERE patient_id = :pid
             ORDER BY rule_id ASC, created_at DESC
         """
@@ -881,7 +881,7 @@ class SqlServerStore:
                    rv.comment, rv.created_at, rv.is_latest,
                    u.username, u.display_name
             FROM javert_vio_review rv
-            INNER JOIN Javert_audit_runs r ON r.run_id = rv.run_id
+            INNER JOIN javert_audit_runs r ON r.run_id = rv.run_id
             INNER JOIN javert_users u ON u.id = rv.user_id
             WHERE r.patient_id = :pid AND rv.is_latest = 1
             ORDER BY rv.created_at DESC
@@ -985,7 +985,7 @@ class SqlServerStore:
             with engine.connect() as conn:
                 rows = conn.execute(
                     text(
-                        "SELECT run_id, anchors_json FROM Javert_audit_runs "
+                        "SELECT run_id, anchors_json FROM javert_audit_runs "
                         "WHERE patient_id = :pid AND anchors_json IS NOT NULL"
                     ),
                     {"pid": patient_id},
@@ -1051,7 +1051,7 @@ class SqlServerStore:
                             "SELECT COUNT(DISTINCT patient_id), "
                             "SUM(CASE WHEN verdict = N'VIOLATION' THEN 1 ELSE 0 END), "
                             "SUM(CASE WHEN verdict = N'INCONCLUSIVE' THEN 1 ELSE 0 END) "
-                            "FROM Javert_audit_runs"
+                            "FROM javert_audit_runs"
                         )
                     ).fetchone()
                 else:
@@ -1060,7 +1060,7 @@ class SqlServerStore:
                             "SELECT COUNT(DISTINCT patient_id), "
                             "SUM(CASE WHEN verdict = N'VIOLATION' THEN 1 ELSE 0 END), "
                             "SUM(CASE WHEN verdict = N'INCONCLUSIVE' THEN 1 ELSE 0 END) "
-                            "FROM Javert_audit_runs WHERE created_at > :since"
+                            "FROM javert_audit_runs WHERE created_at > :since"
                         ),
                         {"since": since},
                     ).fetchone()
@@ -1107,7 +1107,7 @@ class SqlServerStore:
                     text(
                         f"SELECT TOP ({limit_int}) run_id, patient_id, rule_id, verdict, "
                         "confidence, created_at "
-                        "FROM Javert_audit_runs "
+                        "FROM javert_audit_runs "
                         "WHERE created_at > :last_seen "
                         "ORDER BY created_at ASC"
                     ),
@@ -1136,7 +1136,7 @@ class SqlServerStore:
         try:
             with engine.connect() as conn:
                 row = conn.execute(
-                    text("SELECT MAX(created_at) FROM Javert_audit_runs")
+                    text("SELECT MAX(created_at) FROM javert_audit_runs")
                 ).fetchone()
                 return row[0] if row and row[0] else None
         except Exception as e:
@@ -1152,7 +1152,7 @@ class SqlServerStore:
         try:
             with engine.connect() as conn:
                 row = conn.execute(
-                    text("SELECT ISNULL(MAX(id), 0) FROM Javert_audit_runs")
+                    text("SELECT ISNULL(MAX(id), 0) FROM javert_audit_runs")
                 ).fetchone()
                 return int(row[0]) if row and row[0] is not None else 0
         except Exception as e:
@@ -1177,7 +1177,7 @@ class SqlServerStore:
                     text(
                         f"SELECT TOP ({limit_int}) id, run_id, patient_id, rule_id, "
                         "verdict, confidence, created_at "
-                        "FROM Javert_audit_runs "
+                        "FROM javert_audit_runs "
                         "WHERE id > :last_id "
                         "ORDER BY id ASC"
                     ),
@@ -1208,7 +1208,7 @@ class SqlServerStore:
             with engine.connect() as conn:
                 row = conn.execute(
                     text(
-                        "SELECT TOP 1 1 FROM Javert_audit_runs "
+                        "SELECT TOP 1 1 FROM javert_audit_runs "
                         "WHERE patient_id = :pid AND run_id <> :exc"
                     ),
                     {"pid": patient_id, "exc": exclude_run_id},
@@ -1231,7 +1231,7 @@ class SqlServerStore:
             WITH latest AS (
                 SELECT run_id, rule_id, patient_id, verdict, gate_tag,
                        ROW_NUMBER() OVER (PARTITION BY patient_id, rule_id ORDER BY created_at DESC) AS rn
-                FROM Javert_audit_runs
+                FROM javert_audit_runs
             )
         """
         try:
@@ -1352,7 +1352,7 @@ class SqlServerStore:
                    rv.review_verdict, rv.comment, rv.created_at,
                    ar.verdict, ar.confidence
             FROM javert_vio_review rv
-            INNER JOIN Javert_audit_runs ar ON ar.run_id = rv.run_id
+            INNER JOIN javert_audit_runs ar ON ar.run_id = rv.run_id
             WHERE rv.user_id = :uid AND rv.is_latest = 1
             ORDER BY rv.created_at DESC
         """
@@ -1403,7 +1403,7 @@ class SqlServerStore:
             "WITH latest AS ("
             "  SELECT *, ROW_NUMBER() OVER ("
             "    PARTITION BY patient_id, rule_id ORDER BY created_at DESC) AS rn "
-            "  FROM Javert_audit_runs"
+            "  FROM javert_audit_runs"
             "), r AS (SELECT * FROM latest WHERE rn = 1) "
         )
         out: dict[str, list[dict]] = {}

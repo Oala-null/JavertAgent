@@ -1,8 +1,6 @@
 # Javert 默认配置 — 字段可被环境变量 JAVERT_<UPPER_KEY> 覆盖
 
-# LLM 后端 (复用 zadig_agent 同款 sglang 服务)
-llm_endpoint: "http://192.168.31.62:30000/v1"
-llm_model: "Qwen/Qwen3.6-35B-A3B-FP8"
+# LLM 后端 — endpoint/model 属环境指向, 由 .env 提供 (JAVERT_LLM_ENDPOINT / JAVERT_LLM_MODEL)
 llm_temperature: 0.0
 llm_max_tokens: 8192
 llm_timeout: 300
@@ -14,7 +12,7 @@ retry_budget: 3                 # LLM 不可达时的重试次数
 tool_result_max_chars: 2000     # 单工具结果喂 LLM 上限 (含必留标记者只截明细段)
 
 # 路径
-data_dir: "data"
+# data_dir 由 .env/环境变量提供 (默认 data)
 rules_dir: "configs/rules"
 audit_db: "output/audit.sqlite"
 prompts_dir: "src/javert/audit/prompts"
@@ -31,11 +29,8 @@ pilot_roster_file: "pilot_patients.txt"
 # 写入失败仅 warn 不阻塞, 本地 SQLite 仍是 source-of-truth
 # 字段可被 JAVERT_SQL_* 环境变量覆盖
 sql_enabled: true
-sql_host: "192.168.31.142"
-sql_port: 1433
-sql_user: "machendong"
+# sql_host / sql_port / sql_user / sql_database 属环境指向, 由 .env 提供 (JAVERT_SQL_*)
 # sql_password 不入源码 — 用环境变量 JAVERT_SQL_PASSWORD 注入 (见 .env / deploy/javert-web.env.example)
-sql_database: "zadig"
 sql_driver: "ODBC Driver 18 for SQL Server"
 sql_pool_size: 5
 sql_max_overflow: 5

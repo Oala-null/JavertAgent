@@ -38,7 +38,7 @@ def sync_status(request: Request) -> dict:
             "host": cfg.sql_host,
             "port": cfg.sql_port,
             "database": cfg.sql_database,
-            "table": "Javert_audit_runs",
+            "table": "javert_audit_runs",
         },
         "local": local,
         "worker": worker.snapshot() if worker else None,

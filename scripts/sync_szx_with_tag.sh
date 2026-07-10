@@ -26,7 +26,7 @@ with eng.connect() as conn:
         chunk = run_ids[i:i+100]
         ph = ','.join([f':r{j}' for j in range(len(chunk))])
         params = {f'r{j}': rid for j, rid in enumerate(chunk)}
-        r = conn.execute(text(f\"UPDATE Javert_audit_runs SET batch_tag='szx' WHERE run_id IN ({ph})\"), params)
+        r = conn.execute(text(f\"UPDATE javert_audit_runs SET batch_tag='szx' WHERE run_id IN ({ph})\"), params)
         updated += r.rowcount
     conn.commit()
     print(f'batch_tag 兜底 UPDATE: {updated} 行')
@@ -37,7 +37,7 @@ with eng.connect() as conn:
                SUM(CASE WHEN verdict='VIOLATION' THEN 1 ELSE 0 END) v,
                SUM(CASE WHEN verdict='INCONCLUSIVE' THEN 1 ELSE 0 END) i,
                SUM(CASE WHEN verdict='CLEAN' THEN 1 ELSE 0 END) c
-        FROM Javert_audit_runs WHERE batch_tag='szx'
+        FROM javert_audit_runs WHERE batch_tag='szx'
         GROUP BY patient_id ORDER BY patient_id
     \"\"\")).fetchall()
     print('')

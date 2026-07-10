@@ -116,7 +116,7 @@ def backfill_sqlite(db_path, loader, meta_map, kb_drugs, *, dry_run=False, limit
 def backfill_mssql(meta_map, loader, kb_drugs, *, dry_run=False, limit=None, batch_size=500):
     """142 回填 — 分批提交, 不长占表锁 (可在工作台在线时跑).
 
-    旧实现把所有 UPDATE 放进单一大事务, commit 只在末尾 → 持有 Javert_audit_runs
+    旧实现把所有 UPDATE 放进单一大事务, commit 只在末尾 → 持有 javert_audit_runs
     行/表锁长达整批 (~万行/十几分钟), 阻塞工作台 list_patients 等读查询 (实测整页
     变慢 + 病人列表空). 改为每 batch_size 行一次 commit: 锁只在每批内短暂持有,
     工作台读可在批间穿插, 不再被长事务挡死.
@@ -132,9 +132,9 @@ def backfill_mssql(meta_map, loader, kb_drugs, *, dry_run=False, limit=None, bat
 
     sel = (
         "SELECT run_id, rule_id, patient_id, evidence_json, tool_calls_json "
-        "FROM Javert_audit_runs ORDER BY run_id"
+        "FROM javert_audit_runs ORDER BY run_id"
     )
-    upd = text("UPDATE Javert_audit_runs SET anchors_json = :aj WHERE run_id = :rid")
+    upd = text("UPDATE javert_audit_runs SET anchors_json = :aj WHERE run_id = :rid")
     written = 0
     fee_cache: dict[str, object] = {}
     with engine.connect() as conn:

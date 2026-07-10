@@ -12,12 +12,12 @@
 
 - [x] 2.0 核对 panel 初始集: R155 已实证套餐形态 (211419211 11项/日); R151/R132 逐条核 yaml 违规形态 + 抽存量 gate 行看费用分布, **确为"多项目单日打包"形态才入集**, 不实证不入 (误入集的代价是该规则闸降级目标变 I, 放大 I 量)
 - [x] 2.1 `configs/verdict_gate.yaml` 加 `panel_rules` 节 (2.0 核定集, min_distinct_items 初值 3 + panel_downgrade_to: INCONCLUSIVE); `verdict_gate.py` ②闸: panel 规则按同日不同项目名数计数 (费用不可得 fail-open 原口径), 触发降 I → 单测: 11项单日 V 保留 / 2项触发降 I / 非 panel 逐字不变 / fail-open
-- [ ] 2.2 FN 回归: FN-005 不退化 (gate 改动不误伤 R225)  ⏸ 需 62 live LLM 复跑; 已由构造保证 (panel 分支仅作用 R155, R225 gate 路径逐字不变, 见 test_non_panel_m2_rule_single_instance_unchanged)
+- [x] 2.2 FN 回归: FN-005 不退化 (gate 改动不误伤 R225) — 2026-07-09 62 live 复跑 FN-005 full (V + 关节松动/颈椎证据齐)
 
 ## 3. 463 条存量重筛
 
 - [x] 3.1 写 `scripts/rescreen_gated.py` (--dry-run / 实跑 / --revert 还原): 选「单次放过」行 → panel 规则从费用重算 → 原地 UPDATE C→I + 可逆标签「单次闸重筛回升(原C)」; 断言跳过有 review 行; sqlite 先 142 后
-- [ ] 3.2 dry-run 出翻转量分布 → 定 min_distinct_items 终值 (>100 条收紧) → **与用户确认后**落库 → 验证: FN-003 (211419211×R155) 翻 I  ⏸ 需 142/存量数据 + 用户确认阈值 (脚本已就绪, 命令见 deployment §10.5 ①)
+- [ ] 3.2 dry-run 出翻转量分布 → 定 min_distinct_items 终值 (>100 条收紧) → **与用户确认后**落库 → 验证: FN-003 (211419211×R155) 翻 I  ⏸ 2026-07-09 用户落库: sqlite 4 行 + 142 6 行 ✓ (标签可逆, 0 review 冲突)。**首轮实测暴露漏筛洞**: R155 候选 75 行中 69 行为 szx2.0 hub-only 患者 (含 FN-003 本尊 211419211), CSV 取不到费用被当 0 项静默跳过 → 已修 (ec669df: hub 批量兜底 + 双 miss WARN, 部署 62); hub 兜底当前被 TB_HIS_ZY_FEE_DETAIL_EXT 下线阻塞, **等 hub_source EXT-optional 在建改动落地后重跑 `--target mssql` 回收 69 户** (211419211 单日 11 项必翻)
 - [x] 3.3 工作台「被闸降级」facet (gate_tag 非空维度, 复用 v0.9 facet 引擎, 与 verdict filter 正交) → 手工验证专家视角可列降级行 + 原始 V 推理
 
 ## 4. drift guard
@@ -27,6 +27,6 @@
 
 ## 5. 端到端 + 部署
 
-- [ ] 5.1 `uv run pytest tests/ -v` 全绿 (✓ 653 passed + 1 skip; 唯 2 失败来自无关 WIP `hub_source.py` 未提交改动, 与本 change 无关); FN 回归 --against-baseline: FN-003 升档 (重筛后), FN-005 保持 full  ⏸ FN 部分需 62 live LLM
-- [ ] 5.2 62 部署 (tar src+configs+scripts), 3.2 重筛对 142 执行, javert-web 重启 (facet); FN 回归 62 复跑  ⏸ 需 62 access (runbook 已写, deployment §10.5)
+- [ ] 5.1 `uv run pytest tests/ -v` 全绿 (✓ 653 passed + 1 skip; 唯 2 失败来自无关 WIP `hub_source.py` 未提交改动, 与本 change 无关); FN 回归 --against-baseline: FN-003 升档 (重筛后), FN-005 保持 full  ⏸ 2026-07-09 62 live 回归: FN-001/002/005 full, **FN-003 重跑仍 miss — 非闸问题**: LLM 经 R155 症状扫描豁免口 (病程"肢体乏力"命中→有指征 CLEAN) + 经验库"合理关联走 CLEAN"自行判 C; 存量行回收仍靠 3.2 重筛, R155 prompt 豁免口收紧列为 follow-up (症状扫描限定炎症相关, 排除神经科背景乏力)
+- [ ] 5.2 62 部署 (tar src+configs+scripts), 3.2 重筛对 142 执行, javert-web 重启 (facet); FN 回归 62 复跑  ⏸ 部署/重启/回归/drift 报告 2026-07-09 已完成 (git archive HEAD 干净部署, 排除 WIP hub_source.py; http 200; drift_142.csv 506 对漂移多为 v2.0→v2.1 有意修正); **仅剩 3.2 重筛落库待人工**
 - [x] 5.3 `Javert/CLAUDE.md` 变更日志 + `docs/deployment_192_62.md` 升级步骤 (含重筛与还原命令)

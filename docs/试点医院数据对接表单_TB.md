@@ -3,8 +3,8 @@
 > 版本 v1.0 | 2026-07-05 | 适用系统: Javert (医保自查自纠 LLM 审计) + zadig_agent (DRG 重确认)
 >
 > 本表单供院方信息科 / 数据工程团队对照勾选与准备数据。数据按国家医保局数据中台标准
-> **TB_\* 表结构**交付 (含我方 3 张扩展表), 我方系统经取数桥零改动接入。
-> 表结构 DDL 全文参照: `Scriv/Data_Hub/TB_*.md` (46 张国标表) + `Scriv/data_hub_filled/_ext_tables.sql` (3 张扩展表)。
+> **TB_\* 表结构**交付 (含我方 2 张扩展表: 文书 + 费用扩展), 我方系统经取数桥零改动接入。
+> 表结构 DDL 全文参照: `Scriv/Data_Hub/TB_*.md` (46 张国标表) + `Scriv/data_hub_filled/_ext_tables.sql` (2 张扩展表, v2.2)。
 >
 > **使用方法**: 每张表右侧「院方情况」栏勾选 `□ 可提供 / □ 部分字段 / □ 无此数据`,
 > 并注明源系统 (HIS/EMR/LIS/RIS/病案系统)。字段表中 **●=必填** (审计直接消费, 缺了该类审计跑不了),
@@ -39,7 +39,6 @@
 | TB_RIS_REPORT / TB_RIS_REPORT2 | 检查报告 放射类 / 非放射类 | 2 | Javert `search_examinations` (含超声/病理/心电/内镜) |
 | TB_BA_SYJBK | 病案首页 (233 列) | 2 | zadig_agent DRG 重确认 + 病案概览 + 费用宽表核验 |
 | TB_BA_SYZDK / TB_BA_SYSSK | 首页其他诊断 / 首页手术 | 2 | 首页口径 ground truth |
-| TB_BA_SYSSK_EXT ⁺ | 首页手术医保双码扩展 | 2 | **zadig_agent DRG/DIP 刚需** (医保版手术双码) |
 | TB_CIS_DRADVICE_DETAIL | 住院医嘱 (长期/临时) | 3 | 未来 `search_orders`: 药品频次/途径/配伍审计 |
 | TB_CIS_PRESCRIPTION_DETAIL | 门诊处方 | 3 | 未来门诊审计扩展 |
 | TB_RIS_REPORT_DETAIL | 影像检查项目明细 | 3 | 未来影像报告↔收费项目挂钩核验 |
@@ -60,7 +59,7 @@
 | 5 | **日期格式 ISO** | `YYYY-MM-DD HH:MM:SS`。**禁止** `D/M/Y` 或 `M/D/Y` 混用; BGRQ 类列为 `YYYYMMDD` |
 | 6 | **1900-01-01 哨兵语义固定** | = "尚未发生" (未出院 / 医嘱未终止)。**不能**当"时间未知"的默认值乱填 |
 | 7 | **退费行** | STFBZ=2 单独成行, 数量/金额存正值 (符号由 STFBZ 表达) |
-| 8 | **两套编码不许混** | 临床版 ICD (诊断明细/手术明细) 与医保版编码 (SYSSK_EXT / 费用 MXXMBMYB) 各归各列 |
+| 8 | **两套编码不许混** | 临床版 ICD (诊断明细/手术明细) 与医保版编码 (费用 MXXMBMYB; 医保版手术双码走 zadig_agent 重确认请求体) 各归各列 |
 | 9 | **NOT NULL 无源兜底** | 字符列填 `'-'`; 时间列按业务回退链取最近真实时间, **不造假时间** |
 | 10 | **脱敏** | 患者姓名可填 `'-'`; 身份证不需要; 卡号 KH=`'-'`、卡类型 KLX=`'99'` 即可 |
 
@@ -201,7 +200,7 @@
 
 **院方情况**: □ 可提供 □ 部分 □ 无 源系统: ________ 备注: ________
 
-### 4.3 病案首页四表: TB_BA_SYJBK + TB_BA_SYZDK + TB_BA_SYSSK + TB_BA_SYSSK_EXT ⁺
+### 4.3 病案首页三表: TB_BA_SYJBK + TB_BA_SYZDK + TB_BA_SYSSK
 
 > zadig_agent DRG/DIP 重确认的输入主体; Javert 用作 ground truth 与假阳性闸判据。
 > SYJBK 233 列**按国标模板能填尽填**, 最低集合如下:
@@ -214,8 +213,8 @@
 **SYSSK** (首页手术) ●: SYXH · SSXH · SSDM/SSMC (手术代码/名称) · SFZYSS (是否主手术)
 ○: SSRQ · SSJB (级别) · MZFS (麻醉方式) · SSYS/MZYS (主刀/麻醉医生) · MZKSSJ/MZJSSJ (麻醉起止)
 
-**SYSSK_EXT ⁺** (**医保版手术双码 — DRG 刚需**) ●: SYXH/SSXH (挂接键) · HISSDM/HISSMC (医保版手术编码/名称)
-○: SSBW/SSBWDM (手术部位) · SSYSBM/MZYSBM (术者/麻醉医师**编码**) · QXSSBZ (取消手术标志) · SSKSSJ/SSJSSJ/MZKSSJ/MZJSSJ
+> 注 (v2.2): 原 SYSSK_EXT 扩展表已取消——术者/麻醉医师编码与手术时间在国标 TB_OPRATION_DETAIL 原生列
+> (SXYHRYID/MZYHRYID/SSKSSJ, **SSXH 请与 SYSSK.SSXH 对齐**); 医保版手术双码经 zadig_agent 重确认请求体提交, 不入中台。
 
 **院方情况**: □ 可提供 □ 部分 □ 无 源系统: ________ 备注: ________
 
@@ -288,6 +287,6 @@
 - [ ] 日期格式 ISO 确认; 1900-01-01 哨兵语义确认
 - [ ] 文书能否按段落拆分 (不能则整文一行, 提前告知)
 - [ ] 费用类别码 MXFYLB 对照表拿到 (院内类别 → 2 位国标码)
-- [ ] 第 2 档: 检验/检查/病案首页四表可提供范围确认; 医保版手术双码 (SYSSK_EXT) 有无
+- [ ] 第 2 档: 检验/检查/病案首页三表可提供范围确认; 医保版手术双码 (zadig_agent 请求体口径) 有无
 - [ ] 第 3 档: 医嘱表 (长期/临时) 有无、何时可给 — 影响药品审计深度
 - [ ] 交付形式三选一敲定 + 首批患者名单圈定

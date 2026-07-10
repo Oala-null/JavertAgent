@@ -262,6 +262,13 @@ def load_sy():
 def load_szx():
     fee = pd.read_csv(JAVERT / "data/song/r_fee.csv", dtype=str, low_memory=False)
     fee = fee[fee["bah"].notna()].copy()
+    # v2.3 值体系修正 (2026-07-09 彻查):
+    # ① szx 源 r_fee 两编码列名实相反 — med_list_codg 存 5-6 位院内码, medins_list_codg
+    #   存 23 位国家医保码 (XH03AAZ057…) — 读入即交换归位, 否则 M8 国家码匹配/Router C码 全错位
+    fee = fee.rename(columns={"med_list_codg": "medins_list_codg", "medins_list_codg": "med_list_codg"})
+    # ② szx 源 spec 列实为单位(袋/支) 不是规格 — 改道 FS.MXXMDW, 规格置空 (sy 侧 spec 是真规格不动)
+    fee["mxxmdw"] = fee["spec"]
+    fee["spec"] = ""
     fee["pid"] = fee["bah"].str.split("-").str[-1].str.strip().str.upper()
     fee["yq"] = fee["hospital"].map(YQDM_MAP).fillna("0003")
     fee["dt"] = parse_dt(fee["fee_ocur_time"], dayfirst=True)
@@ -306,16 +313,16 @@ def build_fee(em: Emitter, src, tag: str, cat_mapper) -> None:
         "MXXMMC": fee["medins_list_name"],
         "MXXMDJ": fee["pric"],
         "MXXMSL": cnt.abs().astype(str),
+        "MXXMDW": fee["mxxmdw"] if "mxxmdw" in fee.columns else pd.Series("", index=fee.index),  # v2.3: szx 单位(袋/支)
         "MXXMJE": amt.abs().astype(str),
         "XGBZ": pd.Series("1", index=fee.index),
     }, n, tag)
-    # 扩展表: 医保分解 + 科室/医生 + 药品属性 (映射总纲 扩容③, Javert 审计刚需字段 1:1 挂 SFMXID)
-    ext_cols = ["chrgitm_lv", "list_type", "med_list_codg", "medins_list_codg", "prodname", "spec", "dosform_name",
+    # 扩展表 v3 (2026-07-10): 只留"值与国标 FS 列不重复"的原始字段 —
+    # 编码两列(与FS逐值重复)/3全空占位/5死列(源头全零) 已剔除
+    ext_cols = ["chrgitm_lv", "list_type", "prodname", "spec",
                 "bilg_dept_codg", "bilg_dept_name", "bilg_dr_codg", "bilg_dr_name",
                 "acord_dept_codg", "acord_dept_name", "orders_dr_code", "orders_dr_name",
-                "dscg_tkdrug_flag", "fee_type", "medins_chrgitm_type", "hosp_appr_flag",
-                "pric_uplmt_amt", "selfpay_prop", "fulamt_ownpay_amt", "overlmt_amt",
-                "preselfpay_amt", "inscp_scp_amt"]
+                "fee_type", "medins_chrgitm_type", "selfpay_prop"]
     ext = pd.DataFrame({"YLJGYQDM": fee["yq"].values, "SFMXID": sfmxid.values, "JZLSH": fee["pid"].values})
     for c in ext_cols:
         ext[c.upper()] = fee[c].fillna("").values if c in fee.columns else ""
@@ -413,20 +420,7 @@ def build_surg(em: Emitter, src, tag: str) -> None:
         "GDRQ": parse_dt(ss["create_time"], dayfirst=True).str[:10],
         "GDBBH": pd.Series("1", index=ss.index),
     }, n, tag)
-    # 扩展: 医保版手术双码 + 医师编码 + 部位 + 取消标志 (映射总纲 扩容①, DRG/DIP 刚需)
-    ext = pd.DataFrame({
-        "YLJGYQDM": ss["yq"].values, "SYXH": ss["pid"].values, "SSXH": ssxh.values,
-        "HISSDM": ss["hi_oprn_oprt_code"].fillna("").values,
-        "HISSMC": ss["hi_oprn_oprt_name"].fillna("").values,
-        "SSBW": ss["oprn_oper_part"].fillna("").values,
-        "SSBWDM": ss["oprn_oper_part_code"].fillna("").values,
-        "SSYSBM": ss["oper_dr_code"].fillna("").values,
-        "MZYSBM": ss["anst_dr_code"].fillna("").values,
-        "QXSSBZ": ss["canc_oprn_flag"].fillna("").values,
-        "SSKSSJ": beg_iso.values, "SSJSSJ": end_iso.values,
-        "MZKSSJ": anst_beg.values, "MZJSSJ": anst_end.values,
-    })
-    em.emit_ext("TB_BA_SYSSK_EXT", ext, tag)
+    # v2.1: SYSSK_EXT 已删 (术者/麻醉编码与手术时间在 OPRATION_DETAIL; 医保版双码走 zadig_agent 请求体)
     em.emit("TB_OPRATION_DETAIL", {
         "YLJGYQDM": ss["yq"],
         "SSMXLSH": dedup_suffix(ss["pid"] + "-S" + ssxh),
@@ -484,7 +478,7 @@ def build_face_sy(em: Emitter, sy) -> None:
         "BAH": base["pid"],
         "YLZZJGDM": base["org"],
         "BRXM": base["pid"].map(pinfo["name"]),
-        "BRXB": base["pid"].map(pinfo["sex"]),
+        "BRXB": base["pid"].map(pinfo["sex"]).map({"男": "1", "女": "2"}),  # v2.3: 国标码, 勿灌中文
         "XSNL": base["pid"].map(pd.to_numeric(pinfo["age"], errors="coerce")),
         "RYCS": pd.Series(1, index=base.index),
         "RYRQ": ryrq16(ry),
@@ -608,55 +602,116 @@ def build_visit(em: Emitter, sy, szx) -> None:
     }, len(basy), "szx")
 
 
-DISCHARGE_SECTION2COL = {
-    "入院诊断": "RYZD", "出院诊断": "CYZD", "入院时主要症状和体征": "RYZZTZ",
-    "出院时症状和体征": "CYQKMS", "出院医嘱": "CYYZ", "治疗结果": "ZLJGSM",
+# 出院小结 段落名 → LEAVEHOSPITAL_SUMMARY 列 (46表标准化: 两侧模板段落名不同, 字典分开)
+SY_SEC2COL = {
+    "入院诊断": "RYZD", "出院诊断": "CYZD",
+    "入院时主要症状和体征": "RYZZTZ", "入院情况": "RYZZTZ",
+    "出院时症状和体征": "CYQKMS", "出院情况": "CYQKMS",
+    "出院医嘱": "CYYZ", "治疗结果": "ZLJGSM",
+    "主要实验室检查和特殊检查": "JCHZ", "住院时主要实验室检查和特殊检查": "JCHZ",
+    "治疗经过": "ZLGC", "诊疗经过": "ZLGC", "手术情况": "ZLGC", "病程记录内容": "ZLGC",
+    "健康教育": "YYZTB1", "病理报告": "YYZTB2",
 }
+SZX_SEC2COL = {
+    "入院诊断": "RYZD", "出院诊断": "CYZD",
+    "主诉": "RYZZTZ", "入院时情况": "RYZZTZ", "入院情况": "RYZZTZ",
+    "出院时情况": "CYQKMS", "出院情况": "CYQKMS",
+    "出院医嘱": "CYYZ", "出院后用药、康复指导及随访": "CYYZ",
+    "治疗结果": "ZLJGSM", "合并症": "HBZ",
+    "主要化验结果": "JCHZ", "特殊检查及重要会诊": "JCHZ",
+    "诊疗经过": "ZLGC",
+}
+WSLB_05_RE = r"出院小结|出院记录"
 
 
-def build_discharge(em: Emitter, sy) -> None:
-    notes = sy["notes"]
-    dis = notes[notes["阶段"] == "出院小结"].copy()
-    if dis.empty:
-        return
-    dis["内容"] = dis["内容"].fillna("")
-    piv = dis.pivot_table(index="pid", columns="子阶段", values="内容",
-                          aggfunc=lambda s: "\n".join(x for x in s if x)).fillna("")
-    piv = piv.reset_index()
+def _pivot_summary(long: pd.DataFrame) -> pd.DataFrame:
+    """长表 (pid, col, 内容) → 一患者一行, 同列多段 \\n 拼接."""
+    piv = long.pivot_table(index="pid", columns="col", values="内容",
+                           aggfunc=lambda s: "\n".join(x for x in s if x)).fillna("")
+    return piv.reset_index()
 
-    def col(name: str) -> pd.Series:
-        return piv[name] if name in piv.columns else pd.Series("", index=piv.index)
 
-    jchz = (col("主要实验室检查和特殊检查") + "\n" + col("住院时主要实验室检查和特殊检查")).str.strip()
-    zlgc = (col("治疗经过") + "\n" + col("手术情况")).str.strip()
-    ry = piv["pid"].map(sy["span"]["min"]).fillna("")
-    cy = piv["pid"].map(sy["span"]["max"]).fillna("")
-    days = (pd.to_datetime(cy, errors="coerce") - pd.to_datetime(ry, errors="coerce")).dt.days.fillna(0) + 1
-    yq_map = dict(zip(sy["fee"]["pid"], sy["fee"]["yq"]))
+def _col(piv: pd.DataFrame, name: str) -> pd.Series:
+    return piv[name] if name in piv.columns else pd.Series("", index=piv.index)
+
+
+def _emit_summary(em: Emitter, piv: pd.DataFrame, base: dict[str, pd.Series], note: str) -> None:
+    """公共列组装 + emit (缺段落列由 Emitter NOT NULL 兜底 '-')."""
     em.emit("TB_CIS_LEAVEHOSPITAL_SUMMARY", {
-        "YLJGYQDM": piv["pid"].map(yq_map).fillna("0001"),
-        "JZLSH": piv["pid"],
-        "BAH": piv["pid"],
-        "XM": piv["pid"].map(sy["pinfo"]["name"]),
-        "BRXB": piv["pid"].map(sy["pinfo"]["sex"]).map({"男": "1", "女": "2"}),
-        "BRNL": piv["pid"].map(pd.to_numeric(sy["pinfo"]["age"], errors="coerce")),
-        "RYSJ": ry,
-        "CYSJ": cy,
-        "ZYTS": days.astype(str),
-        "RYZD": col("入院诊断"),
-        "CYZD": col("出院诊断"),
-        "RYZZTZ": col("入院时主要症状和体征"),
-        "JCHZ": jchz,
-        "ZLGC": zlgc,
-        "CYQKMS": col("出院时症状和体征"),
-        "CYYZ": col("出院医嘱"),
-        "ZLJGSM": col("治疗结果"),
-        "YYZTBBT1": pd.Series("健康教育", index=piv.index).where(col("健康教育") != "", ""),
-        "YYZTB1": col("健康教育"),
-        "YYZTBBT2": pd.Series("病理报告", index=piv.index).where(col("病理报告") != "", ""),
-        "YYZTB2": col("病理报告"),
+        **base,
+        "JZLSH": piv["pid"], "BAH": piv["pid"],
+        "RYZD": _col(piv, "RYZD"), "CYZD": _col(piv, "CYZD"),
+        "RYZZTZ": _col(piv, "RYZZTZ"), "JCHZ": _col(piv, "JCHZ"),
+        "ZLGC": _col(piv, "ZLGC"), "HBZ": _col(piv, "HBZ"),
+        "CYQKMS": _col(piv, "CYQKMS"), "CYYZ": _col(piv, "CYYZ"),
+        "ZLJGSM": _col(piv, "ZLJGSM"),
+        "YYZTBBT1": pd.Series("健康教育", index=piv.index).where(_col(piv, "YYZTB1") != "", ""),
+        "YYZTB1": _col(piv, "YYZTB1"),
+        "YYZTBBT2": pd.Series("病理报告", index=piv.index).where(_col(piv, "YYZTB2") != "", ""),
+        "YYZTB2": _col(piv, "YYZTB2"),
         "XGBZ": pd.Series("1", index=piv.index),
-    }, len(piv), "sy(出院小结 pivot)")
+    }, len(piv), note)
+
+
+def build_discharge(em: Emitter, sy, szx) -> None:
+    """出院小结 → 标准表 (46表标准化: WSLB=05 全量 pivot, 不再只取 sy 阶段=='出院小结')."""
+    # ── sy: 05 类阶段 (出院小结/出院记录/手术科室/24小时…) 段落行 → 长表 ──
+    notes = sy["notes"]
+    dis = notes[notes["阶段"].fillna("").str.contains(WSLB_05_RE, regex=True)].copy()
+    if not dis.empty:
+        long = pd.DataFrame({
+            "pid": dis["pid"],
+            "col": dis["子阶段"].map(SY_SEC2COL),
+            "内容": dis["内容"].fillna(""),
+        }).dropna(subset=["col"])  # 未映射段落 (签名/基本信息…) 不进标准表, 全文仍在 MEDICAL_DOCUMENT
+        piv = _pivot_summary(long)
+        ry = piv["pid"].map(sy["span"]["min"]).fillna("")
+        cy = piv["pid"].map(sy["span"]["max"]).fillna("")
+        days = (pd.to_datetime(cy, errors="coerce") - pd.to_datetime(ry, errors="coerce")).dt.days.fillna(0) + 1
+        yq_map = dict(zip(sy["fee"]["pid"], sy["fee"]["yq"]))
+        _emit_summary(em, piv, {
+            "YLJGYQDM": piv["pid"].map(yq_map).fillna("0001"),
+            "XM": piv["pid"].map(sy["pinfo"]["name"]),
+            "BRXB": piv["pid"].map(sy["pinfo"]["sex"]).map({"男": "1", "女": "2"}),
+            "BRNL": piv["pid"].map(pd.to_numeric(sy["pinfo"]["age"], errors="coerce")),
+            "RYSJ": ry, "CYSJ": cy, "ZYTS": days.astype(str),
+        }, "sy(05类文书 pivot)")
+
+    # ── szx: 整篇 05 文书 【段落】拆行 → 长表 (无标记篇跳过, 全文兜底在 MEDICAL_DOCUMENT) ──
+    from javert.onboarding.etl_engine import split_sections
+
+    doc = szx["doc"]
+    d = doc[doc["pid"].notna() & doc["record_name"].fillna("").str.contains(WSLB_05_RE, regex=True)]
+    rows, times, nomark = [], {}, 0
+    for r in d.itertuples(index=False):
+        secs = split_sections("" if pd.isna(r.replace) else str(r.replace))
+        if not secs:
+            nomark += 1
+            continue
+        for title, body in secs:
+            if title == "入院时间":
+                times.setdefault(r.pid, {})["ry"] = body
+            elif title == "出院时间":
+                times.setdefault(r.pid, {})["cy"] = body
+            elif title in SZX_SEC2COL:
+                rows.append({"pid": r.pid, "col": SZX_SEC2COL[title], "内容": body})
+    if rows:
+        piv2 = _pivot_summary(pd.DataFrame(rows))
+        basy1 = szx["basy"].drop_duplicates("pid").set_index("pid")
+        # 时间: 正文【出/入院时间】为准 (映射总纲: record_date 系统性早 1 天), 缺则回退 r_basy
+        ry2 = parse_dt(piv2["pid"].map(lambda p: times.get(p, {}).get("ry", "")), dayfirst=True)
+        cy2 = parse_dt(piv2["pid"].map(lambda p: times.get(p, {}).get("cy", "")), dayfirst=True)
+        ry2 = ry2.where(ry2 != "", parse_dt(piv2["pid"].map(basy1["adm_date"]).fillna(""), dayfirst=True))
+        cy2 = cy2.where(cy2 != "", parse_dt(piv2["pid"].map(basy1["dscg_date"]).fillna(""), dayfirst=True))
+        days2 = (pd.to_datetime(cy2, errors="coerce") - pd.to_datetime(ry2, errors="coerce")).dt.days.fillna(0) + 1
+        _emit_summary(em, piv2, {
+            "YLJGYQDM": pd.Series("0003", index=piv2.index),
+            "XM": piv2["pid"].map(basy1["psn_name"]),
+            "BRXB": piv2["pid"].map(basy1["gend"]).map(
+                lambda v: "" if pd.isna(v) else {"男": "1", "女": "2"}.get(str(v), str(v))),
+            "KS": piv2["pid"].map(basy1["hos_dscg_caty_name"]),
+            "RYSJ": ry2, "CYSJ": cy2, "ZYTS": days2.astype(str),
+        }, f"szx(05类整篇拆段 pivot, 无标记跳过{nomark})")
 
 
 def build_docs(em: Emitter, sy, szx) -> None:
@@ -967,12 +1022,12 @@ TABLE_DOCS: list[tuple[str, str, str, str, str]] = [
      "PK=(YLJGYQDM,SFMXID,STFBZ)。SFMXID=`{患者号}-{feedetl_sn}[-序]` 合成 (源 feedetl_sn 跨患者重复 3 万组, 不能直用); "
      "STFBZ 由金额/数量符号派生 (负数→'2'退费, 金额数量落库取绝对值)",
      "选发生表(_FS)不选结算表: 内部 fee_ocur_time 是发生口径。MXFYLB 是自定 2 位码 (见 _dictionaries/mxfylb_码表.csv, "
-     "sy 中文类别与 szx 数值码两套源字典已归一)。医保分解/科室/医生/药品属性 在 EXT 表"),
-    ("TB_HIS_ZY_FEE_DETAIL_EXT", "费用明细扩展 (⚠新增表)",
-     "与 FS 同源, 装 FS 国标 DDL 放不下的审计刚需列",
+     "sy 中文类别与 szx 数值码两套源字典已归一)。医保分解/科室/医生/药品属性 在 EXT 表 (v2.2: 性能字段, FS 国标列无法承载)"),
+    ("TB_HIS_ZY_FEE_DETAIL_EXT", "费用明细扩展 (⚠新增表, v2.2 恢复 — 性能字段)",
+     "与 FS 同源, 装 FS 国标 DDL 放不下的字段",
      "PK=(YLJGYQDM,SFMXID) 1:1 挂 FS",
-     "字段来源规则: 列名 = 内部 shi_fee 同名列的大写 (如 CHRGITM_LV←chrgitm_lv)。逐字段见下方字段表。"
-     "Javert 超标准收费(M4)/药品(M8) 审计信号都在这张表"),
+     "取舍原则: 不为省对接牺牲性能。[性能]=当前管道消费 (INSCP_SCP_AMT→Router 精度/PRODNAME,SPEC→LLM 证据"
+     "/FEE_TYPE→zadig 信号/科室→审计上下文); [M4]=甲乙丙+医保分解族 (163 目录内待上线)。逐字段见下方字段表"),
     # ---- 病案首页域 ----
     ("TB_BA_SYJBK", "病案首页 (233 列宽表)",
      "sy(3300行): shi_zd 主诊断/病理/损伤中毒 + shi_ss 主手术 + shi_fee 费用聚合 + 检验表患者三要素, 拼装≈30列 · "
@@ -994,11 +1049,7 @@ TABLE_DOCS: list[tuple[str, str, str, str, str]] = [
      "sy: shi_ss(6795) · szx: r_basy_ss(7437)",
      "PK=(YLJGYQDM,SYXH,SSXH), SSXH=oprn_oprt_sn (同患者重复 sn 加 `-序` 后缀)",
      "⚠sy 侧 SSRQ='-': 源 xls 手术日期列全是 '00:00:00' 纯时间无日期。⚠sy 侧 MZYS(麻醉医生姓名)与术者 100% 同名(源脏数据), "
-     "可靠麻醉医师编码用 EXT 表 MZYSBM"),
-    ("TB_BA_SYSSK_EXT", "首页手术扩展 (⚠新增表)",
-     "与 SYSSK 同源",
-     "PK=(YLJGYQDM,SYXH,SSXH) 1:1 挂 SYSSK",
-     "装国标 SYSSK 放不下的: 医保版手术双码(DRG/DIP 刚需)、医师编码、手术部位、取消标志、手术/麻醉起止时间。逐字段见下方字段表"),
+     "可靠麻醉医师编码用 OPRATION_DETAIL.MZYHRYID"),
     ("TB_OPRATION_DETAIL", "手术明细 (HIS 口径手术主表)",
      "同 SYSSK 两源",
      "PK=(YLJGYQDM,SSMXLSH), SSMXLSH=`{患者号}-S{序}`",
@@ -1010,11 +1061,12 @@ TABLE_DOCS: list[tuple[str, str, str, str, str]] = [
      "Javert search_notes / zadig_agent 文书链路的命脉——没有这张表 data_hub 装不下叙述文书。"
      "WSLB 文书类别 2 位码见 _dictionaries/wslb_码表.csv (13 类, 按 WSMC 正则归类)。ZW=正文 nvarchar(max)。"
      "sy 事件时间 92% 空 (源如此), JLSJ 可空。逐字段见下方字段表"),
-    ("TB_CIS_LEAVEHOSPITAL_SUMMARY", "出院小结 (结构化 42 列)",
-     "仅 sy(2412 份): case_notes 阶段=出院小结 的段落 pivot 到结构化列 (入院诊断→RYZD, 治疗经过+手术情况→ZLGC, 出院医嘱→CYYZ, "
-     "健康教育→YYZTB1, 病理报告→YYZTB2)",
+    ("TB_CIS_LEAVEHOSPITAL_SUMMARY", "出院小结 (结构化 42 列, 46表标准化: WSLB=05 全量 pivot)",
+     "sy: 05类阶段(出院小结/出院记录/手术科室/24小时…) 段落 pivot · szx: 整篇 05 文书按【段落】拆行后 pivot "
+     "(段落名→列 两套字典 SY_SEC2COL/SZX_SEC2COL; szx 时间以正文【出院时间】为准, 回退 r_basy)",
      "PK=(YLJGYQDM,JZLSH)",
-     "szx 出院小结不分段, 整篇在 MEDICAL_DOCUMENT (WSLB=05), 不进本表。缺段落的 NOT NULL 列填 '-'"),
+     "出院小结的标准承载表 (hub_source.fetch_notes 对无扩展表 05 行的患者从本表重建 case_notes)。"
+     "未映射段落(签名/基本信息…)与无【】标记整篇不进本表, 全文兜底在 MEDICAL_DOCUMENT。缺段落的 NOT NULL 列填 '-'"),
     # ---- 就诊/患者域 ----
     ("TB_YL_ZY_MEDICAL_RECORD", "住院就诊记录 (键桥主表)",
      "sy: 患者全集(费用∪文书) + 费用跨度时间 · szx: r_basy (真实入出院时间/科室)",
@@ -1069,36 +1121,50 @@ TABLE_DOCS: list[tuple[str, str, str, str, str]] = [
 ]
 
 
-EXT_DDL = """-- data_hub_filled 扩展表 DDL (回传 142 前先执行; 幂等)
--- 依据: data_hub_关系映射.md §五 扩容清单 ①②③
+EXT_DDL = """-- data_hub_filled 扩展表 DDL v2.2 (回传 142 前先执行; 幂等)
+-- v2.2 (2026-07-09): 两张扩展表 = 文书 + 费用扩展。取舍原则: 不为省对接工作量牺牲产品性能。
+--   文书表      = P0, 46 国标表无叙述文书正文承载
+--   费用扩展    = 性能必要, FS/结算两张国标费用表实现不了的字段 (逐列见列注释):
+--                 INSCP_SCP_AMT→Router 预筛精度 (实测缺失多跑规则) / PRODNAME/SPEC→LLM 证据与展示
+--                 / FEE_TYPE→zadig 信号 / 科室医生→审计上下文 / 甲乙丙+医保分解族→M4 (163 目录内待上线)
+--   SYSSK_EXT   = 已删除不恢复 (管道消费面实测=0: 术者/麻醉/时间在国标 OPRATION_DETAIL,
+--                 医保版手术双码走 zadig_agent 重确认请求体)
+-- 文书表最小交付 5 列 (院区/就诊流水/文书流水/文书名称/正文); WSLB 可空(接入按 WSMC 派生),
+-- 整篇一行即可(DLBT/DLXH 可空), 出院小结改灌标准表 TB_CIS_LEAVEHOSPITAL_SUMMARY 不进本表
 
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'TB_CIS_MEDICAL_DOCUMENT')
 CREATE TABLE [dbo].[TB_CIS_MEDICAL_DOCUMENT] (
-  [YLJGYQDM] varchar(8) NOT NULL,            -- 医疗机构院区代码
-  [JZLSH] varchar(64) NOT NULL,              -- 住院就诊流水号
-  [WSLSH] varchar(64) NOT NULL,              -- 文书流水号 (PK)
-  [WSLB] varchar(2) NOT NULL,                -- 文书类别码 (见 _dictionaries/wslb_码表.csv)
-  [WSMC] nvarchar(256) NOT NULL,             -- 文书名称 (原始)
-  [DLBT] nvarchar(128) NULL,                 -- 段落标题 (如 主诉/现病史)
-  [DLXH] int NULL,                           -- 段落序号
-  [JLSJ] datetime NULL,                      -- 记录时间
-  [ZW] nvarchar(max) NULL,                   -- 正文
+  [YLJGYQDM] varchar(8) NOT NULL,            -- 医疗机构院区代码                       [必填]
+  [JZLSH] varchar(64) NOT NULL,              -- 住院就诊流水号                         [必填]
+  [WSLSH] varchar(64) NOT NULL,              -- 文书流水号 (PK)                        [必填]
+  [WSLB] varchar(2) NULL,                    -- 文书类别码 (可空; 接入按 WSMC 派生, 码表见 _dictionaries/wslb_码表.csv)
+  [WSMC] nvarchar(256) NOT NULL,             -- 文书名称 (原始, 如 入院记录/首次病程记录) [必填]
+  [DLBT] nvarchar(128) NULL,                 -- 段落标题 (可空; 医院整篇一行即可, 正文含【段落】标记时接入自动拆)
+  [DLXH] int NULL,                           -- 段落序号 (可空)
+  [JLSJ] datetime NULL,                      -- 记录时间 (可空)
+  [ZW] nvarchar(max) NULL,                   -- 正文                                   [必填(业务上)]
   [XGBZ] varchar(1) NOT NULL DEFAULT '1',
   CONSTRAINT [PK_TB_CIS_MEDICAL_DOCUMENT] PRIMARY KEY CLUSTERED ([YLJGYQDM],[WSLSH])
 );
+-- 已建库放松 WSLB 约束 (幂等)
+IF EXISTS (SELECT * FROM sys.columns c JOIN sys.tables t ON c.object_id=t.object_id
+           WHERE t.name='TB_CIS_MEDICAL_DOCUMENT' AND c.name='WSLB' AND c.is_nullable=0)
+  ALTER TABLE [dbo].[TB_CIS_MEDICAL_DOCUMENT] ALTER COLUMN [WSLB] varchar(2) NULL;
 
+-- 费用明细扩展 v3: 与 TB_HIS_ZY_FEE_DETAIL_FS 同一条明细 1:1 (键相同, 同源 SELECT 多带几列)
+-- 只收"国标 FS 表没有的原始字段"; 编码列在 FS (MXXMBMYB 国家码 / MXXMBM 院内码), 此处不再重复
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'TB_HIS_ZY_FEE_DETAIL_EXT')
 CREATE TABLE [dbo].[TB_HIS_ZY_FEE_DETAIL_EXT] (
   [YLJGYQDM] varchar(8) NOT NULL,            -- 医疗机构院区代码
   [SFMXID] varchar(32) NOT NULL,             -- 1:1 挂 TB_HIS_ZY_FEE_DETAIL_FS.SFMXID
   [JZLSH] varchar(64) NOT NULL,              -- 住院就诊流水号(患者号)
-  [CHRGITM_LV] varchar(8) NULL,              -- 收费项目等级(甲乙丙)
+  [PRODNAME] nvarchar(256) NULL,             -- 药品通用名 (FS 只有项目名称)
+  [SPEC] nvarchar(128) NULL,                 -- 规格 (如 50μg×100片; 不是单位)
+  [FEE_TYPE] varchar(8) NULL,                -- 费用类型: 院内收费系统原始码, 原样给
+  [MEDINS_CHRGITM_TYPE] nvarchar(16) NULL,   -- 费用类别中文名: 院内原始叫法, 原样给 (归一码 MXFYLB 由接入侧生成)
+  [SELFPAY_PROP] decimal(6,4) NULL,          -- 自付比例
+  [CHRGITM_LV] varchar(8) NULL,              -- 收费项目等级: 院内原始码 (码表随对接材料提供)
   [LIST_TYPE] varchar(32) NULL,              -- 目录类别
-  [MED_LIST_CODG] varchar(64) NULL,          -- 国家医保编码
-  [MEDINS_LIST_CODG] varchar(64) NULL,       -- 院内项目编码 (完整值; FS.MXXMBM varchar(32) 截断兜底)
-  [PRODNAME] nvarchar(256) NULL,             -- 药品通用名
-  [SPEC] nvarchar(128) NULL,                 -- 规格
-  [DOSFORM_NAME] nvarchar(64) NULL,          -- 剂型
   [BILG_DEPT_CODG] varchar(32) NULL,         -- 计费科室编码
   [BILG_DEPT_NAME] nvarchar(128) NULL,       -- 计费科室名称
   [BILG_DR_CODG] varchar(32) NULL,           -- 计费医生编码
@@ -1107,36 +1173,7 @@ CREATE TABLE [dbo].[TB_HIS_ZY_FEE_DETAIL_EXT] (
   [ACORD_DEPT_NAME] nvarchar(128) NULL,      -- 开单(受单)科室名称
   [ORDERS_DR_CODE] varchar(32) NULL,         -- 开单医生编码
   [ORDERS_DR_NAME] nvarchar(64) NULL,        -- 开单医生姓名
-  [DSCG_TKDRUG_FLAG] varchar(2) NULL,        -- 出院带药标志
-  [FEE_TYPE] varchar(8) NULL,                -- 费用类型(源枚举)
-  [MEDINS_CHRGITM_TYPE] nvarchar(16) NULL,   -- 源费用类别(中文)
-  [HOSP_APPR_FLAG] varchar(2) NULL,          -- 医院审批标志
-  [PRIC_UPLMT_AMT] decimal(15,3) NULL,       -- 限价
-  [SELFPAY_PROP] decimal(6,4) NULL,          -- 自付比例
-  [FULAMT_OWNPAY_AMT] decimal(15,3) NULL,    -- 全自费金额
-  [OVERLMT_AMT] decimal(15,3) NULL,          -- 超限价金额
-  [PRESELFPAY_AMT] decimal(15,3) NULL,       -- 先行自付金额
-  [INSCP_SCP_AMT] decimal(15,3) NULL,        -- 医保范围内金额
   CONSTRAINT [PK_TB_HIS_ZY_FEE_DETAIL_EXT] PRIMARY KEY CLUSTERED ([YLJGYQDM],[SFMXID])
-);
-
-IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'TB_BA_SYSSK_EXT')
-CREATE TABLE [dbo].[TB_BA_SYSSK_EXT] (
-  [YLJGYQDM] varchar(8) NOT NULL,            -- 医疗机构院区代码
-  [SYXH] varchar(32) NOT NULL,               -- 同 TB_BA_SYSSK.SYXH (患者号)
-  [SSXH] varchar(8) NOT NULL,                -- 同 TB_BA_SYSSK.SSXH
-  [HISSDM] varchar(64) NULL,                 -- 医保版手术编码 (DRG/DIP)
-  [HISSMC] nvarchar(256) NULL,               -- 医保版手术名称
-  [SSBW] nvarchar(128) NULL,                 -- 手术部位
-  [SSBWDM] varchar(32) NULL,                 -- 手术部位编码
-  [SSYSBM] varchar(32) NULL,                 -- 术者编码
-  [MZYSBM] varchar(32) NULL,                 -- 麻醉医师编码 (比姓名可靠)
-  [QXSSBZ] varchar(2) NULL,                  -- 取消手术标志
-  [SSKSSJ] datetime NULL,                    -- 手术开始时间
-  [SSJSSJ] datetime NULL,                    -- 手术结束时间
-  [MZKSSJ] datetime NULL,                    -- 麻醉开始时间
-  [MZJSSJ] datetime NULL,                    -- 麻醉结束时间
-  CONSTRAINT [PK_TB_BA_SYSSK_EXT] PRIMARY KEY CLUSTERED ([YLJGYQDM],[SYXH],[SSXH])
 );
 """
 
@@ -1181,7 +1218,7 @@ def main() -> None:
         build_visit(em, sy, szx)
     if want("doc"):
         print("文书 ...", flush=True)
-        build_discharge(em, sy)
+        build_discharge(em, sy, szx)
         build_docs(em, sy, szx)
     if want("lab"):
         print("检验 ...", flush=True)
@@ -1264,7 +1301,7 @@ def main() -> None:
         "## 已知近似与坑 (与映射总纲一致)",
         "- sy 侧入出院时间 (SYJBK.RYRQ/CYRQ, 就诊记录, 入院登记) 用费用时间跨度近似 (无费用患者为哨兵/'-')",
         "- sy 侧手术日期/起止时间无源 (源 xls 全是纯时间 '00:00:00'), SSRQ='-', 时间列 NULL",
-        "- SYSSK.MZYS: sy 侧 anst_dr_name 与术者同名 (源脏数据), 可靠麻醉医师编码在 TB_BA_SYSSK_EXT.MZYSBM",
+        "- SYSSK.MZYS: sy 侧 anst_dr_name 与术者同名 (源脏数据), 可靠麻醉医师编码在 TB_OPRATION_DETAIL.MZYHRYID",
         "- sy 424 名患者无姓名源 (检验表覆盖 2838/3063), 患者表 XM='-'",
         "- szx 药品/耗材不进 DIC_MEDICINES/MATERIALS (数值类别码不定药品边界)",
         "- MXFYLB 为自定 2 位码 (官方码表到位后按 _dictionaries/mxfylb_码表.csv 一键替换)",

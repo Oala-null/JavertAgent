@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""反向取数桥: 142 TP_data_hub (TB_* 国标表) → Javert 内部 6 文件 (流 B).
+"""反向取数桥: sh_yb_platform (TB_* 国标表) → Javert 内部 6 文件 (流 B).
 
 用法:
     uv run python scripts/etl_from_data_hub.py --patients 211530148,J66252 --output data_import_hub

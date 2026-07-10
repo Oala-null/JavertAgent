@@ -200,7 +200,7 @@ def workbench_sig(request: Request):
         if eng is None:
             return {"sig": None}
         with eng.connect() as c:
-            sig = c.execute(text("SELECT MAX(id) FROM Javert_audit_runs")).scalar()
+            sig = c.execute(text("SELECT MAX(id) FROM javert_audit_runs")).scalar()
         return {"sig": int(sig) if sig is not None else 0}
     except Exception:  # noqa: BLE001 — 142 抖 → None → 前端不动
         return {"sig": None}

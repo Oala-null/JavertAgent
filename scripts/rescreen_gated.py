@@ -186,13 +186,13 @@ def rescreen_mssql(panel, rules, loader, *, dry_run=False, revert=False) -> int:
     with engine.connect() as conn:
         if revert:
             rows = conn.execute(
-                text("SELECT run_id FROM Javert_audit_runs WHERE gate_tag=:t"),
+                text("SELECT run_id FROM javert_audit_runs WHERE gate_tag=:t"),
                 {"t": REVERSE_TAG},
             ).fetchall()
             conn.commit()
             if not dry_run:
                 conn.execute(
-                    text("UPDATE Javert_audit_runs SET verdict='CLEAN', gate_tag=:p WHERE gate_tag=:t"),
+                    text("UPDATE javert_audit_runs SET verdict='CLEAN', gate_tag=:p WHERE gate_tag=:t"),
                     {"p": PASS_TAG, "t": REVERSE_TAG},
                 )
                 conn.commit()
@@ -204,7 +204,7 @@ def rescreen_mssql(panel, rules, loader, *, dry_run=False, revert=False) -> int:
         params = {f"r{i}": rid for i, rid in enumerate(panel)}
         params["t"] = PASS_TAG
         rows = conn.execute(
-            text(f"SELECT run_id, rule_id, patient_id FROM Javert_audit_runs "
+            text(f"SELECT run_id, rule_id, patient_id FROM javert_audit_runs "
                  f"WHERE verdict='CLEAN' AND gate_tag=:t AND rule_id IN ({ph})"),
             params,
         ).fetchall()
@@ -213,7 +213,7 @@ def rescreen_mssql(panel, rules, loader, *, dry_run=False, revert=False) -> int:
         dist: dict[str, Counter] = defaultdict(Counter)
         flips = skipped = 0
         fee_cache = _build_fee_cache(loader, sorted({r[2] for r in rows}))
-        upd = text("UPDATE Javert_audit_runs SET verdict='INCONCLUSIVE', gate_tag=:g WHERE run_id=:rid")
+        upd = text("UPDATE javert_audit_runs SET verdict='INCONCLUSIVE', gate_tag=:g WHERE run_id=:rid")
         for r in rows:
             run_id, rule_id, pid = r[0], r[1], r[2]
             rule = rules.get(rule_id)
