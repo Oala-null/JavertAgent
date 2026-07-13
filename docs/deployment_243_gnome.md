@@ -131,6 +131,38 @@ sed -i 's/--host 0.0.0.0/--host 127.0.0.1/' ~/launch_llama_q8.sh && sudo systemc
 **换 IP 后无需检查的清单**（都验证过与 IP 无关）：`.env` 数据库/LLM 指向、前端页面资源（相对路径）、审计批跑、账号登录。
 **维护通道变化**：从我方网络 ssh 不再可达（医院内网隔离）——进院前把本手册 + 仓库同步给驻场人员。
 
+## 新病人导入后的跑批流程
+
+> 场景：院方把新病人的数据灌进了本机库 `sh_yb_platform`（国标表 + 文书扩展表，口径见对接材料）。
+> 之后两步：**取数 → 跑批**，结果自动进工作台。
+
+### 第 1 步：从库取数（ETL）
+
+```bash
+cd ~/Javert
+# 推荐: 全量取 (取库里所有病人, 保证工作台病人列表完整; 几个病人也就几秒)
+~/.local/bin/uv run --extra sqlserver python scripts/etl_from_data_hub.py --all
+
+# 或只取指定病人 (⚠ 会整体覆盖取数文件 → 工作台列表只剩这次取的人; 一般用 --all)
+~/.local/bin/uv run --extra sqlserver python scripts/etl_from_data_hub.py --patients 病人号1,病人号2
+```
+预期输出：`→ data_import_hub/` 下逐文件行数（shi_fee / case_notes / shi_zd / shi_ss / lab_results / examinations）。
+新病人的文书或费用为 0 行 → 先回对接材料查该病人数据是否入库齐全。
+
+### 第 2 步：跑审计批
+
+```bash
+bash ~/run_audit.sh 病人号1 病人号2 ...
+```
+- 每个病人约 **2-10 分钟**（视病历复杂度，llama 串行）；逐条规则实时落库
+- 只跑新病人即可——老病人的结果都在库里，不用重跑；重复跑也安全（结果保留历史、前端取最新）
+- 挂后台跑大批量：`nohup bash ~/run_audit.sh 病人号... > ~/javert-batch.log 2>&1 &`，进度 `tail -f ~/javert-batch.log`
+
+### 第 3 步：工作台验证
+
+浏览器 `http://<本机IP>:8090` → 病人列表出现新病人 → 点开看审计结果。
+列表没出现新病人 → 第 1 步是否用了 `--all`；有病人无结果 → 第 2 步日志找该病人的报错。
+
 ## 常用操作
 
 ```bash
