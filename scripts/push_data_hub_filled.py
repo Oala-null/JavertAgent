@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 import time
@@ -75,8 +76,17 @@ def main() -> None:
     ap.add_argument("--only")
     ap.add_argument("--recreate", action="store_true")
     ap.add_argument("--data-dir", help="改用其他数据目录 (如 data_hub_filled_5p 测试子集)")
+    ap.add_argument("--force-db", action="store_true", help="跳过 --recreate 目标库白名单检查")
     args = ap.parse_args()
     data = Path(args.data_dir) if args.data_dir else DATA
+
+    # 保险栓 (2026-07-12): --recreate 会 DROP 表, 只允许对自己的库执行 —
+    # 防止误灌他人维护的库 (sh_yb_platform 事故复发防线)
+    OWNED = {d.strip() for d in
+             (os.environ.get("JAVERT_OWNED_DBS") or "TP_data_hub").split(",")}
+    if args.recreate and _cfg.hub_database not in OWNED and not args.force_db:
+        sys.exit(f"拒绝 --recreate: 目标库 {_cfg.hub_database!r} 不在自有库白名单 {sorted(OWNED)} "
+                 f"(误灌防线; 确认无误用 --force-db 或设 JAVERT_OWNED_DBS)")
 
     master = pyodbc.connect(CS % "master", timeout=60, autocommit=True)
     mc = master.cursor()

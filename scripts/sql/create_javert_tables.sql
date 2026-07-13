@@ -8,6 +8,7 @@
 --   javert_users         — 审核工作台账号 (bcrypt + last_login)
 --   javert_vio_review    — 专家三态决策 (V/I/C + 评语), insert-only + is_latest
 --   javert_audit_logs    — 全用户行为 trail (register/login/review_submit/...)
+-- 注: 不建视图 (2026-07-12 DE 意见: 大数据量下视图慢, 关联查询在程序层做; 代码本就零视图依赖)
 -- =============================================================================
 
 SET ANSI_NULLS ON;
@@ -357,32 +358,6 @@ IF OBJECT_ID(N'dbo.v_javert_reviews', N'V') IS NOT NULL
     DROP VIEW v_javert_reviews;
 GO
 
-CREATE VIEW v_javert_reviews AS
-SELECT
-    rv.id                 AS review_id,
-    rv.created_at         AS reviewed_at,
-    rv.is_latest,
-    u.id                  AS user_id,
-    u.username,
-    u.display_name,
-    r.patient_id,
-    r.rule_id,
-    r.verdict             AS javert_verdict,
-    r.confidence          AS javert_confidence,
-    rv.review_verdict     AS expert_verdict,
-    CASE
-        WHEN (r.verdict = N'VIOLATION'     AND rv.review_verdict = N'V')
-          OR (r.verdict = N'INCONCLUSIVE'  AND rv.review_verdict = N'I')
-          OR (r.verdict = N'CLEAN'         AND rv.review_verdict = N'C')
-        THEN N'agree'
-        ELSE N'disagree'
-    END                   AS expert_vs_javert,
-    rv.comment,
-    rv.run_id
-FROM javert_vio_review rv
-INNER JOIN javert_audit_runs r ON r.run_id = rv.run_id
-INNER JOIN javert_users     u ON u.id     = rv.user_id;
-GO
 
 PRINT 'Created view v_javert_reviews (review + patient_id + rule_id + username)';
 GO
@@ -394,21 +369,6 @@ IF OBJECT_ID(N'dbo.v_javert_audit_logs', N'V') IS NOT NULL
     DROP VIEW v_javert_audit_logs;
 GO
 
-CREATE VIEW v_javert_audit_logs AS
-SELECT
-    l.id,
-    l.ts,
-    l.action,
-    l.user_id,
-    u.username,
-    u.display_name,
-    l.target_id,
-    l.payload_json,
-    l.ip,
-    l.user_agent
-FROM javert_audit_logs l
-LEFT JOIN javert_users u ON u.id = l.user_id;
-GO
 
 PRINT 'Created view v_javert_audit_logs (action + username + target_id)';
 GO
