@@ -37,6 +37,10 @@ test = [
     "pytest-asyncio>=0.23",
     "httpx>=0.25.0",  # for FastAPI TestClient
 ]
+kb = [
+    # 仅构建 PDF 来源的药品知识库时需要，运行 Javert 不依赖。
+    "pdfplumber>=0.11.0",
+]
 sqlserver = [
     # 需要系统 unixODBC + msodbcsql17
     # macOS: brew install unixodbc; brew tap microsoft/mssql-release; brew install msodbcsql17

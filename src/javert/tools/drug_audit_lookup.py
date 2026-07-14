@@ -6,10 +6,11 @@
                                        + 患者病案首页诊断 (shi_zd ground truth)
   - single(drug_name)               → 单药 KB 事实 (全部 rule_type 条目) / 显式 not-found
 
-确定性匹配 (设计 D3): 通用名 stem 子串.
+确定性匹配 (设计 D3): 国家药品码优先，旧 KB 无码时使用通用名 stem 子串.
   - fee 名剥 `(基)(集)(国谈)` 等前缀标记
   - KB 通用名剥剂型后缀 (片/胶囊/注射液/...)
-  - stem 长度 ≥2 且为 (剥前缀后) fee 名子串 → 命中
+  - 肿瘤产品实体缺 fee 码时只按完整院内通用名兜底，禁止共享 stem 跨品规命中
+  - 其余无码知识 stem 长度 ≥2 且为 (剥前缀后) fee 名子串 → 命中
   - 工具回传**原始 fee 名**, 供 LLM 复核复方/同名歧义
 
 诊断源 (设计 D7): bulk 模式同时返回 shi_zd 病案首页诊断 (ground truth, 主诊 maindiag_flag=1),
@@ -39,7 +40,9 @@ REQUIRES_PATIENT_ID = True
 
 DESCRIPTION = (
     "药品违规审计: bulk(patient_id[, rule_type]) 返回该患者用药命中监管知识库的药品 "
-    "(限适应症/超说明书/限二线/禁忌症) + 限定/说明书原文 + 病案首页诊断; "
+    "(限适应症/超说明书/限二线/禁忌症) + 有效依据 + 病案首页诊断; 肿瘤药依据已按 "
+    "医保限定优先、未提取到医保限定时再用临床指导原则适应证的顺序选取；"
+    "医保状态未知会显式标注待核对. "
     "single(drug_name) 返回单药知识库事实. 命中知识库≠违规, 需结合诊断判定."
 )
 
@@ -146,7 +149,7 @@ def kb_codes(drug_val: Any) -> list[str]:
 # ────────────────────────── KB 加载 (lazy + 进程内缓存) ──────────────────────────
 
 _kb_cache: dict[str, dict] = {}
-_kb_stems_cache: dict[str, list[tuple[str, str, list[dict], list[str]]]] = {}
+_kb_stems_cache: dict[str, list[tuple[str, str, list[dict], list[str], str]]] = {}
 
 
 def _load_kb(kb_path: Path) -> dict:
@@ -167,17 +170,19 @@ def _load_kb(kb_path: Path) -> dict:
     return _kb_cache[key]
 
 
-def _kb_stems(kb_path: Path) -> list[tuple[str, str, list[dict], list[str]]]:
-    """预计算 [(通用名, stem, entries, codes), ...], stem 长度 ≥2 才入表."""
+def _kb_stems(kb_path: Path) -> list[tuple[str, str, list[dict], list[str], str]]:
+    """预计算 [(通用名, stem, entries, codes, name_fallback), ...]."""
     key = str(kb_path)
     if key in _kb_stems_cache:
         return _kb_stems_cache[key]
     kb = _load_kb(kb_path)
-    out: list[tuple[str, str, list[dict], list[str]]] = []
+    out: list[tuple[str, str, list[dict], list[str], str]] = []
     for generic, drug_val in kb.get("drugs", {}).items():
         stem = kb_stem(generic)
         if len(stem) >= 2:
-            out.append((generic, stem, kb_entries(drug_val), kb_codes(drug_val)))
+            oncology = drug_val.get("oncology", {}) if isinstance(drug_val, dict) else {}
+            fallback = str((oncology or {}).get("name_fallback") or "")
+            out.append((generic, stem, kb_entries(drug_val), kb_codes(drug_val), fallback))
     _kb_stems_cache[key] = out
     return out
 
@@ -228,15 +233,20 @@ def lookup_patient_drugs(
     # 命中: 按 (通用名, rule_type) 聚合, 记录命中的原始 fee 名
     # 码主路: 患者 fee 行国家码 ∈ 该知识点 code set; 无码 fee 行退 stem 子串 (needs_review).
     matches: dict[tuple[str, str], dict[str, Any]] = {}
-    for generic, stem, entries, codes in _kb_stems(kb_path):
+    for generic, stem, entries, codes, name_fallback in _kb_stems(kb_path):
         code_set = set(codes)
         # 码命中: 该知识点码集合 ∩ 患者已编码 fee 行
         matched_codes = fee_code_set & code_set if code_set else set()
         code_fees = [n for n, c in coded_rows if c in matched_codes]
-        # 名兜底: 无码 fee 行 (med_list_codg 空) 按 stem 子串
-        name_fees = [n for n in nocode_names if stem in fee_clean(n)] if len(stem) >= 2 else []
-        # 知识点无码 (旧 KB / 未 join) → 退回全量 fee 名子串, 向后兼容
-        if not code_set and len(stem) >= 2:
+        # 有码肿瘤实体的无码兜底只认原始实体名，避免共享 canonical stem 串药。
+        if name_fallback == "disabled":
+            name_fees = []
+        elif name_fallback == "exact_entity_name":
+            name_fees = [n for n in nocode_names if generic in fee_clean(n)]
+        else:
+            name_fees = [n for n in nocode_names if stem in fee_clean(n)]
+        # 知识点无码 (旧 KB / canonical-only) → 退回全量 fee 名子串, 向后兼容
+        if not code_set and not name_fallback:
             name_fees = [n for n in distinct_fees if stem in fee_clean(n)]
         # 去重保序: 码命中在前
         hit_fees: list[str] = []
@@ -257,6 +267,12 @@ def lookup_patient_drugs(
                     "rule_type": rt,
                     "basis": entry.get("basis", ""),
                     "detect_logic": entry.get("detect_logic", ""),
+                    "source_type": entry.get("source_type", ""),
+                    "source_label": entry.get("source_label", ""),
+                    "source_refs": entry.get("source_refs", []),
+                    "requires_insurance_review": bool(
+                        entry.get("requires_insurance_review")
+                    ),
                     "fee_names": [],
                     "needs_review": needs_review,
                 }
@@ -296,18 +312,32 @@ def lookup_single_drug(drug_name: str, kb_path: Path) -> dict[str, Any]:
     """single 模式: 返回该药全部 rule_type 条目 / 显式 not-found (无联网回退)."""
     kb = _load_kb(kb_path)
     drugs = kb.get("drugs", {})
-    # 先精确名, 再 stem 互为子串的宽松匹配 (single 模式按通用名查 KB 事实, 不涉患者 fee)
+    # 先精确名；宽松匹配若落到多个产品实体则显式报歧义，禁止按 JSON 顺序任取一个。
     entries = kb_entries(drugs[drug_name]) if drug_name in drugs else None
     matched_generic = drug_name
     if entries is None:
         target_stem = kb_stem(drug_name)
+        candidates: list[tuple[str, list[dict]]] = []
         for generic, drug_val in drugs.items():
             if stem_match(generic, drug_name) or (
                 len(target_stem) >= 2 and target_stem in generic
             ):
-                entries = kb_entries(drug_val)
-                matched_generic = generic
-                break
+                candidate_entries = kb_entries(drug_val)
+                if candidate_entries:
+                    candidates.append((generic, candidate_entries))
+        if len(candidates) > 1:
+            names = sorted(generic for generic, _ in candidates)
+            return {
+                "mode": "single",
+                "drug_name": drug_name,
+                "found": False,
+                "ambiguous": True,
+                "candidates": names,
+                "entries": [],
+                "note": f"匹配到多个产品实体（{' / '.join(names)}），请提供完整通用名。",
+            }
+        if candidates:
+            matched_generic, entries = candidates[0]
     if not entries:
         return {
             "mode": "single",
@@ -339,9 +369,25 @@ def _format_single(result: dict[str, Any]) -> str:
     lines = [f"药品「{result['drug_name']}」知识库事实 (命中通用名: {result.get('matched_generic')}):"]
     for e in result["entries"]:
         lines.append(f"  [{e.get('rule_type', '?')}] 依据: {e.get('basis', '')}")
+        source_desc = _source_desc(e)
+        if source_desc:
+            lines.append(f"      依据层级: {source_desc}")
+        if e.get("requires_insurance_review"):
+            lines.append("      注意: 医保目录状态待人工核对，本条仅按指导原则适应证。")
         if e.get("detect_logic"):
             lines.append(f"      检出逻辑: {e['detect_logic']}")
     return "\n".join(lines)
+
+
+def _source_desc(entry: dict[str, Any]) -> str:
+    """把 KB 来源层级翻成给 agent 看的短标签，不展开完整 provenance。"""
+    source_type = str(entry.get("source_type") or "").strip()
+    label = str(entry.get("source_label") or "").strip()
+    if source_type == "insurance":
+        return label or "医保限定（优先依据）"
+    if source_type == "guideline":
+        return label or "临床指导原则适应证（未提取到医保限定后兜底）"
+    return label
 
 
 def _format_bulk(result: dict[str, Any]) -> str:
@@ -377,6 +423,11 @@ def _format_bulk(result: dict[str, Any]) -> str:
         review_tag = " (名兜底, 需复核)" if m.get("needs_review") else ""
         lines.append(f"{i}. 通用名「{m['generic_name']}」 [{m['rule_type']}]{review_tag}")
         lines.append(f"   原始 fee 名: {' / '.join(m['fee_names'])}")
+        source_desc = _source_desc(m)
+        if source_desc:
+            lines.append(f"   依据层级: {source_desc}")
+        if m.get("requires_insurance_review"):
+            lines.append("   注意: 医保目录状态待人工核对，本条仅按指导原则适应证。")
         lines.append(f"   限定/说明书依据: {m['basis']}")
         if m.get("detect_logic"):
             lines.append(f"   检出逻辑: {m['detect_logic']}")
