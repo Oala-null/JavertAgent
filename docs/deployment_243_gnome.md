@@ -29,6 +29,7 @@
 
 > 面向驻场/院方运维。假设机器刚来电，从零到全链路可用，**按顺序执行，每步做完看到预期输出再进行下一步**。全程约 5-10 分钟（大头是 LLM 加载模型）。
 > 备注：本机已配置自动恢复（docker 自启 + llama systemd + web crontab），多数情况下开机 8 分钟后直接跳到【第 5 步】验证即可；以下手动流程用于自动恢复失效或需要确定性操作的场合。
+> **正常开机基线 (2026-07-15 定型)**：上电 → BIOS 自检 ~45 秒 (X99 正常) → 系统启动 ~15 秒 → 屏幕出 `gnome26 login:` 文本登录并保持可见（本机无桌面，属正常）。偏离此基线（卡日志行/黑屏/panic）→ 看「开机疑难」章节，**不要强制断电**。
 
 ### 第 0 步：登录机器
 
@@ -184,10 +185,35 @@ bash ~/run_243_baseline.sh   # log: ~/javert-batch.log
 
 测试病人：`J66252 K03341 J13365 211530148 211345984`。性能基线（2026-07-10 实测）：135 规则 25 分钟，单规则 p50 8.9s，患者 2-10 分钟。
 
+## 开机疑难 (2026-07-15 断电搬机实战定型)
+
+> 一次断电搬机引发连环"进不去系统", 逐个排掉后系统定型为: **上电 → BIOS 自检 ~45s → 系统启动 ~15s → 控制台直接出 `gnome26 login:` 并保持可见**。
+> 偏离此基线才算异常。以下 5 处修复全部已持久化, 重装/复制部署到新机时需要重做。
+> 完整归因分析 (每个根因的机理/证据链/误判复盘) → `docs/243开机故障归因_20260715.md`。
+
+**铁律: 绝不硬断电/长按电源强制关机, 永远 `sudo reboot` / `sudo shutdown`。**
+本次连环故障的起点就是"屏幕看着卡住 → 强制断电"的误判循环: 脏盘触发全盘 fsck → 看着更卡 → 再断电 → 根盘冷启动 panic。
+
+| # | 症状 | 真因 | 修复 (已持久化) | 验证 |
+|---|---|---|---|---|
+| 1 | 开机卡 20+ 分钟不动 (最后一行停在 snapd/e2scrub) | 不干净关机把 /data(1.1T) 标脏 → 开机全盘 fsck, 静默无进度像死机 | `/etc/fstab` /data 行: `defaults,nofail,x-systemd.device-timeout=15s 0 0` (pass 0 = 开机永不 fsck 该盘) | `grep /data /etc/fstab` 末尾 `0 0` |
+| 2 | kernel panic `Cannot open root device ... error -6` | X99 主板冷启动 SATA 初始化慢, initramfs 没等到根盘就 panic (间歇性, 断电后高发) | grub 加 `rootwait` (等根盘出现再挂载) | `cat /proc/cmdline` 含 rootwait |
+| 3 | 开机静默等 ~2 分钟 | 双网口只插一根线, `systemd-networkd-wait-online` 死等空网口到超时 | `systemctl mask systemd-networkd-wait-online.service` | `systemctl is-enabled ...` = masked |
+| 4 | 走完启动却不出登录框 | 默认 `graphical.target` 但本机**没装任何桌面/gdm** (无头服务器) | `systemctl set-default multi-user.target` | `systemctl get-default` |
+| 5 | 开机第 ~15 秒屏幕定格/黑掉 (日志能显示, nvidia 一加载就死) | nvidia 闭源驱动加载时把控制台切到 dummy 设备; `nvidia-drm.modeset=1 fbdev=1` 在双 2080Ti 上也不建 fbdev (`/proc/fb` 空) | `/etc/modprobe.d/disable-nvidia-drm.conf` (`blacklist nvidia_drm` + `install nvidia_drm /bin/false`) + `update-initramfs -u` — 控制台永久留在 EFI simpledrm; **CUDA/llama 不受影响** (只用 nvidia+nvidia_uvm, nvidia_drm 引用数为 0) | `lsmod \| grep nvidia_drm` 无输出; `cat /proc/fb` = simpledrmdrmfb |
+
+排障时的判据 (2026-07-15 实测基线):
+- 两块盘 SMART 全 PASSED、坏道/CRC 全 0 (Intel SSD 磨损 1%)——"卡住"不等于盘坏, 先看卡在哪一行。
+- 显示器/HDMI 与"第 15 秒黑屏"无关: 前 15 秒日志能显示 = 显示链路是通的。
+- nouveau 未加载 (0 模块), 与卖家猜测的"nouveau 抢 GPU"无关。
+- 若 /data 再被断电标脏: 开机不再卡 (pass 0), 挂载时自动回放 journal 几秒完事; 需要手动检查时 `umount /data && fsck.ext4 -y /dev/sdb1` (1.1T 约 10-20 分钟, 属正常, 勿中断)。
+- 想还原本机图形能力 (不建议, 会与 llama 抢显存): 删 `disable-nvidia-drm.conf` + `update-initramfs -u` + `set-default graphical.target` + 另装 gdm3/桌面。
+
 ## 排障速查
 
 | 症状 | 原因 | 处理 |
 |---|---|---|
+| 开机不出 login/卡某行/panic | 见上节「开机疑难」5 连表 | 按表逐项核对持久化配置还在不在 |
 | 启动日志 `No module named 'pyodbc'` | uv sync 没带 extra | `uv sync --extra sqlserver` 后重启 |
 | `.env` 的值不生效 | **配置优先级 env > configs/llm.yaml > .env 文件**，yaml 里残留了同名键 | 从 `configs/llm.yaml` 删掉该键（yaml 严禁放环境指向） |
 | 登录 401 | 账号/密码；账号管理走 CLI | `uv run --extra sqlserver javert mssql-user list / reset-password` |
@@ -207,6 +233,8 @@ bash ~/run_243_baseline.sh   # log: ~/javert-batch.log
 
 ## 进院前待办
 - [ ] **校时**：2026-07-12 实测系统时钟快约 1 天（显示 Jul 13）——审计时间戳/日志全用它，进院时让网管配 NTP 或手动校准 (`sudo timedatectl set-time ...`)
+- [ ] **换 CMOS 电池 (CR2032)**：2026-07-15 断电搬机实测 RTC 断电漂移（时间乱跳、systemd-analyze 出现假的 45min firmware 耗时）——主板 6.6 年老化，几块钱的事，关系审计时间戳
+- [ ] （可选）重插 sda/sdb 的 SATA 数据线+电源线（消除搬运震松；两盘 SMART 健康，此项属保险）
 - [ ] admin 密码从演示值改为正式值（`javert mssql-user reset-password`）
 - [ ] （可选）LLM 端口收敛到 127.0.0.1（见换 IP 手册 ⑤）
 
@@ -215,3 +243,4 @@ bash ~/run_243_baseline.sh   # log: ~/javert-batch.log
 - 这台机器进医院机房：**永远只放测试病人数据**，任何全量病人数据不得上机
 - `.env` 含密码，不出机、不进 git
 - llama-server `--parallel 1` 时审计 `--concurrency` 必须为 1
+- **绝不硬断电/长按电源强制关机**——用 `sudo reboot` / `sudo shutdown -h now`。屏幕"看着卡住"先对照上文开机基线与「开机疑难」表，2026-07-15 的连环故障就是强制断电循环造成的
