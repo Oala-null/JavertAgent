@@ -46,6 +46,10 @@ PUBLIC_PREFIXES = (
     "/api/health",
     # 规则元数据 (非 PHI) 不强制鉴权
     "/api/rules",
+    # 2C 平台系统间对接 (docs/2c对接_javert审计服务.md): 仅这两个精确路径免鉴权, 限内网;
+    # /api/audit 其余路径仍受保护
+    "/api/audit/submit",
+    "/api/audit/results",
     "/",  # 老 index.html 入口仍开放
 )
 

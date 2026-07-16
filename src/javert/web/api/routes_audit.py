@@ -16,20 +16,24 @@ import json
 import logging
 import queue
 import sqlite3
-from datetime import datetime, timezone
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from javert.audit.rule_loader import load_rule
+from javert.audit.rule_loader import load_all, load_rule
 from javert.audit.runner import Runner
 from javert.config import get_config
+from javert.routing import RuleRouter, build_patient_record_for_router, default_shi_zd_path
 from javert.store.audit_store import SqliteStore
 from javert.store.result_persister import persist_one
 from javert.tools.llm_provider import LlmUnavailableError
 from javert.tools.registry import build_executor
+from javert.web.rule_meta import load_rule_meta
 
 from .routes_workbench import _get_loader
 from .schemas import AuditRunDetail, AuditRunSummary
@@ -338,6 +342,196 @@ def list_audit_runs(
             )
         )
     return out
+
+
+# =========================================================
+# 2C 平台系统间对接 (契约: docs/2c对接_javert审计服务.md)
+#   POST /api/audit/submit          — 患者名单 → 202 受理回执, 后台跑审计
+#   GET  /api/audit/results/{SYXH}  — 轮询拉裁决 (running 时增量可见)
+# 免鉴权: middleware PUBLIC_PREFIXES 只放行这两个精确路径, 仅限内网.
+# =========================================================
+
+_VERDICT_LABEL = {"VIOLATION": "违规", "INCONCLUSIVE": "待人工复核", "CLEAN": "合规"}
+_2C_RULE_CONCURRENCY = 5
+
+# ponytail: 进程内任务表, 重启后历史提交回 unknown (裁决本体仍在 sqlite/工作台);
+# 需要跨重启状态时把任务表落 sqlite
+_2c_tasks: dict[str, dict] = {}
+_2c_lock = threading.Lock()
+_2c_queue: "queue.Queue[str]" = queue.Queue()
+_2c_worker: threading.Thread | None = None
+
+
+class SubmitItem(BaseModel):
+    SYXH: str
+    YLZZJGDM: str = ""
+
+
+def _2c_run_patient(syxh: str) -> None:
+    """单患者全流程: ready 全集 → router 预筛 → 规则并发 5 跑 LLM → 逐条落库."""
+    cfg = get_config()
+    loader = _get_loader()
+    ready = [r for r in load_all(cfg.rules_path).values() if r.status == "ready"]
+
+    rule_router = RuleRouter.from_defaults(enabled_priorities=("P0", "P1", "P2", "P3"))
+    zd_path = default_shi_zd_path()
+    record = build_patient_record_for_router(
+        syxh, loader, shi_zd_path=zd_path if zd_path.exists() else None,
+    )
+    final_set = set(rule_router.route(record).final_rules)
+    selected = sorted((r for r in ready if r.rule_id in final_set), key=lambda r: r.rule_id)
+
+    with _2c_lock:
+        _2c_tasks[syxh]["total"] = len(selected)
+    if not selected:
+        return  # router 判定无可疑规则 → done, 0 条 (病案干净)
+
+    executor = build_executor(loader, cfg)
+    runner = Runner(executor=executor, config=cfg, emit=lambda _m: None, loader=loader)
+    store = SqliteStore(cfg.audit_db_path)
+    store.init_schema()
+    runner.executor.set_patient_context(syxh)
+    try:
+        with ThreadPoolExecutor(max_workers=min(_2C_RULE_CONCURRENCY, len(selected))) as pool:
+            futs = {
+                pool.submit(
+                    runner.audit, rule, syxh,
+                    reset_cache=False, manage_patient_context=False,
+                ): rule
+                for rule in selected
+            }
+            for fut in as_completed(futs):
+                rule = futs[fut]
+                try:
+                    result = fut.result()
+                    persist_one(result, rule, triggered_by="2c-submit", sqlite_store=store)
+                except Exception as exc:  # noqa: BLE001 — 单条失败不中断整患者
+                    logger.warning("2c audit rule failed: %s %s: %s", syxh, rule.rule_id, exc)
+                    with _2c_lock:
+                        _2c_tasks[syxh]["failed"].append(rule.rule_id)
+                    continue
+                with _2c_lock:
+                    _2c_tasks[syxh]["run_ids"].append(result.run_id)
+    finally:
+        runner.executor.clear_patient_context()
+        store.close()
+
+
+def _2c_worker_loop() -> None:
+    """单 worker 逐患者跑 (患者间串行避免 GPU 争抢, 患者内规则并发 5)."""
+    while True:
+        syxh = _2c_queue.get()
+        try:
+            _2c_run_patient(syxh)
+        except Exception:  # noqa: BLE001
+            logger.exception("2c audit patient failed: %s", syxh)
+        finally:
+            with _2c_lock:
+                if syxh in _2c_tasks:
+                    _2c_tasks[syxh]["status"] = "done"
+
+
+def _2c_ensure_worker() -> None:
+    global _2c_worker
+    with _2c_lock:
+        if _2c_worker is not None and _2c_worker.is_alive():
+            return
+        _2c_worker = threading.Thread(target=_2c_worker_loop, daemon=True, name="audit-2c")
+        _2c_worker.start()
+
+
+@router.post("/submit", status_code=202)
+def submit_2c(items: list[SubmitItem]):
+    """2C 提交: 逐患者校验数据存在 → 受理入队. 重复提交在跑中的患者幂等 (不重跑)."""
+    loader = _get_loader()
+    accepted: list[dict] = []
+    rejected: list[dict] = []
+    for item in items:
+        syxh = item.SYXH.strip()
+        if not syxh:
+            rejected.append({"SYXH": item.SYXH, "reason": "SYXH 为空"})
+            continue
+        try:
+            has_data = len(loader.get_notes(syxh)) > 0 or len(loader.get_fees(syxh)) > 0
+        except Exception:  # noqa: BLE001
+            has_data = False
+        if not has_data:
+            rejected.append({"SYXH": syxh, "reason": "查无此患者数据"})
+            continue
+        with _2c_lock:
+            existing = _2c_tasks.get(syxh)
+            if existing is not None and existing["status"] == "running":
+                accepted.append({"SYXH": syxh})  # 已在跑, 幂等受理
+                continue
+            _2c_tasks[syxh] = {
+                "YLZZJGDM": item.YLZZJGDM,
+                "status": "running",
+                "total": None,
+                "run_ids": [],
+                "failed": [],
+                "submitted_at": datetime.now(timezone.utc).isoformat(),
+            }
+        _2c_queue.put(syxh)
+        accepted.append({"SYXH": syxh})
+    if accepted:
+        _2c_ensure_worker()
+    return {"accepted": accepted, "rejected": rejected}
+
+
+@router.get("/results/{syxh}")
+def results_2c(syxh: str):
+    """2C 查结果: unknown / running(增量) / done + summary + results[]."""
+    with _2c_lock:
+        task = _2c_tasks.get(syxh)
+        status = task["status"] if task else "unknown"
+        ylzzjgdm = task["YLZZJGDM"] if task else ""
+        total = task["total"] if task else None
+        run_ids = list(task["run_ids"]) if task else []
+
+    results: list[dict] = []
+    if run_ids:
+        metas = load_rule_meta()
+        cfg = get_config()
+        store = SqliteStore(cfg.audit_db_path)
+        try:
+            store.init_schema()
+            for rid in run_ids:
+                r = store.find_by_run_id(rid)
+                if r is None:
+                    continue
+                meta = metas.get(r.rule_id)
+                results.append({
+                    "run_id": r.run_id,
+                    "rule_id": r.rule_id,
+                    "rule_name": meta["violation_type"] if meta else "",
+                    "verdict": r.verdict,
+                    "verdict_label": _VERDICT_LABEL.get(r.verdict, r.verdict),
+                    "confidence": r.confidence,
+                    "reasoning": r.reasoning,
+                    "evidence": [
+                        {"source": e.source, "locator": e.locator, "text": e.text}
+                        for e in r.evidence
+                    ],
+                    "finished_at": (
+                        r.started_at + timedelta(milliseconds=r.duration_ms)
+                    ).isoformat(),
+                })
+        finally:
+            store.close()
+    results.sort(key=lambda x: x["rule_id"])
+
+    return {
+        "SYXH": syxh,
+        "YLZZJGDM": ylzzjgdm,
+        "status": status,
+        "summary": {
+            "total": total if total is not None else len(results),
+            "violation": sum(1 for x in results if x["verdict"] == "VIOLATION"),
+            "inconclusive": sum(1 for x in results if x["verdict"] == "INCONCLUSIVE"),
+            "clean": sum(1 for x in results if x["verdict"] == "CLEAN"),
+        },
+        "results": results,
+    }
 
 
 @router.get("/runs/{run_id}", response_model=AuditRunDetail)
