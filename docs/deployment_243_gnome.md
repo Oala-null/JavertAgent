@@ -221,6 +221,31 @@ bash ~/run_243_baseline.sh   # log: ~/javert-batch.log
 | 工作台无患者 | 业务表 `javert_audit_runs` 空 | 跑一轮审计即可 |
 | CREATE VIEW 权限拒绝（启动 warning） | init_schema 试建人工查询视图 | 无害，代码不依赖视图；sa 部署无此问题 |
 
+## 代码版本与升级（gnome-243 维护分支）
+
+> 2026-07-15 进院时建线。**本机代码的 git 维护线 = 仓库分支 `gnome-243`**（锚点 48b6403 = 2026-07-12 进院定稿包；建线时按部署记录推断与机上一致，首次获得访问渠道时按下方清单实测校验一次）。
+
+**规则**：
+- 243 的任何热修 → 在 `gnome-243` 上提交 → 从该分支打包上机。**不要从主线（带 2C 对接/新 KB 等未上机功能）打包**。
+- 主线新功能要上 243 → cherry-pick 到 `gnome-243`，验证后再上机。
+
+**升级流程（带版本戳，机上永远可查当前版本）**：
+```bash
+# Mac 侧, 在 gnome-243 分支:
+git rev-parse HEAD > DEPLOY_COMMIT
+tar -czf /tmp/javert-243.tgz --exclude='__pycache__' src configs scripts tests pyproject.toml uv.lock DEPLOY_COMMIT
+# 传到 243 (院内渠道) 后, 机上:
+cd ~/Javert && tar xzf /tmp/javert-243.tgz && cat DEPLOY_COMMIT   # ← 这就是机上版本
+pkill -f "uvicorn javert[.]web" && bash ~/start_javert_web.sh
+```
+
+**首次校验机上代码 ↔ 分支一致（一次性，做完在此打勾 ☐）**：
+```bash
+# 243 上:  cd ~/Javert && find src configs scripts -type f | sort | xargs md5sum > /tmp/manifest_243.txt
+# Mac 上(gnome-243 分支): find src configs scripts -type f | sort | xargs md5 -r | awk '{print $1"  "$2}' > /tmp/manifest_local.txt
+# diff 两份清单; 有差异 → 以机上为准, 差异文件拷回提交进 gnome-243
+```
+
 ## 从零复制到新机器（例：正式院内机）
 
 1. 前置：docker SQL Server、llama.cpp+模型、`uv`、`msodbcsql18`
