@@ -130,7 +130,7 @@ def test_results_done_with_runs(client):
         patient_id="J66252",
         verdict="VIOLATION",
         confidence=0.85,
-        reasoning="测试理由",
+        reasoning="R191 经 search_fees 核实, 应判 VIOLATION",
         evidence=[Evidence(source="search_fees", locator="麻醉后复苏监护(PACU)", text="费用明细中出现 ¥300 麻醉后复苏监护(PACU)项")],
         duration_ms=45000,
         model="test-model",
@@ -167,3 +167,9 @@ def test_results_done_with_runs(client):
     assert hit["matched_fee_name"] == "麻醉后复苏监护(PACU)"
     assert hit["code_nat"] == "331501001"
     assert hit["code_local"] == "F00123"
+    # behavior-naming 三新字段: 顶层扁平编码/名称 + 行为认定名称 (R191=重复收费)
+    assert item["hit_codes"] == ["331501001"]
+    assert item["hit_names"] == ["麻醉后复苏监护(PACU)"]
+    assert item["behavior_name"] == "重复收费"
+    # reasoning 对外自然语言化: 术语全部映射, R 代号/工具名/英文判定词不外泄
+    assert item["reasoning"] == "本规则 经 费用明细检索 核实, 应判 违规"

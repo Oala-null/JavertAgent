@@ -88,7 +88,8 @@ def test_group_runs_alias_compresses_long_violation_type():
     runs = [_mkrun("R1", "VIOLATION")]
     meta = {"R1": {"violation_type": "虚构医药服务项目或以骗保为目的串换项目"}}
     groups = _group_runs_by_violation_type(runs, meta)
-    assert groups[0]["alias"] == "虚构/串换"  # 整句压成短词
+    # behavior-naming: 展示名 = 行为认定名称 (behavior_names.yaml), 不再是压缩短词
+    assert groups[0]["alias"] == "虚构医药服务项目"
 
 
 # =========================================================

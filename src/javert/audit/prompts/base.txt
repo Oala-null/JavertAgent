@@ -108,7 +108,12 @@
   - **边界**: 命中部分指征但不充分 → INCONCLUSIVE conf 0.50 ~ 0.60, **不要因谨慎而写 0.0**.
   - **ETL 缺失警告触发的 INCONCLUSIVE**: conf 0.50 (中性保守, 单据本身存在只是未数字化, 按 wangxin 规则不应 V).
 - **evidence**: 每条必须 source ∈ {note, fee, drug_indication, etl_warning, examination, lab}, locator 用记录可定位的字符串 (子阶段名 / 项目名 / 药品名 / "ETL_GAP: <section>" / 检查项名+日期 / 检验项名+日期), text 摘录 ≤ 500 字
-- **reasoning**: 引用 evidence 的链式推理. 严禁不引用 evidence 的"猜想"
+- **reasoning**: 引用 evidence 的链式推理. 严禁不引用 evidence 的"猜想".
+  **行文要求 (对外可读)**: reasoning 会直接展示给医院管理者, 必须全中文自然语言:
+  - 不出现工具英文名 — 用「费用明细」「病历文书」「检验报告」「检查报告」「诊断记录」等中文指代数据来源 (例: 写「费用明细中收取了…」, 不写「search_fees 返回…」)
+  - 不出现规则代号 (如 R191/RD20) — 用「本规则」或直接说违规行为
+  - 不出现英文判定词 (VIOLATION/CLEAN/INCONCLUSIVE) — 用「违规」「合规」「证据不足」
+  - 不出现内部机制词 (gate/precheck/count==N/Javert经验库/共识触发器编号) — 直接陈述临床与费用事实
 
 # 工具输出里的边界信号 (v0.3)
 

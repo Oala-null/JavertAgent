@@ -34,6 +34,7 @@ from javert.store.result_persister import persist_one
 from javert.tools.llm_provider import LlmUnavailableError
 from javert.tools.registry import build_executor
 from javert.web.hit_resolver import load_kb_drugs, resolve_hits_from_json
+from javert.web.reasoning_zh import humanize_reasoning
 from javert.web.rule_meta import load_rule_meta
 
 from .routes_workbench import _get_loader
@@ -508,6 +509,8 @@ def results_2c(syxh: str):
                 # 命中项目 (确定性, 复用工作台 hit_resolver): V/I 才算, 给 2C 侧
                 # join 自己的费用明细 (code_nat=国家医保码 / matched_fee_name=明细原始项目名)
                 hits: list[dict] = []
+                hit_codes: list[str] = []
+                hit_names: list[str] = []
                 if r.verdict in ("VIOLATION", "INCONCLUSIVE"):
                     hit_items = resolve_hits_from_json(
                         json.dumps([e.model_dump() for e in r.evidence], ensure_ascii=False),
@@ -531,19 +534,32 @@ def results_2c(syxh: str):
                         }
                         for h in hit_items
                     ]
+                    # 顶层扁平键 (2C 直接挂明细用): 仅费用/药品命中, 去重保序
+                    for h in hit_items:
+                        if h.source not in ("fee", "drug"):
+                            continue
+                        code = h.code_nat or h.code_local
+                        name = h.matched_fee_name or h.name
+                        if code and code not in hit_codes:
+                            hit_codes.append(code)
+                        if name and name not in hit_names:
+                            hit_names.append(name)
                 results.append({
                     "run_id": r.run_id,
                     "rule_id": r.rule_id,
                     "rule_name": meta["violation_type"] if meta else "",
+                    "behavior_name": meta["behavior_name"] if meta else "",
                     "verdict": r.verdict,
                     "verdict_label": _VERDICT_LABEL.get(r.verdict, r.verdict),
                     "confidence": r.confidence,
-                    "reasoning": r.reasoning,
+                    "reasoning": humanize_reasoning(r.reasoning),
                     "evidence": [
                         {"source": e.source, "locator": e.locator, "text": e.text}
                         for e in r.evidence
                     ],
                     "hits": hits,
+                    "hit_codes": hit_codes,
+                    "hit_names": hit_names,
                     "finished_at": (
                         r.started_at + timedelta(milliseconds=r.duration_ms)
                     ).isoformat(),

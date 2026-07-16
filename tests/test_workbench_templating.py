@@ -358,8 +358,9 @@ def test_patient_detail_run_groups_chips_and_ordering(alice):
     assert "只看不明" in out
     assert "toggleInconclusiveOnly" in out
     assert 'data-has-i="0"' in out
-    # 卡片字幕用细类别名, 不背模板 code 串
-    assert "rule-subtitle-alias" in out
+    # behavior-naming: 卡片头显示行为认定名称 (R 代号进 hover title), alias chip 已合并
+    assert "rule-subtitle-alias" not in out
+    assert 'class="rule-id" title="' in out
 
 
 def test_patient_detail_long_comment_hover_full_text(alice):

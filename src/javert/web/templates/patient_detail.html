@@ -74,8 +74,7 @@
       {% set meta = _rule_meta.get(run.rule_id) %}
       <article id="run_{{ run.run_id }}" class="violation-card verdict-{{ run.verdict | verdict_color }}" data-run-id="{{ run.run_id }}" data-verdict="{{ run.verdict | verdict_color }}" data-gate-tag="{{ run.gate_tag or '' }}">
         <div class="violation-head">
-          <span class="rule-id">{{ run.rule_id }}</span>
-          <span class="rule-subtitle-alias" title="{% if meta %}{{ meta.subtitle }}{% endif %}">{{ g.alias }}</span>
+          <span class="rule-id" title="{{ run.rule_id }}{% if meta %} · {{ meta.subtitle }}{% endif %}">{% if meta %}{{ meta.behavior_name }}{% else %}{{ run.rule_id }}{% endif %}</span>
           <span class="badge badge-{{ run.verdict | verdict_color }}">{{ run.verdict | verdict_label }}</span>
           <span class="confidence">置信 {{ '%.2f' % (run.confidence or 0.0) }}</span>
           {% if run.gate_tag %}<span class="gate-badge gate-{{ run.gate_tag }}" title="该裁决被确定性 gate 降级 ({{ run.gate_tag }}) — 详见下方推理">⚙ {{ run.gate_tag }}</span>{% endif %}

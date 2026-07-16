@@ -1,10 +1,16 @@
 # -*- coding: utf-8 -*-
-"""Rule metadata 缓存 — 进程内 lazy load, 给前端展示 domain/violation_type/priority/template."""
+"""Rule metadata 缓存 — 进程内 lazy load, 给前端展示 domain/violation_type/priority/template.
+
+行为认定名称 (configs/behavior_names.yaml, 源自 260611医保基金监管规则框架总表.xlsx):
+对外展示 (2C 出参 + 工作台 chip/组标题) 统一用 behavior_name, 不再露 M 模板名/R 代号.
+"""
 
 from __future__ import annotations
 
 import logging
 from typing import TypedDict
+
+import yaml
 
 from javert.audit.rule_loader import load_all
 from javert.config import get_config
@@ -21,9 +27,50 @@ class RuleMeta(TypedDict):
     question: str
     subtitle: str  # 临床检验.过度检查.P0.模板M2
     drug_rule_type: str | None  # M8 药品规则: 限适应症/超说明书/限二线/禁忌症; 否则 None
+    behavior_name: str  # 行为认定名称 (对外展示口径; 未登记细类回退 violation_type)
+    behavior_code: str  # 行为认定编码 (如 T380301; 未登记为 "")
 
 
 _CACHE: dict[str, RuleMeta] | None = None
+_BEHAVIOR_CACHE: dict[str, dict] | None = None
+_BEHAVIOR_REL = "configs/behavior_names.yaml"
+
+
+def load_behavior_map() -> dict[str, dict]:
+    """behavior_names.yaml → {violation_type: {code, name}}. 缺文件/损坏 → {} (回退原词)."""
+    global _BEHAVIOR_CACHE
+    if _BEHAVIOR_CACHE is not None:
+        return _BEHAVIOR_CACHE
+    out: dict[str, dict] = {}
+    try:
+        path = get_config().resolve(_BEHAVIOR_REL)
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        raw = data.get("mappings") or {}
+        for vt, entry in raw.items():
+            if isinstance(entry, dict) and entry.get("name"):
+                out[str(vt).strip()] = {
+                    "name": str(entry["name"]).strip(),
+                    "code": str(entry.get("code") or "").strip(),
+                }
+    except Exception as e:  # noqa: BLE001
+        logger.warning("behavior_names load 失败 (回退 violation_type 原词): %s", e)
+    _BEHAVIOR_CACHE = out
+    return out
+
+
+def behavior_name(violation_type: str | None) -> str:
+    """violation_type → 行为认定名称 (对外展示口径). 未登记 → 原词; 空 → 未分类."""
+    vt = (violation_type or "").strip()
+    if not vt:
+        return "未分类"
+    entry = load_behavior_map().get(vt)
+    return entry["name"] if entry else vt
+
+
+def behavior_code(violation_type: str | None) -> str:
+    vt = (violation_type or "").strip()
+    entry = load_behavior_map().get(vt)
+    return entry["code"] if entry else ""
 
 
 def _build_subtitle(domain: str, violation_type: str, priority: str, template: str | None) -> str:
@@ -33,43 +80,14 @@ def _build_subtitle(domain: str, violation_type: str, priority: str, template: s
     return ".".join(p for p in parts if p)
 
 
-# violation_type (细类) → 短别名 (D5): 顶部 chip + 正文组标题用, 整句压成短词.
-# 覆盖全部已装载细类 (22 个); 未登记的走 violation_alias 兜底截断.
-_VIOLATION_ALIAS: dict[str, str] = {
-    "重复收费": "重复收费",
-    "分解收费": "分解收费",
-    "超标准收费": "超标收费",
-    "串换项目": "串换项目",
-    "过度检查": "过度检查",
-    "过度诊疗": "过度诊疗",
-    "超医保限定支付适应症用药": "超限用药",
-    "超药品说明书适应症用药": "超说明书",
-    "超医保限定二线用药": "超限二线",
-    "用药安全/禁忌": "用药禁忌",
-    "虚构医药服务项目或以骗保为目的串换项目": "虚构/串换",
-    "虚构医药服务项目": "虚构项目",
-    "虚构医药服务": "虚构服务",
-    "虚构诊疗": "虚构诊疗",
-    "虚构病情": "虚构病情",
-    "虚假诊断": "虚假诊断",
-    "虚假住院": "虚假住院",
-    "诱导住院骗取医保基金": "诱导住院",
-    "将不属于医保支付范围的纳入医保基金结算": "超范围结算",
-    "DRG/DIP高编高套": "高编高套",
-    "虚构医药服务项目或过度诊疗": "虚构/过度",
-    "过度诊疗或虚构医药服务项目": "过度/虚构",
-}
-
-
 def violation_alias(violation_type: str | None) -> str:
-    """violation_type → 短别名 (chip / 组标题). 未登记的整句压成前 6 字 + …; 空 → 未分类."""
-    vt = (violation_type or "").strip()
-    if not vt:
-        return "未分类"
-    alias = _VIOLATION_ALIAS.get(vt)
-    if alias:
-        return alias
-    return vt if len(vt) <= 6 else vt[:6] + "…"
+    """violation_type → 展示名 (chip / 组标题) = 行为认定名称; 超长压 8 字 + ….
+
+    (behavior-naming) 原 22 词短别名表退役 — 展示口径统一到 behavior_names.yaml,
+    改 yaml 即全站生效, 不再维护两套词.
+    """
+    name = behavior_name(violation_type)
+    return name if len(name) <= 10 else name[:8] + "…"
 
 
 def load_rule_meta() -> dict[str, RuleMeta]:
@@ -94,6 +112,8 @@ def load_rule_meta() -> dict[str, RuleMeta]:
                     rule.priority, rule.derived_from_template,
                 ),
                 drug_rule_type=rule.drug_rule_type,
+                behavior_name=behavior_name(rule.violation_type),
+                behavior_code=behavior_code(rule.violation_type),
             )
         logger.info("rule_meta cache: %d rules loaded", len(out))
     except Exception as e:
@@ -107,5 +127,6 @@ def get_rule_meta(rule_id: str) -> RuleMeta | None:
 
 
 def reset_cache() -> None:
-    global _CACHE
+    global _CACHE, _BEHAVIOR_CACHE
     _CACHE = None
+    _BEHAVIOR_CACHE = None

@@ -54,10 +54,13 @@ rejected 的不跑; accepted 的进后台队列, 去接口 2 轮询。
       "run_id": "aud_Ab3xY9kQw2Lm",
       "rule_id": "R191",
       "rule_name": "重复收费-静脉输液",
+      "behavior_name": "重复收费",
       "verdict": "VIOLATION",
       "verdict_label": "违规",
       "confidence": 0.85,
-      "reasoning": "中文裁决理由…",
+      "reasoning": "全中文自然语言裁决理由 (无内部术语)…",
+      "hit_codes": ["331501001"],
+      "hit_names": ["麻醉后复苏监护(PACU)"],
       "evidence": [ { "source": "search_fees", "locator": "…", "text": "证据原文摘录" } ],
       "hits": [
         {
@@ -81,10 +84,13 @@ rejected 的不跑; accepted 的进后台队列, 去接口 2 轮询。
 | status | `unknown`(没提交过) / `running`(审计中, results 为已完成部分) / `done`(全部完成) |
 | summary | 三档裁决计数 |
 | results[].verdict | **`VIOLATION`(违规) / `INCONCLUSIVE`(待人工复核) / `CLEAN`(合规)** |
+| results[].behavior_name | **行为认定名称** (监管规则框架总表口径, 如"重复收费"/"超范围支付"), 前端展示用这个, 可不显示 rule_id |
 | results[].confidence | 0~1 置信度 |
-| results[].reasoning | 中文裁决理由 (可直接展示给审核员) |
+| results[].reasoning | 裁决理由, **全中文自然语言** (无工具名/规则代号/英文判定词, 可直接展示给审核员) |
 | results[].evidence | 证据数组: 来源工具 + 定位 + 原文摘录 (给人看的) |
-| results[].hits | **命中项目数组 (机器可读, 用来挂你方费用明细)**: 仅 V/I 有值, CLEAN 恒 `[]`。见下表 |
+| results[].hit_codes | 命中项目编码扁平数组 (国家医保码优先, 缺则院内码; 仅 V/I 非空), 直接挂明细用 |
+| results[].hit_names | 命中项目名称扁平数组 (费用明细原始项目名; 与 hit_codes 同源去重) |
+| results[].hits | 命中项目明细数组 (含编码/名称/限定/复核提示): 仅 V/I 有值, CLEAN 恒 `[]`。见下表 |
 | results[].run_id | 审计运行 ID, 疑议追溯用 |
 
 ### hits[] 字段 (违规项 ↔ 费用明细关联键)
