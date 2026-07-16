@@ -24,6 +24,12 @@ class _FakeLoader:
         return pd.DataFrame()
 
     def get_fees(self, patient_id: str) -> pd.DataFrame:
+        if patient_id == "J66252":
+            return pd.DataFrame({
+                "medins_list_name": ["麻醉后复苏监护(PACU)", "静脉输液"],
+                "med_list_codg": ["331501001", "120400001"],
+                "medins_list_codg": ["F00123", "F00456"],
+            })
         return pd.DataFrame()
 
 
@@ -125,7 +131,7 @@ def test_results_done_with_runs(client):
         verdict="VIOLATION",
         confidence=0.85,
         reasoning="测试理由",
-        evidence=[Evidence(source="search_fees", locator="row 3", text="证据摘录")],
+        evidence=[Evidence(source="search_fees", locator="麻醉后复苏监护(PACU)", text="费用明细中出现 ¥300 麻醉后复苏监护(PACU)项")],
         duration_ms=45000,
         model="test-model",
         started_at=datetime(2026, 7, 15, 8, 0, 0, tzinfo=timezone.utc),
@@ -148,6 +154,16 @@ def test_results_done_with_runs(client):
     assert item["rule_id"] == "R191"
     assert item["verdict"] == "VIOLATION"
     assert item["verdict_label"] == "违规"
-    assert item["evidence"] == [{"source": "search_fees", "locator": "row 3", "text": "证据摘录"}]
+    assert item["evidence"] == [{
+        "source": "search_fees",
+        "locator": "麻醉后复苏监护(PACU)",
+        "text": "费用明细中出现 ¥300 麻醉后复苏监护(PACU)项",
+    }]
     assert item["finished_at"] == "2026-07-15T08:00:45+00:00"
     assert item["rule_name"]  # R191 yaml 存在 → violation_type 非空
+    # hits: V 结果 join 患者费用行出编码 (2C 侧凭 code_nat/matched_fee_name 对明细)
+    (hit,) = item["hits"]
+    assert hit["source"] == "fee"
+    assert hit["matched_fee_name"] == "麻醉后复苏监护(PACU)"
+    assert hit["code_nat"] == "331501001"
+    assert hit["code_local"] == "F00123"

@@ -33,6 +33,7 @@ from javert.store.audit_store import SqliteStore
 from javert.store.result_persister import persist_one
 from javert.tools.llm_provider import LlmUnavailableError
 from javert.tools.registry import build_executor
+from javert.web.hit_resolver import load_kb_drugs, resolve_hits_from_json
 from javert.web.rule_meta import load_rule_meta
 
 from .routes_workbench import _get_loader
@@ -492,6 +493,10 @@ def results_2c(syxh: str):
     if run_ids:
         metas = load_rule_meta()
         cfg = get_config()
+        try:
+            fee_df = _get_loader().get_fees(syxh)
+        except Exception:  # noqa: BLE001
+            fee_df = None
         store = SqliteStore(cfg.audit_db_path)
         try:
             store.init_schema()
@@ -500,6 +505,32 @@ def results_2c(syxh: str):
                 if r is None:
                     continue
                 meta = metas.get(r.rule_id)
+                # 命中项目 (确定性, 复用工作台 hit_resolver): V/I 才算, 给 2C 侧
+                # join 自己的费用明细 (code_nat=国家医保码 / matched_fee_name=明细原始项目名)
+                hits: list[dict] = []
+                if r.verdict in ("VIOLATION", "INCONCLUSIVE"):
+                    hit_items = resolve_hits_from_json(
+                        json.dumps([e.model_dump() for e in r.evidence], ensure_ascii=False),
+                        json.dumps(
+                            [tc.model_dump() for tc in r.tool_calls],
+                            ensure_ascii=False, default=str,
+                        ),
+                        meta["drug_rule_type"] if meta else None,
+                        fee_df,
+                        load_kb_drugs(),
+                    )
+                    hits = [
+                        {
+                            "source": h.source,
+                            "name": h.name,
+                            "code_nat": h.code_nat,
+                            "code_local": h.code_local,
+                            "matched_fee_name": h.matched_fee_name,
+                            "restriction": h.restriction,
+                            "review_note": h.review_note,
+                        }
+                        for h in hit_items
+                    ]
                 results.append({
                     "run_id": r.run_id,
                     "rule_id": r.rule_id,
@@ -512,6 +543,7 @@ def results_2c(syxh: str):
                         {"source": e.source, "locator": e.locator, "text": e.text}
                         for e in r.evidence
                     ],
+                    "hits": hits,
                     "finished_at": (
                         r.started_at + timedelta(milliseconds=r.duration_ms)
                     ).isoformat(),
