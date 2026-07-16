@@ -38,7 +38,9 @@ _JARGON_ZH: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\betl_warning\b"), "资料未数字化提示"),
     (re.compile(r"\bJavert\b"), "审计系统"),
     (re.compile(r"\bverdict_gate\b|\bgate\b", re.IGNORECASE), "确定性复核"),
-    (re.compile(r"\bprecheck\b", re.IGNORECASE), "确定性预检"),
+    (re.compile(r"\bprecheck\b", re.IGNORECASE), "初步核查"),
+    (re.compile(r"预检"), "初步核查"),
+    (re.compile(r"待专家裁定"), "待人工复核"),
     (re.compile(r"\bverdict\b"), "判定结果"),
     (re.compile(r"\bevidence\b"), "证据"),
     (re.compile(r"\bconf(?:idence)?\b"), "置信度"),
@@ -48,12 +50,27 @@ _JARGON_ZH: list[tuple[re.Pattern, str]] = [
 # 规则代号 (R191 / RD20) → 本规则
 _RULE_CODE = re.compile(r"\bRD?\d{2,3}\b")
 
+# 内部注记整块剥离 (对外无可读性, 不予显示; 工作台/库内原文保留追溯):
+#   [漂移防护(历史曾判V): 历史最新 (run=aud_xx) 判 ... (只升 I 不复活 V)]
+#   [gate: <闸原因> | 原 conf=0.90]  /  [Gate] ... / [单次闸重筛回升(原C)] 等
+_INTERNAL_BLOCK = re.compile(r"\n?\s*\[(?:漂移防护|[Gg]ate|单次|重筛|预检)[^\]]*\]")
+
+# run id (aud_xxx) → 中文指代 (注记块外偶发引用)
+_RUN_ID = re.compile(r"(?:\(\s*run=)?aud_[A-Za-z0-9_-]{12}\)?")
+
+# 上下文单字母判定 (判V/曾判V/落I/升I/降C 等) → 中文; 只在判/落/升/降后替换,
+# 不做全局单字母替换 (防误伤 维生素C/IV/CT 等)
+_VIC_CONTEXT = re.compile(r"((?:曾|原|改|重)?[判落升降])\s*([VIC])(?![A-Za-z0-9])")
+_VIC_ZH = {"V": "违规", "I": "证据不足", "C": "合规"}
+
 
 def humanize_reasoning(text: str | None) -> str:
     """内部 reasoning → 对外全中文自然语言. 幂等, 空入空出."""
     s = text or ""
     if not s:
         return s
+    s = _INTERNAL_BLOCK.sub("", s)
+    s = _RUN_ID.sub("既往审计记录", s)
     for en, zh in _TOOL_ZH:
         s = s.replace(en, zh)
     for en, zh in _VERDICT_ZH:
@@ -61,4 +78,5 @@ def humanize_reasoning(text: str | None) -> str:
     for pat, zh in _JARGON_ZH:
         s = pat.sub(zh, s)
     s = _RULE_CODE.sub("本规则", s)
-    return s
+    s = _VIC_CONTEXT.sub(lambda m: m.group(1) + _VIC_ZH[m.group(2)], s)
+    return re.sub(r"\n{3,}", "\n\n", s).strip()

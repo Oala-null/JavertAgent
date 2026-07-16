@@ -34,6 +34,33 @@ def test_plain_chinese_untouched_and_idempotent():
     assert humanize_reasoning(None) == ""
 
 
+def test_internal_annotation_blocks_stripped():
+    """漂移防护/gate 注记整块不予显示 (对外无可读性)."""
+    s = humanize_reasoning(
+        "费用明细存在重复收取。\n"
+        "[漂移防护(历史曾判V): 历史最新 (run=aud_GeAaQbOU3IqF) 判 VIOLATION, "
+        "本次重跑判 CLEAN, 落 INCONCLUSIVE 待专家裁定 (只升 I 不复活 V)]"
+    )
+    assert s == "费用明细存在重复收取。"
+    s2 = humanize_reasoning("推理正文。\n[gate: 缺文书 | 原 conf=0.90]")
+    assert s2 == "推理正文。"
+
+
+def test_contextual_vic_letters_and_run_ids():
+    s = humanize_reasoning("历史曾判V, 本次改判C, 落I; 参见 aud_GeAaQbOU3IqF")
+    assert "判违规" in s and "判合规" in s and "落证据不足" in s
+    assert "aud_" not in s
+    # 不误伤医学缩写里的单字母
+    keep = humanize_reasoning("维生素C 与 CT 检查无异常")
+    assert "维生素C" in keep and "CT" in keep
+
+
+def test_precheck_wording_humanized():
+    s = humanize_reasoning("预检: 未见 A 类 (主项) 费用命中, 规则不适用 → CLEAN")
+    assert "预检" not in s
+    assert s.startswith("初步核查") and "合规" in s
+
+
 def test_behavior_name_mapping():
     from javert.web.rule_meta import behavior_name, reset_cache
 
