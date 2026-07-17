@@ -129,12 +129,19 @@ def test_submit_hub_fallback(client, monkeypatch):
     assert body["rejected"] == [{"SYXH": "211000000", "reason": "本地查无, 数据中台连接失败"}]
 
 
-def test_hub_cfg_paths(tmp_path):
-    """_hub_cfg_for: 整链路路径 (notes/fees/zd/ss/labs/exams) 全指向取数目录."""
-    from javert.config import get_config
+def test_hub_cfg_paths(tmp_path, monkeypatch):
+    """_hub_cfg_for: 整链路路径全指向取数目录 — 含部署机 .env 把 notes/fees
+    指到合并版文件 (shi_fee_with_szx.csv) 的场景 (62 实测踩过)."""
+    from javert.config import get_config, reset_config_cache
     from javert.web.api.routes_audit import _hub_cfg_for
 
-    cfg2 = _hub_cfg_for(get_config(), tmp_path)
+    monkeypatch.setenv("JAVERT_FEES_FILE", "shi_fee_with_szx.csv")
+    monkeypatch.setenv("JAVERT_NOTES_FILE", "case_notes_with_szx.csv")
+    reset_config_cache()
+    try:
+        cfg2 = _hub_cfg_for(get_config(), tmp_path)
+    finally:
+        reset_config_cache()
     assert cfg2.notes_path == tmp_path / "case_notes.csv"
     assert cfg2.fees_path == tmp_path / "shi_fee.csv"
     assert cfg2.zd_path == tmp_path / "shi_zd.csv"

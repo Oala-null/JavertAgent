@@ -407,8 +407,12 @@ def _hub_fetch_patient(syxh: str, out) -> None:
 
 def _hub_cfg_for(cfg, data_dir) -> Any:
     """cfg 副本切到 hub 取数目录 — Runner/工具/临床闸整链路跟随 (文件名=取数桥产出)."""
+    # 六个文件名全部显式覆盖 — 部署机 .env 可能把 notes/fees 指到合并版
+    # (如 shi_fee_with_szx.csv), 不覆盖会去取数目录找不存在的文件 (62 实测踩过)
     return cfg.model_copy(update={
         "data_dir": str(data_dir),
+        "notes_file": "case_notes.csv",
+        "fees_file": "shi_fee.csv",
         "zd_file": "shi_zd.csv",
         "ss_file": "shi_ss.csv",
         "labs_file": "lab_results.csv",
