@@ -72,13 +72,16 @@ export JAVERT_SHADOW_DEID_SALT="<从受控密钥存储读取>"
 
 PYTHONPATH=src .venv/bin/python scripts/run_oncology_shadow_batch.py \
   --env-file /secure/path/javert-142.env \
-  --hub-database sh_yb_platform \
+  --hub-database TP_data_hub \
   --history-database zadig \
   --report docs/oncology/shadow_comparison.json \
   --manifest docs/oncology/shadow_run_manifest.json
 ```
 
 `--env-file` 显式解决 integration worktree 没有 `.env` 时的连接配置；显式数据库参数避免把 hub 源库和历史结果库混为一库。临时目录默认位于系统临时区；如传 `--temp-root`，该路径必须位于 Git 工作区之外。
+2026-07-17 正式 shadow 报告使用的是我方维护的 142 `TP_data_hub` 快照；`sh_yb_platform`
+是数据工程侧只读源库，不得在复现实验时无说明地互换。若以后改用其他 hub 库，必须把库名、
+读取时间窗和一致性说明写进新 manifest。
 
 脚本执行以下固定口径：
 

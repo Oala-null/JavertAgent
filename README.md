@@ -2,6 +2,9 @@
 
 国家医保局 2026 年自查自纠问题清单 (0325) 中 163 条「做不了」违规情形的 LLM 审计脚手架.
 
+**当前库存（2026-07-17）**: 159 条规则 YAML，其中 118 ready、28 abandoned、13 drafting；
+运行 `.venv/bin/javert list` 获取实时口径，不要从历史实测报告反推当前规则数。
+
 **data-hub (2026-07-03)**: 🟢 **数据中台三链打通** — 对接 `Scriv/Data_Hub` 46 张国标 TB_* 表: **回填** (`scripts/build_data_hub_filled.py`, sy 3309 + szx 全量 4701 患者 → 23 表 631 万记录, 含 通用文书/费用医保分解/手术医保双码 3 张扩展表) → **推送** (`scripts/push_data_hub_filled.py` → 142 `TP_data_hub` 库) → **反向取数** (`scripts/etl_from_data_hub.py`, 流B, zadig_agent 零改动). 双链路对照 J66252 裁决 16/18 一致无 V 级差异. 交接文档 `Scriv/data_hub_filled/_report.md`, 接入指引 `docs/数据接入清单.md` §四.
 
 **v0.12 (2026-06-04)**: 🟢 **现场演示自动驾驶 (redesign-onboarding-demo-flow)** — `/onboarding` 从工程师映射工具加一层自动驾驶, 面向投资方/合作医院现场演示. **稳**: 服务端进程内会话态单一真相源 (`onb_sid` 索引, 不落盘 JSON) — 删/重传(同名替换)/刷新都稳, 消灭"增删出问题"; **不炸**: `.loaded.env` 只写实际产出表 (缺表客户不再炸) + GUI「清空已载入」; **一词收尾**: `jv-go` 一词跑全量 + `jv-run-all` 逐患者进度行 (`[i/N] 患者号 ✓ xV yI zC`) + 载入面板自动复制剪贴板; **可解释**: 预检红灯可执行诊断 (命中最低表 + 成因) + 日期歧义一次性确认 (绝不静默反转); **丝滑**: 上传即自动认表 (`classifier.py` 最小启发式) + 绿/琥珀结果卡 (synth/asis/bridge 收进「调整▾」) + **我的文件→Javert 表流向图** (真实键标签·可拖节点·点线看明细). **483 测试 + 1 skip 绿**. 详见 `docs/sample_onboarding.md` §八.
@@ -12,7 +15,7 @@
 
 **v0.9 (2026-06-01)**: 🟢 **工作台可用性增强 + evidence-anchoring** — 违规卡「命中项目」块 (编码·名称·医保限定) + 点证据 **右侧 parallel 滑出原文对照面板** (非弹窗, 左右比对) + 病人列表 facet (tag/费用区间/主诊/时间) + 富卡片 + 费用类别就地展开 + 长评语 hover. 确定性 `hit_resolver` 对全部 106 病人即时生效 (零 LLM 重跑/零批注扰动). 详见 [审核工作台](#审核工作台-v06) + `docs/review_workbench_user_guide.md`.
 
-**v0.8 (2026-05-29)**: **药品违规审计上线** — M8 模板 + `drug_audit_lookup` 工具 + 928 通用名监管 KB, 33 条规则 (R007 限适应症 + RD01-37), on-label 误报闸. 详见 `docs/sample_drug_audit.md`.
+**v0.8 (2026-05-29)**: **药品违规审计上线** — M8 模板 + `drug_audit_lookup` 工具 + 928 通用名监管 KB, 32 条规则 (R007 + RD01-03 + RD10-37), on-label 误报闸. 详见 `docs/sample_drug_audit.md`.
 
 **肿瘤医保资格 v2（62 已验收启用）**: M8 当前生产入口收敛为 `RD04/R007/RD01/RD02/RD03` 五条 bulk；`RD04` 已 ready 并在 `on` 模式独占肿瘤医保限定臂；`RD10-RD37` 保持 abandoned。详见 `docs/oncology/operations.md`.
 
@@ -49,11 +52,11 @@ dry-run → 看 trace → 改 yaml → 再 dry-run; 成熟后 `mark ready` / `va
 | **M2 过度检查** | fee 命中 + 诊断无指征 | 22 | R151 | `docs/templates/模板2_过度检查.md` |
 | **M3 口腔串换** | 诊断仅 trivial + fee 见大手术 | 17 | R245 | `docs/templates/模板3_口腔串换.md` |
 | **M4 超标准收费** | 实际计价方式 ≠ 诊疗目录条款 | 13 | R193 | `docs/templates/模板4_超标准收费.md` |
-| **M5 虚构服务** | fee 见 X / 文书无 X | 8 | R203 | `docs/templates/模板5_虚构医药服务.md` |
+| **M5 虚构服务** | fee 见 X / 文书无 X | 10 | R203 / R317 / R318 | `docs/templates/模板5_虚构医药服务.md` |
 | **M6 过度诊疗** | treatment + 排除指征 / 限制超 | 9 | R310 | `docs/templates/模板6_过度诊疗.md` |
 | **M7 项目身份串换** | 做 X (低价) 收 Y (高价) | 20 | R083 | `docs/templates/模板7_串换收费.md` |
 | **M8 药品适应症/限定** | 药品 fee 命中 KB + 诊断∉依据 (禁忌 反向) | 5 | RD04 + R007 + RD01-03 | (`scripts/init_drug_rules.py` 维护通用 bulk；RD04 独立维护) |
-| **合计 production-ready** | | **116** | | |
+| **合计 production-ready** | | **118** | | |
 
 每份模板文档含: master prompt 骨架 + 一条 reference yaml + 所有规则的 personalized 字段填充表.
 
@@ -64,17 +67,17 @@ Y 装载: **101/109 = 92.7% ready** (M1-M7 骗保类; 剩 8 条等外部数据/�
 
 | 文件 | 用途 |
 |------|------|
-| `docs/how_javert_works.md` | 技术架构说明 (面向院方管理层/信息科/投资方的非技术汇报材料; 143 条规则 + 工具/Router/8 模板工作原理) |
+| `docs/how_javert_works.md` | 技术架构说明 (面向院方管理层/信息科/投资方的非技术汇报材料；159 条 YAML / 118 ready + 工具/Router/8 模板工作原理) |
 | `docs/做不了163规则可行性分析.md` | 163 条完整分析报告 (含 4 工具能力深潜 + 7 tier 分类 + pilot 选单) |
 | `docs/163规则可行性分析表.csv` | 给医保领域专家做 Y/N 标注 (4 优先级 + 留空 Y/N 列) |
 | `docs/templates/模板{1-7}.md` | 7 大模板的完整设计 + 全 109 条 Y personalization 数据 |
 | `docs/sample_drug_audit.md` | (v0.8) M8 药品类规则两批对照实测 + on-label 误报闸验收 + 抽样 ground-truth |
 | `docs/oncology/operations.md` | 肿瘤医保资格 v2 知识维护、运行验证、RD04/R007 所有权与回滚 |
 | `docs/rule_design_guide.md` | yaml 字段含义与设计 checklist |
-| `docs/y_rules_status_v0_4.md` | **(当前版)** Y 装载现状 92.7% + 4 档质量分类 + 8 条缺口归因 |
+| `docs/y_rules_status_v0_4.md` | **v0.4 历史快照**：当时 Y 装载 92.7% + 4 档质量分类 + 8 条缺口归因 |
 | `docs/y_rules_analysis.md` | (v0.3 旧版) 已被 v0.4 supersede |
 | `docs/sample_audit_patient.md` | audit-patient 多组实测 (组 A-M), 含 v0.4 组 L 10 病人全量 + v0.5 组 M 50 病人 router |
-| `docs/sample_run_R191.md` | R191 的 dry-run 样本 (TODO) |
+| `docs/sample_run_R191.md` | R191 的历史 dry-run 样本（当前已 ready + precheck） |
 
 ## Router B (Stage A prefilter)
 
@@ -115,7 +118,7 @@ open output/router_compare_J66252.html       # J66252 三轮对比 (v0.4 / off /
 
 ```bash
 # yaml 改完后重建 router 数据 (router 依赖 yaml.trigger_keywords + applicable_*)
-uv run python scripts/build_rule_mapping.py  # 扫 125 yaml → javert_rules_index.json + rule_mapping.json
+uv run python scripts/build_rule_mapping.py  # 扫全部规则 yaml → javert_rules_index.json + rule_mapping.json
 
 # 从规则引擎代码 xls 提取 14372 字典 + 11 active rules (一次性, Phase 2 Java engine 也用)
 uv run python scripts/extract_router_data.py
@@ -131,7 +134,7 @@ uv run python scripts/test_router_smoke.py
 
 线上地址: **http://192.168.31.62:8090/** (内网, systemd 纳管)
 
-### 数据规模
+### 部署初始数据基线（2026-05-21）
 
 | 项 | 数 |
 |----|----|
@@ -240,19 +243,19 @@ cp /Users/shane/26er/shi/db/shi_ss.xls data/   # 病案首页手术
 uv run javert init --refresh-data --rebuild-store
 ```
 
-## 10 个子命令
+## 15 个顶层子命令
 
 ```bash
 uv run javert list                                        # 列规则及统计 (含 priority 列)
 uv run javert dry-run R191 --patient J66252               # 单跑 + 打印 trace
 uv run javert run R191 --patient J66252                   # 单跑 (不打印 trace)
 uv run javert run R191 --pilot                            # 批跑 50 患者 (规则维度)
-uv run javert audit-patient J66252                        # 患者维度: 跑全部 P0 规则 (默认 30 条, 跳 abandoned)
+uv run javert audit-patient <去标识测试号>                 # 患者维度: 跑当前 P0 非 abandoned 规则
 uv run javert audit-patient J66252 --share-tool-cache     # 跨规则共享 ToolExecutor 缓存
 uv run javert audit-patient J66252 --share-tool-cache --concurrency 5  # 并发 5 (15 条 M1 → ~5 min)
 uv run javert audit-patient J66252 --rules R045,R191      # 显式列表 (绕过 priority + abandoned)
 uv run javert audit-patient J66252 --priority P1          # 按 priority 过滤
-uv run javert audit-patient J66252 --priority all         # (v0.5) ready 全集 (143 条)
+uv run javert audit-patient <去标识测试号> --priority all  # ready 全集（实时数量见 javert list）
 uv run javert audit-patient J66252 --use-router           # (v0.5) Stage A prefilter, 砍 ~70% LLM
 uv run javert audit-patient J66252 --priority all --use-router --concurrency 5  # (v0.5) 推荐配置
 uv run javert mark R191 --status ready                    # 状态前进
@@ -263,7 +266,7 @@ uv run javert show aud_a1b2c3d4e5f6                       # run_id 反查
 uv run javert show R191 --patient J66252                  # 取最新一次跑的 trace
 
 # 模板套填 (rule-templating capability)
-uv run javert template list                                                     # 看 M1-M6 状态
+uv run javert template list                                                     # 看 M1-M8 状态
 uv run javert template show M1                                                  # 看模板内容
 uv run javert template validate M1                                              # empty / partial / ready / error
 uv run javert prompt-fit R191 --template M1 --vars docs/m1_r191_vars.json --dry-run --output -  # 验证渲染
@@ -286,7 +289,11 @@ uv run python scripts/sync_priority_csv.py --write        # 实写盘
 
 ```bash
 JAVERT_MAX_TOOL_CALLS=15 uv run javert dry-run R191 --patient J66252
+JAVERT_ONCOLOGY_ELIGIBILITY_V2=shadow uv run javert audit-patient <去标识测试号> --rules RD04
 ```
+
+`JAVERT_ONCOLOGY_ELIGIBILITY_V2` 仅允许 `off|shadow|on`，仓库默认 `off`；62 的生产值
+为 `on`。所有权与回滚见 `docs/oncology/operations.md`。
 
 ## 状态机
 
@@ -303,7 +310,10 @@ abandoned (任意状态可达, 无需 force)
 
 详见 `docs/rule_design_guide.md` 与 `configs/rules/R191.yaml` 示例.
 
-## 路线图 (候选 changes)
+## Change 索引（已交付历史 + 当前候选）
+
+带 ✅ 的旧数量是该 change 完成时的历史口径，不应相加推导当前库存；当前状态看本页顶部和
+`javert list`。未带 ✅ 的条目才是候选。
 
 | Change | 范围 | 解锁 |
 |--------|------|------|
@@ -326,26 +336,25 @@ abandoned (任意状态可达, 无需 force)
 | `add-review-workbench` ✅ (v0.6) | 142 4 张表 + sqlite 3345 行 import + FastAPI 工作台 (login/register-closed/workbench/sidebar/violation card/3-态 review/SSE/dashboard/export/raw-modal+Ctrl+F+tab 切换/single-patient export) + systemd 部署 62 + bcrypt + 改密 + 病案概览 (shi_zd ground truth) + 规则副标题 (`domain.violation_type.priority.模板Mx`) + dedup latest-per-(rule_id, patient_id) + NVARCHAR hook 类型感知 + audit_watcher BIGINT id 追踪 (不死循环) | 交付层 |
 | `add-batch-new-50` ✅ (v0.6) | 第二批 50 病人 (J/K + 50-400 段文书) 全 router 跑 8.7 h, 48 ok + 2 部分失败, 累计 106 患者 / 5016 行 / 529 V / 238 I / 3287 C | 验证 + 体量 |
 | `add-external-data-import` ✅ (v0.7) | 外部医院数据接入: ETL (`etl_import.py`) + 列名映射 + `【段落】` 自动拆分 + 合成复合键, 首跑外部院真数据 (szx 5 患者) | 接入层 |
-| `add-drug-audit-rules` ✅ (v0.8) | 药品违规审计: M8 模板 + `drug_audit_lookup` + 928 药监管 KB + 33 条规则 (R007/RD01-37) + on-label 误报闸, R007 红区 E 解锁 | 33 条 M8 |
+| `add-drug-audit-rules` ✅ (v0.8) | 药品违规审计: M8 模板 + `drug_audit_lookup` + 928 药监管 KB + 32 条规则 (R007 + RD01-03 + RD10-37) + on-label 误报闸, R007 红区 E 解锁 | 32 条 M8 |
 | `strengthen-oncology-drug-eligibility` ✅（62 on） | M8 生产入口收敛为 RD04/R007/RD01-03 bulk；RD04 接结构化肿瘤资格并独占肿瘤医保限定臂；RD10-RD37 abandoned | 肿瘤医保限定 v2 |
+| `boost-llm-efficiency` ✅ | prompt 公共前缀前置 + 单轮多 tool call + per-key 工具缓存；历史实测见 `docs/boost_llm_efficiency_实测.md` | 已交付原 `prompt-cache-optimize` / `tool-call-merge` |
 | `enhance-workbench-usability` ✅ (v0.9) | 工作台 5 项易用性 + evidence-anchoring: `hit_resolver` 命中项目/锚点 + facet 富卡片 + 费用类别展开 + parallel 原文对照面板 + 评语 hover + `anchors_json` 缓存回填 | 工作台 + 锚点 |
 | `add-cross-patient-stats` (候选, 最高) | 跨患者算每条规则 V 率, ≥50% 提报医院级整改 (利用 100+ 病人 ~5000 裁决基线) | 解锁 R003/R280/R281/R286 + 系统性违规量化 |
 | `add-java-engine-port` Phase 2 (候选) | Python 复现 11 valid=1 Java 规则 + LLM 润色 warn_msg, 独立 Track A 输出 java_violations[] | 补"做得了"覆盖 (不省 GPU 但拓宽监管面) |
-| `prompt-cache-optimize` (候选, 真正提速) | system prompt 顺序重构, hit_rate 36% → 60%+, 单 LLM call 提速 1.3-1.5× | 全量提速 |
-| `tool-call-merge` (候选, 真正提速) | "一次拉全" 复合工具, tool calls 8-9 → 2-3, 提速 1.5-2× | 全量提速 |
 | `evidence-source-extend` (候选) | base.txt evidence source 加 hospital_config | R212/R220 设计语义准确化 |
 | `add-material-registry` (候选) | 引入耗材规格/采购数据 | R013/R033 P3 Y + M7 红色难 6 条 |
 | `add-catalog-loader` (候选) | 引入医保药品/诊疗目录 yaml (R007 已由 v0.8 M8 解锁) | 剩余 E 类 drafting |
 | `reasoning-precision-tune` (候选) | base.txt 加 "区分子项不要合并主项" | 修 J19333 R146 这类细节漂移 |
-| `add-rule-routing` (候选) | 基于 baseline 决定是否上费用/诊断路由 | 全量提速 |
-| `add-sql-loader` | 把 csv 换成 SQL Server | 数据层 |
-| `add-web-form` | 院方 UI 浏览 + 标注 | 交付层 |
 
 ## 测试
 
 ```bash
-uv run pytest tests/ -v        # v0.9: 333 passed + 1 skipped 全绿
+uv run pytest tests/ -v
 ```
+
+完整测试中仍有既有 fixture/环境债务；不要把排除债务后的门禁写成“全量全绿”。
+当前精确 collected/pass/skip/fail/error 与排除清单见 `docs/oncology/qa_report.md`。
 
 ## 与 zadig_agent 的关系
 

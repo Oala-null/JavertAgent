@@ -1,5 +1,8 @@
 # Y 标注规则装载现状 · v0.4 (m7-rollout 后)
 
+> **历史冻结快照**：本文只描述 2026-05-17 的专家 Y 标注覆盖率，不是当前规则清单。
+> 当前为 159 条规则（118 ready / 28 abandoned / 13 drafting），实时以 `javert list` 为准。
+
 **日期**: 2026-05-17
 **触发**: m7-rollout 完成 (20 条 M7 串换规则装 prompt_addon)
 **对照基准**: `docs/y_rules_analysis.md` (v0.3, Y ready = 81/109 = 74.3%)

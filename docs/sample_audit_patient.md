@@ -1,5 +1,8 @@
 # sample_audit_patient — P0 baseline 耗时实测
 
+> **历史样本集**：本文记录 v0.2-v0.5 阶段、Qwen3.5 与当时规则集的逐轮实测。
+> 当前运行口径请看 `docs/how_javert_works.md`，规则数量以 `javert list` 为准。
+
 > **🔧 修正预期 (组 A 实测之后)**: design.md 原以为骨架 yaml「短而少 tool call」, 实测正相反 ——
 > **空 prompt_addon 让 LLM 缺审计步骤指引, 反而反复 tool call 探索, 单条耗时反而最长** (R219=172s, R220=137s, R208=129s 都是骨架)。
 > 这意味着 baseline 41.5 min 不是「下限」, 倒可能接近**上限**。等 prompt_addon 填满后, 单条耗时**或许会降**, 因为 LLM 走指定步骤更快收敛。这一点等组 B/C/D 跑完 + R191 等 ready yaml 对比后才能确认。

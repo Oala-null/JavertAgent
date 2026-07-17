@@ -1271,7 +1271,7 @@ def main() -> None:
         "# data_hub_filled 交接报告", "",
         f"> 生成: scripts/build_data_hub_filled.py · 数据源 sy({len(sy['fee'])}费用行) + szx({len(szx['fee'])}费用行)",
         "> 设计依据: Scriv/data_hub_关系映射.md (总纲) + data_hub_关系映射_字段级明细.md (330条映射) + syjbk_rbasy_mapping.json",
-        "> 回传 142 顺序: ① 先跑 _ext_tables.sql 建 3 张扩展表 → ② 灌 23 张 CSV (scripts/push_data_hub_filled.py, 幂等)",
+        "> 回传自有开发库顺序: ① 先跑 _ext_tables.sql 建扩展表 → ② 用 scripts/push_data_hub_filled.py --database TP_data_hub 灌 23 张 CSV（幂等）",
         "> 反向取数 (Javert/zadig_agent 消费): scripts/etl_from_data_hub.py --patients a,b / --all", "",
         "## 全局键体系 (读任何表前先看这段)",
         "- **YLJGYQDM 院区代码**: `0001`=sy主院(H31010600042) `0002`=黑龙江OCR病例(H424101075) `0003`=szx(42506084200)。",

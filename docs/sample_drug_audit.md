@@ -1,6 +1,6 @@
 # 药品类规则 (M8) 实测报告 — v0.8 `add-drug-audit-rules`
 
-> **历史快照**：本文记录 v0.8 当时的 33 条规则验收，不代表当前执行状态。当前 production-ready 入口已收敛为 `RD04/R007/RD01/RD02/RD03` 五条 bulk；`RD10-RD37` 均为 abandoned。当前状态见 `docs/oncology/operations.md`.
+> **历史快照**：本文记录 v0.8 当时的 32 条规则验收，不代表当前执行状态。当前 production-ready 入口已收敛为 `RD04/R007/RD01/RD02/RD03` 五条 bulk；`RD10-RD37` 均为 abandoned。当前状态见 `docs/oncology/operations.md`.
 
 两批对照验证 M8 药品适应症/限定审计: **综合科批** (药品丰富, 验真违规信号) + **甲状腺批** (on-label 误报闸验收).
 
@@ -13,7 +13,7 @@
 - **KB**: `configs/drug_audit_kb.json` 928 通用名 (限适应症 713 / 超说明书 142 / 限二线 110 / 禁忌症 61, 跨类合并), 由 `scripts/build_drug_kb.py` 从 4 份 xlsx 归一化, 二次运行 byte-identical.
 - **命中频次表** `output/drug_kb_hits.csv`: 928 药里 **211 种**真出现在本院西药/中药/草药 fee 中 (stem 子串匹配).
 - **工具** `drug_audit_lookup`: bulk(患者用药 ∩ KB + 病案首页诊断 ground truth) / single(单药事实); 与 52 药 `drug_indication` 并存不互扰.
-- **规则**: R007 (限适应症) + RD01-03 类型级 (全覆盖 928 药, router always-on) + RD10-37 精选 28 条 (高频高危药, router 按通用名精准触发) = **33 条 M8 规则**, 全 `derived_from_template: M8` + `status: ready`.
+- **规则**: R007 (限适应症) + RD01-03 类型级 (全覆盖 928 药, router always-on) + RD10-37 精选 28 条 (高频高危药, router 按通用名精准触发) = **32 条 M8 规则**, 全 `derived_from_template: M8` + `status: ready`.
 
 ---
 

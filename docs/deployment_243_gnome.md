@@ -226,8 +226,10 @@ bash ~/run_243_baseline.sh   # log: ~/javert-batch.log
 1. 前置：docker SQL Server、llama.cpp+模型、`uv`、`msodbcsql18`
 2. Mac 侧打包：`tar src configs scripts tests pyproject.toml uv.lock` + `data_import_hub/`（5 病人）→ 解到 `~/Javert`
 3. 写 `.env`（模板见仓库 `.env.243`，改 SQL 密码/SESSION_SECRET）
-4. 灌库（可从任意可达机器执行，env 指向目标库）：
-   `push_data_hub_filled.py --data-dir <5p目录>` → `create_data_hub_indexes.sql` → `create_javert_tables.sql` → `apply_tp_comments.py` → 建 admin
+4. 灌库（243 本机库是自有环境，需显式声明）：
+   `JAVERT_OWNED_DBS=sh_yb_platform uv run python scripts/push_data_hub_filled.py --database sh_yb_platform --data-dir <5p目录>`
+   → `sqlcmd <连接参数> -d sh_yb_platform -v HUB_DATABASE=sh_yb_platform -b -i scripts/sql/create_data_hub_indexes.sql`
+   → `create_javert_tables.sql` → `apply_tp_comments.py` → 建 admin
 5. 起 web（上方命令）→ 冒烟 → 跑批
 6. **交付前**：改 admin 密码；确认 `~/Javert/data/` 只有 `router/`（无任何病人 CSV）
 

@@ -1,4 +1,4 @@
-# 2C 平台 ↔ Javert 审计服务 对接文档 (契约 v0.1)
+# 2C 平台 ↔ Javert 审计服务 对接文档 (契约 v0.2)
 
 一句话: 你发「患者名单」, 我后台跑 LLM 审计, 你轮询拉每个患者的违规裁决清单。
 
@@ -63,6 +63,7 @@
       "verdict_label": "违规",
       "confidence": 0.85,
       "reasoning": "全中文自然语言裁决理由 (无内部术语)…",
+      "eligibility_evaluation": null,
       "hit_codes": ["331501001"],
       "hit_names": ["麻醉后复苏监护(PACU)"],
       "evidence": [ { "source": "search_fees", "locator": "…", "text": "证据原文摘录" } ],
@@ -92,11 +93,74 @@
 | results[].behavior_name | **行为认定名称** (监管规则框架总表口径, 如"重复收费"/"超范围支付"), 前端展示用这个, 可不显示 rule_id |
 | results[].confidence | 0~1 置信度 |
 | results[].reasoning | 裁决理由, **全中文自然语言** (无工具名/规则代号/英文判定词, 可直接展示给审核员) |
+| results[].eligibility_evaluation | 可空。RD04 肿瘤医保资格 v2 的双轴结果、条件证明和文书建议；其他规则及历史旧行是 `null` |
 | results[].evidence | 证据数组: 来源工具 + 定位 + 原文摘录 (给人看的) |
 | results[].hit_codes | 命中项目编码扁平数组 (国家医保码优先, 缺则院内码; 仅 V/I 非空), 直接挂明细用 |
 | results[].hit_names | 命中项目名称扁平数组 (费用明细原始项目名; 与 hit_codes 同源去重) |
 | results[].hits | 命中项目明细数组 (含编码/名称/限定/复核提示): 仅 V/I 有值, CLEAN 恒 `[]`。见下表 |
 | results[].run_id | 审计运行 ID, 疑议追溯用 |
+
+### eligibility_evaluation（RD04，可空）
+
+RD04 在 62 的 `on` 模式会返回结构化资格结果；旧三态 `verdict` 继续保留，现有客户端可以
+不解析本字段。最小示例：
+
+```json
+{
+  "audit_disposition": "NO_VIOLATION_FOUND",
+  "eligibility_status": "DOCUMENTATION_GAP",
+  "legacy_verdict": "CLEAN",
+  "rule_id": "RD04",
+  "rule_version": "2026.1",
+  "indication_branch_id": "example-branch",
+  "source_versions": ["eligibility:2026.1", "regimen:2026.1"],
+  "criterion_assessments": [
+    {
+      "criterion_id": "example-criterion",
+      "criterion_type": "treatment_status",
+      "state": "UNKNOWN",
+      "reason": "缺少可核验记录",
+      "missing_items": ["移植适合性评估"]
+    }
+  ],
+  "proof_tree": {
+    "node_id": "root",
+    "operator": "leaf",
+    "state": "UNKNOWN",
+    "criterion_id": "example-criterion",
+    "assessment": {
+      "criterion_id": "example-criterion",
+      "criterion_type": "treatment_status",
+      "state": "UNKNOWN",
+      "reason": "缺少可核验记录",
+      "missing_items": ["移植适合性评估"]
+    }
+  },
+  "data_quality_flags": [],
+  "documentation_suggestions": [
+    {
+      "criterion_id": "example-criterion",
+      "title": "补充移植适合性评估",
+      "rationale": "当前记录不足以核验该条件。",
+      "suggested_content": "如拟使用该方案，建议记录评估结论及依据。",
+      "priority": "high",
+      "safety_note": "本建议仅用于完善病历记录，不代表缺失条件已被证实。"
+    }
+  ]
+}
+```
+
+固定枚举：
+
+| 轴 | 枚举 | 含义 |
+|---|---|---|
+| `audit_disposition` | `NO_VIOLATION_FOUND / VIOLATION_FOUND / REVIEW_REQUIRED` | 审核处置 |
+| `eligibility_status` | `SATISFIED / NOT_SATISFIED / DOCUMENTATION_GAP / CONFLICT` | 医保资格状态 |
+| `criterion_assessments[].state` | `SATISFIED / NOT_SATISFIED / UNKNOWN / CONFLICT` | 单条件四态 |
+
+旧三态投影固定为
+`NO_VIOLATION_FOUND→CLEAN`、`VIOLATION_FOUND→VIOLATION`、
+`REVIEW_REQUIRED→INCONCLUSIVE`。文书建议不能充当证据，也不会改变条件状态。
 
 ### hits[] 字段 (违规项 ↔ 费用明细关联键)
 

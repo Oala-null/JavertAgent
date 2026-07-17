@@ -109,7 +109,8 @@ $ javert prompt-fit <rule_id> --template <M*> [--vars X.json | --interactive | -
 
 ### `--auto` 注意
 
-- 用本地 sglang Qwen3.5 (`http://192.168.31.62:30000/v1`), 非 Claude
+- 用 62 当前本地 sglang 模型（2026-07-17 为 Qwen3.6-35B-A3B-FP8，
+  `http://192.168.31.62:30000/v1`），非 Claude
 - Qwen 中文起草偏机械, 关键字段可能空泛 — **写盘前永远人审一遍**
 - 默认拒绝 (输入非 `y` 都视为 abort)
 - LLM 起草 vars 通过 `validate_vars` 校验后才进 render
@@ -184,7 +185,7 @@ diff <(uv run python -c "import yaml; print(yaml.safe_load(open('configs/rules/R
 9. 满意 → `javert mark` 推 ready
 10. 不满意 → 改 master_prompt → 重跑 prompt-fit (`derived_from_template: MX` 在, 复套不会有歧义)
 
-### 当前模板状态 (2026-05-29)
+### 当前模板状态 (2026-07-17)
 
 | 模板 | name | rollout 状态 | ready 数 | reference |
 |------|------|------------|---------|-----------|
@@ -192,10 +193,13 @@ diff <(uv run python -c "import yaml; print(yaml.safe_load(open('configs/rules/R
 | M2 | 过度检查 | ✅ 完成 | 22 | R151 |
 | M3 | 串换项目 (含口腔) | ✅ 完成 | 17 | R245 |
 | M4 | 超标准收费 | ✅ 完成 | 13 | R193 (体表肿物切除) |
-| M5 | 虚构医药服务 | ✅ 完成 | 8 | (无单独 reference) |
+| M5 | 虚构医药服务 | ✅ 完成 | 10 | R203 / R317 / R318 |
 | M6 | 过度诊疗 | ✅ 完成 | 9 | R310 (精神科住院) |
 | M7 | 项目身份串换收费 | ✅ 完成 | 20 | R083 (冰袋 vs 冷疗) |
 | **M8** | **药品适应症/限定审计** | ✅ **bulk 收敛；肿瘤 v2 on** | 5 ready (RD04+R007+RD01-03)；RD10-37 abandoned | `scripts/init_drug_rules.py` 维护通用 bulk；RD04 独立维护 |
+
+M5 的 10 条由原 8 条虚构服务规则加 R317（溶栓术配套）和 R318（内镜治疗）组成；
+后两条体现当前的举证倒置/companion 预检口径。
 
 #### M8 schema 特殊点 (与 M1-M7 不同)
 

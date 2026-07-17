@@ -2148,6 +2148,10 @@ Expecting `+Ze.join(", ")+", got '"+(this.terminals_[Ne]||Ne)+"'":Dt="Parse erro
 
 <div class="wrap">
 
+<div class="box gotcha"><span class="lbl">status · 2026-07-17</span>zadig_agent Tab 保留
+2026-06-10 的 Qwen3.5/GPTQ 架构快照；62 当前共享推理端点为
+<code>Qwen3.6-35B-A3B-FP8</code>。Javert Tab 已按 159/118 规则和肿瘤资格 v2 更新。</div>
+
 <!-- ============================ ZADIG ============================ -->
 <section id="z" class="panel z active">
 
@@ -2373,19 +2377,19 @@ flowchart LR
 
   <div class="spec">
     <div class="cell"><div class="k">domain</div><div class="v">Insurance Audit<br><small>医保违规自查</small></div></div>
-    <div class="cell"><div class="k">paradigm</div><div class="v">2-layer<br><small>Router prefilter + ReAct agent</small></div></div>
-    <div class="cell"><div class="k">llm</div><div class="v">Qwen3.5-35B<br><small>GPTQ-Int4 · sglang（共享）</small></div></div>
-    <div class="cell"><div class="k">killer feature</div><div class="v">Deterministic gate<br><small>病案首页 ground-truth 驳幻觉</small></div></div>
+    <div class="cell"><div class="k">paradigm</div><div class="v">hybrid<br><small>Router + deterministic + ReAct</small></div></div>
+    <div class="cell"><div class="k">llm</div><div class="v">Qwen3.6-35B<br><small>A3B-FP8 · sglang（共享）</small></div></div>
+    <div class="cell"><div class="k">killer feature</div><div class="v">Deterministic paths<br><small>gate + 肿瘤药双轴资格链</small></div></div>
   </div>
 
   <h2 class="sec"><span class="no">§1</span> Two-layer architecture</h2>
-  <p>Javert = <b>Router B（确定性 prefilter）</b> + <b>Runner（LLM agent）</b> + <b>verdict_gate（确定性后置闸）</b>。规则即文件（143 条 YAML），LLM 只跑 router 留下的子集，裁决落库前再过 gate。三态裁决 <code>VIOLATION / INCONCLUSIVE / CLEAN</code>。</p>
+  <p>Javert = <b>Router B（确定性 prefilter）</b> + <b>Runner（确定性预检/专项求值器或 LLM agent）</b> + <b>verdict_gate（确定性后置闸）</b>。规则即文件（159 条 YAML，其中 118 条 ready），只对 router 留下且无法确定性短路的子集调用 LLM。通用裁决为 <code>VIOLATION / INCONCLUSIVE / CLEAN</code>；RD04 另带独立医保资格轴。</p>
   <div class="box key"><span class="lbl">core thesis</span>把「能确定性判的」全部从 LLM 手里拿走：<b>前置</b> router 用 keyword/applicable 砍掉 70–80% 无关规则（省 GPU），<b>后置</b> gate 用病案首页硬事实把 LLM 的假阳性 <b>只降不升</b>地纠回。LLM 只做中间那段「读文书+费用判有无指征」的软判断。</div>
   <div class="diagram"><pre class="mermaid">
 flowchart LR
     P["patient record<br/>fees + notes + 病案首页"] --> RT["Router B (单闸)<br/>status/priority + applicable_* + 弹性 keyword"]
-    RULES["143 rule YAMLs<br/>(M1–M8 模板生成)"] --> RT
-    RT -->|"~7/143 survive"| RUN["Runner (ReAct)<br/>Qwen3.5 · ≤10 tool calls<br/>fenced-JSON verdict"]
+    RULES["159 rule YAMLs<br/>118 ready · M1–M8"] --> RT
+    RT -->|"按患者召回 ready 子集"| RUN["Runner<br/>deterministic path or ReAct<br/>Qwen3.6 FP8 · ≤10 tool calls"]
     TOOLS["10 tools<br/>(manifest-registered)"] <--> RUN
     RUN --> G["verdict_gate.apply_gate()<br/>只对 V 生效 · 只降不升 V→I/C"]
     CTX["clinical_context<br/>shi_ss 手术/麻醉 · shi_zd 诊断"] --> G
@@ -2398,7 +2402,7 @@ flowchart LR
   <h2 class="sec"><span class="no">§2</span> LLM backend</h2>
   <p>与 zadig_agent <b>共享同一套 inference stack</b>（同模型、同 sglang endpoint），代码层从 zadig_agent v2.10.1 拷贝（非 PyPI 依赖，手动 cherry-pick 同步）。</p>
   <table class="tl">
-    <tr><td>model / serving</td><td>Qwen3.5-35B-GPTQ-Int4 · sglang <code>192.168.31.62:30000</code> · <code>httpx</code> 同步直连</td></tr>
+    <tr><td>model / serving</td><td>Qwen3.6-35B-A3B-FP8 · sglang <code>192.168.31.62:30000</code> · <code>httpx</code> 同步直连</td></tr>
     <tr><td>sampling</td><td><code>temperature=0.0</code> · <code>max_tokens=8192</code> · timeout 300s · retry budget 3（指数退避）</td></tr>
     <tr><td>tool protocol</td><td><code>&lt;tool_call&gt;{json}&lt;/tool_call&gt;</code> 正则 parse（备用 ```` ```tool_call ````）；parse 失败返回 error 字串不抛异常</td></tr>
     <tr><td>degrade</td><td>sglang 不可达 → <code>LlmUnavailableError</code>；尽数重试失败 → INCONCLUSIVE</td></tr>
@@ -2418,16 +2422,18 @@ flowchart LR
 
   <h2 class="sec"><span class="no">§4</span> Rule model &amp; template system</h2>
   <p>每条违规情形 = 一个 <code>Rule</code> pydantic（YAML 落盘，git-diff 看演进，不进 SQL）。绿区 + 专家 Y 标注的规则不手抄 prompt，而是用 8 个模板填字段渲染。</p>
-  <details><summary>Rule pydantic（13 字段）<span class="arw">▶</span></summary>
+  <details><summary>Rule pydantic（当前核心字段）<span class="arw">▶</span></summary>
     <div class="det-body"><pre class="code"><span class="k">rule_id</span>         <span class="c"># R\d{3} | RD\d{2,3}</span>
 <span class="k">domain</span> / <span class="k">violation_type</span> / <span class="k">question</span> / <span class="k">example</span>
 <span class="k">status</span>          <span class="c"># drafting | ready | validated | abandoned</span>
 <span class="k">priority</span>        <span class="c"># P0 | P1 | P2 | P3</span>
 <span class="k">prompt_addon</span>    <span class="c"># 规则特定 prompt（模板渲染 or 手写）</span>
 <span class="k">trigger_keywords</span> <span class="c"># list[str] — router 弹性命中用</span>
+<span class="k">trigger_codes</span> / <span class="k">exam_keywords</span>
 <span class="k">suggested_tools</span> / <span class="k">expected_signal</span> / <span class="k">notes</span>
 <span class="k">derived_from_template</span>  <span class="c"># M1..M8 | None</span>
-<span class="k">drug_rule_type</span>  <span class="c"># 限适应症|超说明书|限二线|禁忌症 (驱动 M8 比对逻辑)</span></pre></div>
+<span class="k">drug_rule_type</span>  <span class="c"># 限适应症|超说明书|限二线|禁忌症</span>
+<span class="k">render_hash</span> / <span class="k">precheck</span> <span class="c"># coexist|companion</span></pre></div>
   </details>
   <table>
     <tr><th>template</th><th>违规 pattern</th><th>判定逻辑骨架</th></tr>
@@ -2438,9 +2444,10 @@ flowchart LR
     <tr><td><b>M8 药品审计</b></td><td>诊断 × 用药依据比对（4 种 rule_type）</td><td>drug_audit_lookup + 病案首页 dx</td></tr>
   </table>
   <div class="box why"><span class="lbl">templating mechanics</span>Jinja2 <code>StrictUndefined</code>（未声明变量立即报错，防静默漏填）。<code>prompt-fit</code> 三模式：<b>vars</b>（读 JSON）/ <b>interactive</b>（逐字段问）/ <b>auto</b>（<code>llm_drafter</code> 用 Qwen 起草 personalization 字段，人审确认）。一个模板渲染 4 个子产物：<code>master_prompt→prompt_addon</code> · <code>keywords</code> · <code>tools</code> · <code>signal</code>。</div>
+  <div class="box key"><span class="lbl">deterministic fast paths</span><b>M1 precheck</b> 在 LLM 前检查主项/附属项，缺一项即 CLEAN、零 LLM；<b>RD04</b> 在生产 on 模式按服务日期选择 approved 肿瘤医保条件树，输出审计处置与资格状态两轴。无候选零 LLM，缺版本或关键数据时 fail closed 为 <code>REVIEW_REQUIRED + DOCUMENTATION_GAP</code>。</div>
 
   <h2 class="sec"><span class="no">§5</span> Router B — single-gate prefilter</h2>
-  <p>对 143 条 YAML 做三步 prune，把每患者要跑的规则从全集砍到 ~7 条。目标：砍 70–80% LLM 调用且 <b>0 false-negative</b>（漏检比误留代价高得多）。</p>
+  <p>对 159 条 YAML 做三步 prune，先从 118 条 ready 中选出与患者有关的子集。候选数量随病种和数据完整度变化；目标是显著减少 LLM 调用并优先控制 false-negative。</p>
   <div class="ladder">
     <div class="st"><div class="t"><b>status / priority</b> — 只留 <code>status=ready</code> ∧ priority ∈ enabled（默认 P0–P3 全开）</div></div>
     <div class="st"><div class="t"><b>applicable_*</b> — 可选硬过滤：visit_type / gender / age_min·max / diag_codes(ICD 前缀 *通配) / departments。<b>缺省=不限制</b></div></div>
@@ -2494,6 +2501,11 @@ flowchart LR
       <p class="pmeta">on-label 闸：甲状腺片/钙 在甲状腺患者上应 CLEAN，靠诊断 ground-truth 防误报。</p>
     </div>
   </details>
+  <div class="box key"><span class="lbl">RD04 structured eligibility</span>RD04 独占
+  <code>oncology=true AND source_type=insurance</code>，分别输出
+  <code>audit_disposition</code>（VIOLATION_FOUND / REVIEW_REQUIRED / NO_VIOLATION_FOUND）和
+  <code>eligibility_status</code>（SATISFIED / NOT_SATISFIED / DOCUMENTATION_GAP / CONFLICT），并保留四态条件、
+  proof tree、数据质量提示和前瞻性病历建议。</div>
 
   <h2 class="sec"><span class="no">§8</span> Persistence &amp; evidence anchoring</h2>
   <table class="tl">
@@ -2502,6 +2514,7 @@ flowchart LR
     <tr><td>double-write</td><td><code>result_persister</code> 立即试推 SQL Server 142；失败 mark <code>pending</code>，不阻塞</td></tr>
     <tr><td>heartbeat</td><td><code>SyncWorker</code> 后台补漏 pending；142 是 SQLAlchemy+pyodbc+msodbcsql18，NVARCHAR hook</td></tr>
     <tr><td>hit_resolver</td><td>确定性 resolve_hits → <code>HitItem[]</code>（编码 join 患者 fee 行 + 限定 join drug_kb）</td></tr>
+    <tr><td>oncology result</td><td>SQLite / SQL Server 以可空 <code>eligibility_json</code> 保存；旧行读 None，不回填、不重判</td></tr>
   </table>
   <h3>D3 anchor ladder（证据→原文跳转的确定性落点）</h3>
   <div class="ladder">

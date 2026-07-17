@@ -1,5 +1,9 @@
 # drug-fix-v2.2 抽样对照 — fix-drug-audit-precision 实测
 
+> **历史快照**：本文固定记录 2026-07-07 的 4 条 bulk 口径。2026-07-17 起新增
+> `RD04` 肿瘤医保限定确定性入口，生产 bulk 为 5 条
+>（`RD04/R007/RD01/RD02/RD03`）；本文数字不用于描述当前批次。
+
 **日期**: 2026-07-07
 **批次标签**: `drug-fix-v2.2` (142 `Javert_audit_runs.batch_tag`)
 **改动**: `fix-drug-audit-precision` (分段截断保全 ground truth + conf 底线闸补洞 + R205 出存在性闸 + M8 精选 28 条收敛)

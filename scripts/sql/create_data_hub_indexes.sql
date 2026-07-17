@@ -1,7 +1,12 @@
--- add-workbench-sql-raw-source Task 5.3: TP_data_hub 逐患者查询索引 (幂等)
+-- 逐患者查询索引 (幂等)。调用方必须同时用 -d 与 -v 显式选择同一目标库:
+-- sqlcmd <连接参数> -d TP_data_hub -v HUB_DATABASE=TP_data_hub -b -i scripts/sql/create_data_hub_indexes.sql
 -- 工作台 HubRawSource 按 JZLSH 单患者取数 + fee⋈EXT / LIS 指标⋈报告 join 键.
 -- 只加索引不动数据; 回滚 = DROP INDEX 同名.
-USE sh_yb_platform;
+-- 142 sh_yb_platform 由 DE 维护且 Javert 只读；其索引由 DE/DBA 用同一校验方式执行。
+:on error exit
+IF DB_NAME() <> N'$(HUB_DATABASE)'
+    THROW 51000, N'目标数据库与 HUB_DATABASE 不一致，拒绝建索引', 1;
+GO
 
 -- v2.2: 费用 EXT 恢复 (IX_EXT_YQ_SFMXID 回归); IX_SYSSK_EXT_KEY 保持移除 (SYSSK_EXT 已删不恢复)
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_FS_JZLSH')

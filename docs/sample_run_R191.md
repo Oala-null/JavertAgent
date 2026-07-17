@@ -1,5 +1,9 @@
 # R191 dry-run 样本 (5 patient × 1 prompt v0.2)
 
+> **历史样本**：本文固定记录 2026-05-08 的 Qwen3.5/prompt v0.2 试跑。
+> 当前 R191 已为 `ready`、由 M1 派生并带确定性 `precheck`；机器真相见
+> `configs/rules/R191.yaml`。
+
 > 规则: 「肿瘤断层重复收费 — 开展肿瘤全身断层显像, 重复收取人工报告费用」
 > Prompt 版本: `R191.yaml` v0.2 (operator-authored, 2026-05-08)
 > 模型: Qwen/Qwen3.5-35B-A3B-GPTQ-Int4 @ 192.168.31.62:30000
@@ -49,7 +53,9 @@ K23895 的 trace 第 1/2 个 tool_call 缺 `patient_id`:
 跨规则检查可信度: K23895 在 R141 (有指征) = V, 在 R191 (无 A 类扫描) = C, 表明模型不是简单"全
 判 V 或全判 C", 而是按规则语义独立判断. 这是 prompt v0.2 的形态验证.
 
-## 接下来 (TODO)
+## 当时的后续计划（现已关闭）
+
+以下是 2026-05-08 的计划清单，保留用于解释规则如何从 dry-run 进入 ready，不再是当前待办。
 
 - 在剩余 47 个 pilot 患者上跑 `javert run R191 --pilot` 看 V/C/I 分布是否有真阳性
 - 如果分布接近 0% V, 考虑放宽 trigger_keywords (例如加入 "ECT", "γ 显像")

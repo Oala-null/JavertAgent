@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""把 data_hub_filled/*.csv 推到 cfg.hub_database 库 (默认 sh_yb_platform; host/凭据走 .env).
+"""把 data_hub_filled/*.csv 推到显式 --database（仅允许自有库；host/凭据走 .env）。
 
 用法:
-    uv run python scripts/push_data_hub_filled.py             # 全量 (已存在且行数一致的表跳过)
-    uv run python scripts/push_data_hub_filled.py --only TB_HIS_ZY_FEE_DETAIL_FS
-    uv run python scripts/push_data_hub_filled.py --recreate  # 先 DROP 再重建重灌
+    uv run python scripts/push_data_hub_filled.py --database TP_data_hub
+    uv run python scripts/push_data_hub_filled.py --database TP_data_hub --only TB_HIS_ZY_FEE_DETAIL_FS
+    uv run python scripts/push_data_hub_filled.py --database TP_data_hub --recreate
 
 标准表 DDL 由 data_hub_schema.json 生成 (与 Data_Hub 原 DDL 同构, 含 PK);
 扩展表走 data_hub_filled/_ext_tables.sql。'' → NULL 仅对非 varchar 列生效。
+默认自有库白名单为 TP_data_hub；142 sh_yb_platform 是 DE 维护的只读源，不得写入。
 """
 from __future__ import annotations
 
@@ -73,29 +74,32 @@ def has_bigtext(table: str) -> bool:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--database", required=True, help="写入目标库；142 自有库使用 TP_data_hub")
     ap.add_argument("--only")
     ap.add_argument("--recreate", action="store_true")
     ap.add_argument("--data-dir", help="改用其他数据目录 (如 data_hub_filled_5p 测试子集)")
-    ap.add_argument("--force-db", action="store_true", help="跳过 --recreate 目标库白名单检查")
     args = ap.parse_args()
     data = Path(args.data_dir) if args.data_dir else DATA
+    target_db = args.database.strip()
+    if not re.fullmatch(r"[A-Za-z0-9_]+", target_db):
+        sys.exit(f"拒绝写入: 非法数据库名 {target_db!r}")
 
-    # 保险栓 (2026-07-12): --recreate 会 DROP 表, 只允许对自己的库执行 —
-    # 防止误灌他人维护的库 (sh_yb_platform 事故复发防线)
-    OWNED = {d.strip() for d in
-             (os.environ.get("JAVERT_OWNED_DBS") or "TP_data_hub").split(",")}
-    if args.recreate and _cfg.hub_database not in OWNED and not args.force_db:
-        sys.exit(f"拒绝 --recreate: 目标库 {_cfg.hub_database!r} 不在自有库白名单 {sorted(OWNED)} "
-                 f"(误灌防线; 确认无误用 --force-db 或设 JAVERT_OWNED_DBS)")
+    # 保险栓: 建库、建表、增量写和 --recreate 都只允许对自有库执行。
+    # 防止默认读取库 sh_yb_platform 被误灌；243 同名产品库需显式加入白名单。
+    owned = {d.strip() for d in
+             (os.environ.get("JAVERT_OWNED_DBS") or "TP_data_hub").split(",") if d.strip()}
+    if target_db not in owned:
+        sys.exit(f"拒绝写入: 目标库 {target_db!r} 不在自有库白名单 {sorted(owned)} "
+                 f"(误灌防线; 自有环境需显式设置 JAVERT_OWNED_DBS)")
 
     master = pyodbc.connect(CS % "master", timeout=60, autocommit=True)
     mc = master.cursor()
-    if not mc.execute("SELECT 1 FROM sys.databases WHERE name=?", _cfg.hub_database).fetchone():
-        mc.execute(f"CREATE DATABASE [{_cfg.hub_database}] COLLATE Chinese_PRC_CI_AS")
-        print(f"已建库 {_cfg.hub_database} (Chinese_PRC_CI_AS)")
+    if not mc.execute("SELECT 1 FROM sys.databases WHERE name=?", target_db).fetchone():
+        mc.execute(f"CREATE DATABASE [{target_db}] COLLATE Chinese_PRC_CI_AS")
+        print(f"已建库 {target_db} (Chinese_PRC_CI_AS)")
     master.close()
 
-    cn = pyodbc.connect(CS % _cfg.hub_database, timeout=60, autocommit=False)
+    cn = pyodbc.connect(CS % target_db, timeout=60, autocommit=False)
     cur = cn.cursor()
     cur.fast_executemany = True
 

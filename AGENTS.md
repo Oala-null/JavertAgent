@@ -1,592 +1,188 @@
-# AGENTS.md (Javert)
+# AGENTS.md（Javert）
 
-本文件为 Codex (Codex.ai/code) 在 Javert 项目内工作时提供导航.
+本文件是 Javert 项目内 AI 开发的规则手册。详细架构、运维和历史结果放在 `docs/`，
+本文件只保留下一位开发者若不知道就容易犯错的约束。
 
-**语言**: 全中文开发 (与 26er/CLAUDE.md 顶层约定一致).
+## 协作约定
 
+- 全程使用中文开发和沟通。
+- 开工前说清假设、歧义和验收标准；不确定且会改变实现方向时先问。
+- 优先最小可行改动：不做未要求的功能，不为一次性需求造抽象，不顺手重构相邻代码。
+- 保留用户已有修改；每一行 diff 都应能追溯到当前任务。
+- 修 bug 先用测试或可复现命令证明问题，再修复并跑同一验证。
+- 多步骤任务写短计划，每一步都要有可验证的完成条件。
 
+## 项目定位与当前口径
 
-## 1. Think Before Coding
+Javert 用规则 YAML、确定性预检/后置闸和本地 LLM，审计国家医保局 2026
+《医疗机构自查自纠问题清单》中的违规情形。核心链路是：
 
-**Don't assume. Don't hide confusion. Surface tradeoffs.**
-
-Before implementing:
-
-- State your assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear, stop. Name what's confusing. Ask.
-
-## 2. Simplicity First
-
-**Minimum code that solves the problem. Nothing speculative.**
-
-- No features beyond what was asked.
-- No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If you write 200 lines and it could be 50, rewrite it.
-
-Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
-
-## 3. Surgical Changes
-
-**Touch only what you must. Clean up only your own mess.**
-
-When editing existing code:
-
-- Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
-- If you notice unrelated dead code, mention it - don't delete it.
-
-When your changes create orphans:
-
-- Remove imports/variables/functions that YOUR changes made unused.
-- Don't remove pre-existing dead code unless asked.
-
-The test: Every changed line should trace directly to the user's request.
-
-## 4. Goal-Driven Execution
-
-**Define success criteria. Loop until verified.**
-
-Transform tasks into verifiable goals:
-
-- "Add validation" → "Write tests for invalid inputs, then make them pass"
-- "Fix the bug" → "Write a test that reproduces it, then make it pass"
-- "Refactor X" → "Ensure tests pass before and after"
-
-For multi-step tasks, state a brief plan:
-
-```
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
+```text
+患者数据 → Router 预筛 → 确定性 precheck → LLM/结构化求值
+        → verdict_gate → SQLite → SQL Server 142 → 专家工作台
 ```
 
-Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+不要在文档中手抄易漂移的库存数字，先运行：
 
----
-
-**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
-
-
-
-
-
-
-
-
-
-## 项目目标
-
-把国家医保局 2026《医疗机构自查自纠问题清单》(0325) 中 163 条「做不了」违规情形,
-通过 LLM agent + 规则 yaml 的形式做实验性审计.
-
-163 条已按 Javert 当前 4 工具 (`search_fees / search_notes / note_diagnosis / drug_indication`)
-的可行性逐条分析:
-
-- **绿区 73 条** — 套 M1/M2/M3 三大模板, 工具直接可审
-- **黄区 54 条** — 工具够但每条需单独写 prompt, 信号偏弱
-- **红区 36 条** — 当前工具不够 (需诊疗目录 / HR / 跨患者比对等数据), 应标 abandoned 等候后续 change 解锁
-
-详见 `docs/做不了163规则可行性分析.md` 和 `docs/templates/`.
-
-## 三大模板 (M1/M2/M3)
-
-| ID | 名称 | 模式 | 覆盖 | Reference yaml |
-|----|------|------|------|---------------|
-| M1 | 重复收费 | 主项费用 + 附属费用并存 + 文书无反证 | A 类 28 条 | R191 (已完成) |
-| M2 | 过度检查 | 检查 fee 命中 + 诊断无指征 (+ 可选联查药品) | B 类 28 条 | R151 (待补完整) |
-| M3 | 口腔串换 | 诊断仅 trivial + fee 见大手术 | G 类 17 条 (口腔) | R245 (待补完整) |
-
-模板设计完整文档在 `docs/templates/模板{1,2,3}.md`, 含 master prompt 骨架 + 全部 73 条
-绿区规则的个性化字段填充表.
-
-## 优先级 4 档 (163 条全量分级)
-
-| 档 | 数量 | 含义 |
-|----|------|------|
-| **P0 高优** | 31 | pilot v0.2 立刻可做 |
-| **P1 推荐** | 30 | pilot 跟进 / 口腔强信号待数据切换 |
-| **P2 备选** | 63 | 需新工具或需逐条调 prompt |
-| **P3 不建议** | 39 | 单病历看不出 / 工具不可见信号 |
-
-专家标注 CSV: `docs/163规则可行性分析表.csv` (5 列: 序号/违规类型/问题/Javert 优先级/要-不要).
-
-## 与同目录其他项目的关系
-
-- `Javert/` 与 `zadig_agent/` 同 Mac 本地共存, 代码完全独立.
-- `src/javert/tools/` 内的 4 个工具 + `llm_provider.py` + `tool_executor.py` 拷贝自
-  `zadig_agent` v2.10.1 commit. 顶部注释记录 source. 上游升级需手动同步.
-- 数据快照: `javert init` 物理拷贝 `../zadig_agent/data/case_notes/case_notes.csv` 与
-  `../zadig_agent/data/patients/shi_fee.csv` 到 `data/`. 不软链, 不直读.
-- **Ground truth (v0.4 新增)**: 病案首页 ground truth 物理拷贝自 `../shi/db/`:
-  - `data/shi_zd.xls` (诊断, 10194 行, maindiag_flag=1 是真主诊)
-  - `data/shi_ss.xls` (手术, 6980 行, ICD-9-CM3 临床版 + 医保版双码, main_oprn_flag=1 是主手术)
-  - 用途: 病案资料员 HTML 报告 (`scripts/build_clerk_report.py`) 取主诊断 / 主手术替代从 case_notes 派生的不准确字段
-
-- **外部医院数据接入 (v0.7 新增)**: 投资人/合作医院过来现场跑产品的标准接入流程:
-  - **接入清单** `docs/数据接入清单.md` — 1 页纸 schema 规范 (4 张表必填字段, 给对方 IT 参考)
-  - **列名映射** `configs/column_mapping.yaml` — 左侧 Javert 语义, 右侧外部列名, 对方拿 HIS 原始 CSV 不用改名
-  - **ETL 转换** `scripts/etl_import.py` — 外部 CSV/Excel → `data_import/{case_notes,shi_fee,shi_zd,shi_ss}.csv`
-    - 必填字段缺失抛错, 可选字段缺失只 warn
-    - **文书段落自动拆分**: 整份文书一行 (record_name="入院记录", 内容里嵌 `【主诉】xxx【现病史】yyy`) → 按 `【...】` 标记拆成多行 (子阶段="主诉" 一行, "现病史" 一行)
-    - 合成内部复合键 `{hospital_code}-{patient_id} ` 兼容 `bah/ba_id str.contains` 匹配
-  - **环境变量切换**: `JAVERT_DATA_DIR=data_import` + `JAVERT_ZD_FILE=shi_zd.csv` + `JAVERT_SS_FILE=shi_ss.csv` 把 audit-patient 切到外部数据
-  - **代码侧最小改动**: `config.py` 加 `zd_file/ss_file` 字段; `adapter.py` xlrd → pd.read_excel/read_csv (按扩展名自动选); `patient_overview.py` 硬编码路径改用 `cfg.zd_path/ss_path` 并加 CSV 自动检测
-  - **工作台数据合并**: 62 上 `data/case_notes_with_szx.csv` / `shi_fee_with_szx.csv` / `shi_zd_with_szx.csv` / `shi_ss_with_szx.csv` = 现有 106 + szx 5 患者合并, 配 .env 4 个 JAVERT_*_FILE 指向合并文件, 不动原 XLS/CSV (`.env.bak.szx` 备份, 回滚一行 cp 搞定)
-
-## 架构图
-
-```
-┌── CLI (cli.py + commands/) ────────────────────────────────────────┐
-│ init / list / dry-run / run / mark / report / show /               │
-│ audit-patient / web / prompt-fit / template (list/show/validate)   │
-└─────────────────────────────────────────────────────────────────────┘
-              ↓                              ↓                ↓
-┌── audit-engine ──┐  ┌── rule-registry ──┐  ┌── audit-store ──┐
-│ runner.py        │  │ rule.py (pydantic)│  │ schema.sql      │
-│ prompt_assembler │  │ rule_loader.py    │  │ audit_store.py  │
-│ prompts/base.txt │  │ rule_writer.py    │  │ (SqliteStore)   │
-│ result.py        │  │ rule_init.py      │  │ result.py       │
-│ run_id.py        │  │ state_machine.py  │  └─────────────────┘
-└──────────────────┘  └───────────────────┘
-              ↓                              ↓
-┌── rule-templating ─────────────────────────────────────────────────┐
-│ template_model.py (Template + TemplateField pydantic)              │
-│ template_loader.py / renderer.py (Jinja2 StrictUndefined)          │
-│ vars_validator.py / llm_drafter.py (Qwen 起草兜底)                  │
-│ prompt_fit_runner.py (vars / interactive / auto 三模式)            │
-└─────────────────────────────────────────────────────────────────────┘
-              ↓                              ↓
-┌── routing (v0.5 新增, Stage A Router B 单闸) ──────────────────────┐
-│ router.py (单闸: status/priority + applicable_* + 弹性 keyword)    │
-│ types.py (PatientRecord / FeeItem / RouterDecision)                │
-│ adapter.py (CsvLoader + shi_zd → PatientRecord)                    │
-│ 数据: data/router/{violation_dict,active_java_rules,               │
-│        pruning_rules,javert_rules_index}.json                      │
-│ + configs/rule_mapping.json (Java rule 元信息参考, 不参与决策)     │
-│ 接入: audit-patient --use-router                                   │
-└─────────────────────────────────────────────────────────────────────┘
-              ↓                              ↓
-┌── tools (10 个; registry 读 manifest 按 status 注册) ┐ ┌── data-access ──┐
-│ tool_executor.py (<tool_call> 解析)        │ │ loader.py       │
-│ llm_provider.py (Qwen3.5 sglang httpx 直连) │ │ csv_loader.py   │
-│ search_notes / search_fees / note_diagnosis │ │ snapshot.py     │
-│ drug_indication (52药) / drug_audit_lookup  │ │ sample_pilot.py │
-│ search_lab_results / search_examinations    │ │ lab_loader.py   │
-│ search_anesthesia / search_pathology (view) │ │ examination_…py │
-│ scan_progress_indications / registry.py     │ │                 │
-└────────────────────────────────────────────┘ └─────────────────┘
-                          ↓                              ↓
-                  192.168.31.62:30000             data/*.csv
-                  (Qwen3.5-35B sglang)            (3000+ patients)
-
-┌── onboarding (v0.10→v0.12, manifest 驱动数据接入 + 现场自动驾驶) ───┐
-│ configs/schema_manifest.yaml  数据模型唯一真相源 (UI/ETL/registry 共读) │
-│ configs/field_alias.yaml      国标↔语义别名种子 (自动预填 + 归类覆盖率) │
-│ onboarding/manifest_loader.py pydantic 校验 (status/必填/join_key) │
-│ onboarding/classifier.py      (v0.12) 文件→表自动归类 最小启发式 (必填覆盖率 + 患者键硬门槛 + 歧义不猜) + default_key_mode │
-│ onboarding/etl_engine.py      N 表 ETL (synth/asis/bridge 键归一 + ISO 日期归一 + 会话 date_decisions 覆盖) │
-│ onboarding/profiler.py        逐列剖析 + 日期逐列探测 (8 格式族, 无全局 dayfirst, is_ambiguous_dayfirst) │
-│ onboarding/join_preflight.py  连接预检 (D4 两 getter 判据 → 🟢🟡🔴) + 时间窗口 │
-│ web/onboarding_session.py     (v0.12) 进程内会话态单一真相源 (files/map/classify/stored/date/节点位置, 不落盘 JSON) │
-│ web/api/routes_onboarding.py  /session 读写 + /classify + /date-ambiguities + /clear-output + /preflight(路由层打包诊断) + /start(诚实 .loaded.env) │
-│ web/templates/onboarding.html + static/onboarding.js  自动驾驶 GUI      │
-│   (上传即自动认表 + 绿/琥珀结果卡 + 「调整▾」驾驶舱 + 我的文件→Javert 表流向图 │
-│    [真实键标签·可拖节点·点线看明细] + 日期歧义/声明新表 modal + 清空已载入)  │
-│ scripts/{javert.zsh,jv_run_all.sh,loaded_status.py}  jv-* 终端命令 (jv-go 一词开跑 + 逐患者进度行) │
-└─────────────────────────────────────────────────────────────────────┘
+```bash
+.venv/bin/javert list
 ```
 
-> v0.10.1 起「开始审计」按钮更名「载入数据」(诚实: GUI 只做映射+ETL 载入, 不在此跑 LLM;
-> 审核走命令行). 载入完写 `data_import/.loaded.env` (JAVERT_SQL_ENABLED=false → 本地 sqlite-only).
-> v0.12 (redesign-onboarding-demo-flow): 服务端会话态为单一真相源 (删/重传/刷新都稳, 消灭"增删出问题");
-> 上传即自动归类 (绿=就绪/琥珀=需补, 客户不直面 synth/asis/bridge); `.loaded.env` 只写实际产出表
-> (缺表客户不炸); 载入面板「去终端敲 `jv-go`」+ 自动复制剪贴板; `jv-go` = source `.loaded.env` + 逐患者进度跑全量.
+2026-07-17 的已核对基线是 159 条 YAML：118 ready、28 abandoned、13 drafting；
+ready 模板分布 M1-M8 为 22/22/17/13/10/9/20/5。CLI 有 15 个顶层命令，
+工具注册表当前提供 10 个工具。历史报告里的旧数字保留原样，但必须标明快照日期。
 
-```
-┌── web (v0.6, 部署 192.168.31.62:8090, systemd 纳管) ───────────────┐
-│ api/main.py        create_app(with_mssql) + SessionMiddleware      │
-│ middleware.py      AuthMiddleware (路径保护 + /workbench 拦截)      │
-│ auth.py            bcrypt 12 轮 + session 编解码                    │
-│ templating.py      Jinja2 env + verdict color/label filter         │
-│ rule_meta.py       111 yaml lazy cache (subtitle)                  │
-│ patient_overview.py shi_zd/shi_ss/notes/fees → overview dict       │
-│                                                                     │
-│ api/routes_auth.py     /login /logout /register(403) /account/pw   │
-│ api/routes_workbench.py /workbench, /workbench/{pid}, /review,     │
-│                         /api/banner/dismiss, /api/patient/{pid}/raw │
-│                         /dashboard, /export                         │
-│ api/routes_sse.py      /sse/reviews + EventBus + AuditWatcher       │
-│                         (BIGINT id 严格递增追踪, 不用 datetime)     │
-│ api/routes_audit.py    /api/audit/run(单规则SSE) /runs;            │
-│                         /api/audit/run-batch(批量SSE, ⚠2C平台BFF   │
-│                         点菜依赖此契约, 改 SSE 字段先同步 bff)      │
-│                                                                     │
-│ templates/             base/login/register_closed/password_change/  │
-│                        workbench/patient_detail/dashboard/          │
-│                        welcome_banner/_sidebar/_patient_overview    │
-│ static/                style.css (蓝色商务) + app.js (SSE/Ctrl+F)   │
-└─────────────────────────────────────────────────────────────────────┘
+## 不可违反的边界
 
-┌── workbench 易用性 + evidence-anchoring (v0.9 enhance-workbench-usability) ┐
-│ hit_resolver.py    确定性 resolve_hits(run, drug_type) → HitItem[]   │
-│   {source,name,code_nat,code_local,restriction,matched_fee_name,    │
-│    review_note,anchor} — 编码 join 患者 fee 行 + 限定 join drug_kb   │
-│   + 锚点 D3 阶梯 (evidence.anchor→keyword→locator→text→tab); 纯函数  │
-│   一组件喂两处: 命中项目块 (#5) + 点证据跳原文 (#3); hits_to/from_json │
-│ patient_overview.py +get_fees_sum_map (进程缓存) +get_primary_dx +  │
-│   fee_categories 每类挂 items[] (类别就地展开明细 D8)               │
-│ routes_workbench    sidebar 富卡片 (fees_sum/primary_dx/updated_at) │
-│   + patient_detail 注入 hits_by_run (优先读 anchors_json 缓存现算回退)│
-│ _sidebar.html       facet 栏 (tag chip + 费用区间 + 主诊词 + 时间) + │
-│   富卡片 data-* (facet 纯前端 show/hide, 叠加 verdict filter)        │
-│ patient_detail.html 命中项目块 (code·name + 限定 + data-anchor) +    │
-│   评语 title 全文 hover (D9)                                        │
-│ app.js   facet 引擎 + 共享高亮模块 + 右侧原文对照面板 openSourcePanel │
-│ scripts/backfill_anchors.py  重放确定性逻辑回填 anchors_json (零 LLM)│
-│ tools/search_{notes,fees}.py ⟨char/行 locator⟩ + Evidence.anchor 前向 │
-└─────────────────────────────────────────────────────────────────────┘
-              ↓                                       ↑
-┌── persistence (v0.6, 复用 SQLAlchemy + pyodbc + msodbcsql18) ──────┐
-│ store/sqlserver_store.py  双写归档 + 工作台 read/write              │
-│ scripts/sql/create_javert_tables.sql                                │
-│   javert_users / javert_audit_runs (BIGINT id) /                    │
-│   javert_vio_review (含 patient_id/rule_id/username denormalized) / │
-│   javert_audit_logs / v_javert_reviews / v_javert_audit_logs       │
-│                                                                     │
-│ store/audit_store.py (sqlite)      ── source-of-truth              │
-│ store/result_persister.py          ── sqlite write → 142 立即推    │
-│ web/api/heartbeat.SyncWorker       ── 后台心跳补漏 (失败的 pending) │
-└─────────────────────────────────────────────────────────────────────┘
-                          ↓
-              192.168.31.142:1433 (zadig DB, javert_* 命名空间)
-```
+### 隐私与凭据
 
-## 关键文件
+- Git 内的测试夹具、QA 报告和日志只允许语义化、去标识 ID；禁止新增真实患者号、姓名、
+  原始病历或未盐化 run/ownership 标识。
+- shadow/批处理的盐和数据库凭据只能通过环境或受控 env 文件注入，不能放进参数、manifest、
+  Git 或终端回显。
+- 含 PHI 的临时目录使用 0700、文件使用 0600，成功和异常退出都要清理。
+- `.env`、session secret、SQL 密码和患者原文不得出现在测试输出或提交说明中。
 
-### 代码
+### 配置与数据源
+
+- 配置优先级是 `JAVERT_*` 进程环境 > `configs/llm.yaml` > 代码默认；
+  环境地址、库名和凭据不要写进 YAML。
+- 142 `sh_yb_platform` 是 DE 维护的数据中台，只读；`TP_data_hub` 是我方开发库；
+  `zadig` 保存工作台业务结果。243 是独立产品环境，不能沿用 62 的上线授权。
+- `scripts/push_data_hub_filled.py` 的 `--database` 是必填项；建库、建表、增量写和重灌全部
+  必须命中 `JAVERT_OWNED_DBS`，无越权参数。142 上只能显式写 `TP_data_hub`；
+  243 的同名产品库需在本机单独声明为 owned。
+- `create_data_hub_indexes.sql` 不切库；必须用 `sqlcmd -d <db> -v HUB_DATABASE=<db> -b`
+  双重指定且一致。142 `sh_yb_platform` 的 DDL/索引变更只交 DE/DBA 执行。
+- `src/javert/data/hub_source.py` 是 TB_* 到内部契约映射的唯一来源；ETL 和工作台都复用它。
+- `configs/schema_manifest.yaml` 是 onboarding 数据模型唯一真相源；UI、ETL、工具注册不得各写一套。
+- 推送/重灌自有 hub 后必须对账；`--recreate` 会连索引一起删除，随后按上述目标库校验方式
+  重跑索引。
+
+### 规则、Router 与裁决
+
+- 每条规则一个 `configs/rules/*.yaml`；状态后退必须 `javert mark ... --force`。
+- 改规则状态、关键词、模板渲染结果或 M8 规则后，必须运行
+  `scripts/build_rule_mapping.py`，并验证 YAML 与
+  `data/router/javert_rules_index.json` 状态一致。
+- `--rules` 会显式纳入 abandoned 规则；默认批跑不能依赖这一行为。
+- `precheck` 只处理声明过的确定性费用形态；`verdict_gate` 只对 VIOLATION 生效且只降不升。
+- 修改 SSE/2C 返回字段时保持“只加不删不改名”，同步
+  `docs/2c对接_javert审计服务.md`，并检查下游 BFF 契约。
+
+### 肿瘤医保资格 v2
+
+- `JAVERT_ONCOLOGY_ELIGIBILITY_V2` 仅允许 `off|shadow|on`；代码和仓库配置默认 `off`，
+  62 的受控运行值为 `on`。
+- `on` 模式下 RD04 独占 `oncology=true AND source_type=insurance`，R007 只处理非肿瘤
+  限适应症候选；`off/shadow` 保留 R007 旧候选集合。RD04 当前 ready，
+  RD10-RD37 保持 abandoned。
+- RD04 无净正收费候选时必须确定性 CLEAN、零 LLM；不得让方案文本凭空创建费用候选。
+- 条件树、病理标志物和方案三份资产只有 schema/checksum/生效期合法且
+  `review_status=approved` 才能自动裁决；其余一律显式 REVIEW_REQUIRED。
+- `audit_disposition` 确定性投影到旧三态：
+  `NO_VIOLATION_FOUND→CLEAN`、`VIOLATION_FOUND→VIOLATION`、
+  `REVIEW_REQUIRED→INCONCLUSIVE`。
+- SQLite/SQL Server 的 `eligibility_json` 是可空兼容字段；旧行不回填，不用新知识静默重写历史。
+- 维护、shadow、生产验证和回滚只以 `docs/oncology/operations.md` 为准；
+  验收事实见 `docs/oncology/qa_report.md`。
+
+### 62 部署
+
+- 62 的 `/home/admin2/javert` 是 tar 部署目录，不是 Git 仓库。
+- 覆盖源码前先无回显读取并固化旧进程实际生效的 SQL/Hub 配置，备份代码与 mode 0600 的
+  `.env`；不要让新代码默认值覆盖生产连接。
+- 先部署代码/配置/router index，再运行 `javert ensure-mssql-schema`，最后重启服务。
+- 重启后必须验证 systemd active、登录页 HTTP 200、`/proc/<pid>/environ` 中关键开关实值，
+  以及 SQL/Hub 健康；只检查 `.env` 文件不算完成。
+- 不要无条件运行 `sync-to-mssql --pending-only`，它会处理全部历史 pending；先看 dry-run/范围。
+- 详细命令与回滚步骤见 `docs/deployment_192_62.md`。
+
+## 代码导航
+
 | 路径 | 角色 |
-|------|------|
-| `src/javert/cli.py` | Click 入口, 10 个 subcommand 注册 (含 prompt-fit / template list/show/validate) |
-| `src/javert/config.py` | yaml + JAVERT_* env 配置 |
-| `src/javert/audit/runner.py` | 核心 agent loop |
-| `src/javert/audit/verdict_gate.py` | (add-verdict-gate-layer) 裁决后确定性闸 `apply_gate`: runner 落库前调, 只对 V 生效、只降不升 (V→I/C) + 打标签; 闸集 `configs/verdict_gate.yaml` |
-| `src/javert/audit/precheck.py` | (pilot-deterministic-precheck) M1 LLM **之前**的确定性预检 `run_precheck(spec, fee_df)`: A/B 费用并存缺失→短路 CLEAN 零 LLM; 并存→注入窄问题事实块 + 判 V 合并费用行锚点. `Rule.precheck{a_items,b_items}` 声明, `config.precheck` 开关. runner 接线, `scripts/init_m1_precheck.py` 迁移 |
-| `src/javert/data/clinical_context.py` | 病案首页硬 ground truth 封装 (shi_ss 手术/麻醉 + shi_zd 诊断), 供 verdict_gate 临床判据 |
-| `src/javert/audit/prompts/base.txt` | 基础 system prompt (≥1 工具调用 + fenced JSON) |
-| `src/javert/audit/rule.py` | Rule pydantic 模型 (11 字段含 `derived_from_template`) |
-| `src/javert/templating/template_model.py` | Template + TemplateField pydantic 模型 |
-| `src/javert/templating/{template_loader,renderer,vars_validator,llm_drafter,prompt_fit_runner}.py` | rule-templating capability 全套 |
-| `src/javert/store/schema.sql` | audit_runs 表 + 2 索引 |
-| `configs/llm.yaml` | 默认配置 (LLM endpoint, paths) |
-| `configs/rules/Rxxx.yaml` | 单条规则 (由 javert init 生成) |
-| `configs/templates/Mx.yaml` | M1-M8 共享模板 (M1-M7 骗保类 + M8 药品适应症/限定 全 rollout 完成) |
-| `src/javert/tools/drug_audit_lookup.py` | (v0.8) 药品违规工具: bulk(患者用药∩KB+病案首页诊断) / single(单药). 与 drug_indication 并存不互扰 |
-| `configs/drug_audit_kb.json` | (v0.8) 928 通用名药品监管 KB (限适应症/超说明书/限二线/禁忌症 4 类聚合), 由 build_drug_kb.py 从 4 xlsx 生成, sort_keys 确定性 |
-| `scripts/build_drug_kb.py` | (v0.8) 4 份药品 xlsx → drug_audit_kb.json + 命中频次表 (扫『药品通用名』行作表头, 鲁棒于偏移) |
-| `scripts/init_drug_rules.py` | (v0.8) 建/装 33 条 M8 药品规则 (R007+RD01-03 类型级 + RD10-37 精选), 每条校验在 KB+命中表 |
-| `configs/rule_mapping.json` | (v0.5) Java rule 元信息参考表 + javert→java mapping reference, 当前不参与 router 决策 (单闸下保留) |
-| `2026年医疗机构自查自纠问题清单0325.csv` | 实为 .xls (xlrd 可读), 0325 源表 |
-| `src/javert/routing/{router,types,adapter,__init__}.py` | (v0.5) Router B 单闸 prefilter — 80% LLM 调用砍掉 |
-| `data/router/{violation_dict,active_java_rules,pruning_rules,javert_rules_index}.json` | (v0.5) router 数据 — 14372 字典 + 11 active java rules + 125 yaml 元数据 |
-| `规则引擎代码/` | (v0.5) 公司既有 Java 监管引擎源码 (`RuleServiceImpl.doRule` 入口 + `ImsAnalyzer` + 38 Rule/RuleItem 子类) — Phase 2 Python port 参考 |
-| `scripts/etl_import.py` | (v0.7→v0.10) 外部医院 CSV/Excel → Javert N 文件 ETL; v0.10 起默认 manifest 驱动 (etl_engine), `--legacy` 走旧硬编码路径 (回归 oracle); 含 `【】` 段落自动拆分 + 必填校验 + 连接预检 |
-| `scripts/etl_from_sql.py` | (add-aidb-sql-fallback) 142 `aidb` 6 表 → `data_import/*.csv` 快照桥; SQL 接入兜底. 读 aidb→临时 CSV→复用 `run_etl`/`match_fields`/`join_preflight`. 可测 seam `run_bridge(tables,...)`. CLI `--hospital-code/--output/--dry-run` |
-| `scripts/run_aidb_audit.sh` | (add-aidb-sql-fallback) aidb 兜底**一键** (纯 bash, 62 无 zsh 也能跑): `bash scripts/run_aidb_audit.sh <投资方名>` = 拉数+预检 → 跑全部可审核患者(`loaded_status.py --ids`)→ `SQL_ENABLED=true` 实时上 62, 批次标签区分. Mac 别名 `jv-aidb`(javert.zsh 委托本脚本). 须在 62 跑(产出落 62 data_import overlay, 原文 tab 才有数据) |
-| `scripts/sql/create_aidb_tables.sql` | (add-aidb-sql-fallback) aidb 6 张 `intake_*` 源表 DDL (列名=`docs/schema` 友好表头, 全 NVARCHAR, 幂等; 只建表不建库). 工程师手填兜底数据 |
-| `configs/column_mapping.yaml` | (v0.7→v0.10) 外部列名映射模板 (左 Javert 语义 / 右 外部列名); v0.10 加 labs/exam 节 + `key_mode`(synth/asis/bridge) + `normalize_dates` |
-| `scripts/build_field_alias.py` | (v0.10) `_SEED` + column_mapping 反推 → `configs/field_alias.yaml` (国标↔语义别名, 自动预填) |
-| `scripts/loaded_status.py` | (v0.10.1→v0.12) 看 data_import 已载入的表/行数/可审核患者 (费用∩文书 裸号) + `.loaded.env` 写入时间; `--ids` 给 jv-run-all 遍历 |
-| `scripts/javert.zsh` + `scripts/jv_run_all.sh` | (v0.10.1→v0.12) `jv-*` 终端命令: web/status/**go**/run/run-all/run-bg/watch/clear; `jv-go`=一词开跑 (source `.loaded.env`+摘要+全量), `jv-run-all` 逐患者进度行 `[i/N] 患者号 ✓ xV yI zC` + 失败不中断 + 缺 `JAVERT_*_FILE` WARN 跳过 |
-| `src/javert/onboarding/classifier.py` | (v0.12) 文件→表自动归类 (最小启发式: 必填别名覆盖率 + 患者键硬门槛 + 歧义不猜) + `default_key_mode` (via_bridge→bridge/否则synth); GUI/CLI 共用, 别名匹配与前端 aliasMatch 同语义 |
-| `src/javert/web/onboarding_session.py` | (v0.12) 进程内会话态单一真相源 (按 session cookie `onb_sid` 索引, 不落盘 JSON): files/map/classify/stored/date_decisions/node_positions + 删文件级联清映射 + 跨文件改绑 + 预检过期追踪 |
-| `scripts/build_data_hub_filled.py` | (data-hub) sy(3309患者)+szx全量(song 4701患者) → `Scriv/data_hub_filled/` 23 张 TB_*.csv (631万记录, 含 3 扩展表+码表字典+自检报告); 映射依据 `Scriv/data_hub_关系映射.md` + `syjbk_rbasy_mapping.json`; ⚠日期三坑全踩过: 年在前 ISO 行绝不吃 dayfirst (月日互换) / 纯时间值 ('00:00:00') 会被捏造成"今天"必须置空 / decimal 聚合浮点残差出科学计数法按 scale 归一 |
-| `scripts/push_data_hub_filled.py` | (data-hub) data_hub_filled → `cfg.hub_database` 库 (默认 sh_yb_platform; --data-dir 可切 5p 子集)。连 142 要 `Encrypt=no` (老 TLS, Driver18 默认强制加密会 Login timeout); CI 排序规则下患者号需大写归一防撞键; pandas3 str-dtype 的 NaN 过 tolist 变 float NaN 绑 datetime 必炸 (显式转 Python None); 幂等: 已有行的表跳过, `--recreate` 重灌, `--only 表名` 单表 |
-| `src/javert/data/hub_source.py` | (add-workbench-sql-raw-source) TB_*→内部列契约映射**唯一来源**: 6 个 `fetch_xxx(cn, pids)` 纯函数 + 连接串构造 (复用 config sql_* 凭据, 密码不入源码); `etl_from_data_hub.py` 与工作台 `HubRawSource` 共用 |
-| `src/javert/web/hub_raw_source.py` | (add-workbench-sql-raw-source) 工作台 hub 原文源: CSV 双 miss 按患者号实时查 hub 库 (sh_yb_platform) (逐患者 LRU 32 + SQL 异常降级为 miss 不 500); routes 链式回退接线 (raw/labs/exams/主诊断), 开关 `JAVERT_HUB_RAW_ENABLED` 默认关 |
-| `scripts/sql/create_data_hub_indexes.sql` | (add-workbench-sql-raw-source) hub 库逐患者查询索引 (13 条) (幂等; 5 表 JZLSH + fee⋈EXT + LIS join + 2 RIS), 首查 2.44s→0.31s |
-| `scripts/etl_from_data_hub.py` | (data-hub 流B) sh_yb_platform → 内部 6 文件反向取数桥 (`--patients a,b` / `--all`, 默认出 `data_import_hub/`); 列契约=schema_manifest output_schema, 类别经 MXFYLB 2位码回中文, YCTS 回 result_flag。跑审计: `JAVERT_DATA_DIR=data_import_hub JAVERT_ZD_FILE=shi_zd.csv JAVERT_SS_FILE=shi_ss.csv JAVERT_LABS_FILE=lab_results.csv JAVERT_EXAMINATIONS_FILE=examinations.csv JAVERT_SQL_ENABLED=false` + `javert audit-patient <裸号> --use-router`。冒烟已过: szx 周金妹 211530148 router 57→14 条, 13C/1I 零失败 48.8s, trace 读到真数据; J66252 双链路对照 (batch_tag=data-hub-test, 已实时双写 142 工作台) 18 条 16 一致 + 2 条 C↔I 摇摆 (R212/R165, 边界证据模型摇摆, 无 V 级差异)。store 连接串已加 `Encrypt=no` (Mac 直连 142 必需)。⚠ szx(0003) 取数三坑已修 (2026-07-06, hub_source.py `BA_HOSPS` 分支): ①主诊断锚=SYJBK.ZYZD (IH 的 CYZDBZ 和 SYZDK 序号1 都不是主诊语义, 名字建全局码→名字典解析, 次诊=SYZDK 列表) ②文书 DLBT 全空→正文按【段落】拆行 (否则 note_diagnosis 全瞎, "诊断失明"产假阳性 V) ③sy 首页库回填不全, 按院区分支勿全局切 BA 源 |
-| `scripts/run_szx_batch.sh` | (v0.7) 5 患者 szx 批跑脚本 (串行, 每患者 router 全 ready + concurrency 5) |
-| `scripts/sync_szx_with_tag.sh` | (v0.7) sync-to-mssql + 兜底 UPDATE batch_tag (绕开 `write_audit` 重复跳过 bug) |
+|---|---|
+| `src/javert/cli.py` | Click 顶层命令 |
+| `src/javert/config.py` | Pydantic 配置与环境覆盖 |
+| `src/javert/audit/runner.py` | 核心审计循环与结果接线 |
+| `src/javert/audit/precheck.py` | M1/companion 确定性前置预检 |
+| `src/javert/audit/verdict_gate.py` | 只降不升的后置闸 |
+| `src/javert/audit/rule.py` | Rule/Precheck schema |
+| `src/javert/oncology/` | 资格合同、知识加载、病理/方案归一与运行时 |
+| `src/javert/tools/registry.py` | manifest 驱动的工具注册 |
+| `src/javert/routing/` | Router 单闸 |
+| `src/javert/store/` | SQLite、SQL Server 双写与迁移 |
+| `src/javert/web/` | FastAPI、工作台、SSE、2C 接口 |
+| `src/javert/onboarding/` | manifest 驱动接入、归类与连接预检 |
+| `configs/rules/` | 规则唯一落盘位置 |
+| `configs/templates/` | M1-M8 机器可读模板 |
+| `data/router/` | Router 生成资产 |
+| `scripts/` | 构建、迁移、批跑、回填和部署辅助 |
 
-### 分析与设计文档
-| 路径 | 角色 |
-|------|------|
-| `docs/how_javert_works.md` | 技术架构说明 (面向院方管理层/信息科/投资方的非技术汇报材料; 系统定位 + 143 条规则 + 工具/Router/8 模板工作原理) |
-| `docs/做不了163规则可行性分析.md` | 163 条完整分析 + 工具能力深潜 + pilot 选单 |
-| `docs/163规则可行性分析表.csv` | 给专家做 Y/N 标注的 5 列 CSV |
-| `docs/templates/模板1_重复收费.md` | M1 模板 markdown 形态 + R045 reference + A 类 28 条填充表 (人类阅读用; 机器可读形态在 `configs/templates/M1.yaml`) |
-| `docs/templates/模板2_过度检查.md` | M2 模板 + R151 reference + B 类 28 条填充表 |
-| `docs/templates/模板3_口腔串换.md` | M3 模板 + R245 reference + G 类 17 条填充表 |
-| `docs/templates/模板4_超标准收费.md` | M4 模板 + R193 reference + E 类 12 条填充表 |
-| `docs/templates/模板5_虚构医药服务.md` | M5 模板 + H 类 8 条填充表 |
-| `docs/templates/模板6_过度诊疗.md` | M6 模板 + R310 reference + 9 条填充表 |
-| `docs/templates/模板7_串换收费.md` | M7 模板 + R083 reference + C 类 20 条填充表 (待 m7-rollout) |
-| `docs/y_rules_analysis.md` | (v0.3 旧版, 已被 `y_rules_status_v0_4.md` supersede) 专家 Y 标注 (109 条) vs Javert 装载状态 + 22 条缺口归因分析 |
-| `docs/y_rules_status_v0_4.md` | **(v0.4 当前版)** Y 装载现状 92.7% + 质量分档 + 8 条受限条目 |
-| `docs/sample_audit_patient.md` | audit-patient 多组实测样本 (组 A-M), 含 v0.4 组 L 10 病人 + v0.5 组 M 50 病人 router 全跑 |
-| `docs/v2_1_gate_drug_analysis.md` | **(2026-06-03)** v2.1 批次实测: verdict-gate (v1.7→v2.1, 单次放过 78) + drug-code-match (v2.0→v2.1, 药品 V 104→63) 效果 + 合并精准度双峰 (非药品 76.7%/97.7% 达标 ↔ 药品 38.7% 短板) + 假阳性集中点 (RD20/R007) |
-| `scripts/build_clerk_report.py` | 10-tab 病案资料员 HTML 报告生成器 (使用 shi_zd + shi_ss + shi_fee 三件套) |
-| `scripts/fn_regression.py` + `tests/fn_cases/*.yaml` | (add-fn-regression-library) FN 回归案例库: 专家裁定的每例假阴性登记为可执行 yaml (`患者×规则×期望裁决×期望证据要素×归因`, expected_verdict 允许 CLEAN 误判修正锚), runner 逐例真 LLM dry-run (不落生产库, hub 患者自动 `etl_from_data_hub` 到 `output/fn_cache/<pid>/`), 三档 catch 率 (full/partial/miss, 严重度下限断言容漂移) + `--save-baseline`/`--against-baseline` 退化拦截. 召回侧首个可复跑度量 |
-| `docs/fn_baseline.md` | (add-fn-regression-library) FN 回归基线 (`--save-baseline` 生成): 首批 4 例 catch 1/4 — FN-005×R225 full (anchor) / FN-003×R155 miss (单次闸) / FN-001·002 miss (无规则) |
-| `scripts/{rescreen_gated,drift_report}.py` | (recover-deterministic-recall) 存量回收双脚本: 重筛 (「单次放过」行按套餐口径重算 → C→I 原地 UPDATE + 可逆标签, --dry-run/--revert, 跳过有 review 行; CSV 取不到费用的 hub-only 患者走 hub 批量兜底 + 双 miss WARN 绝不静默) + 漂移只读清单 (历史 V 现 C 交专家, 不自动改) |
-| `scripts/extract_router_data.py` | (v0.5) 提取规则引擎代码 xls → data/router/*.json (14372 字典 + 11 active rules + pruning hints) |
-| `scripts/build_rule_mapping.py` | (v0.5) 扫 125 yaml → javert_rules_index.json + configs/rule_mapping.json (含 applicable_* 字段读出) |
-| `scripts/compare_router_off_on.py` | (v0.5) 10 v0.4 病人 router 加/不加 selection 对比 (P0 only + 全 ready), 不调 LLM |
-| `scripts/diff_router_runs.py` | (v0.5) 按 created_at cutoff diff 两次 audit_runs (off vs on verdict diff + 漏检检测) |
-| `scripts/run_batch_50patients.py` | (v0.5) 50 病人 batch runner, nohup detached, 单 patient fail 不中断, _progress.jsonl 写盘 |
-| `scripts/build_50_html.py` | (v0.5) 50 病人审计报告 HTML — 左侧 sidebar list + 右侧详情 (复用 clerk_report 模板) + 质量评估 bar |
-| `scripts/quality_eval.py` | (v0.5) 启发式打标 high_conf/questionable/malformed/consistent_c/weak_c (LLM verdict 质量分档) |
-| `scripts/build_router_compare_html.py` | (v0.5) J66252 三轮对比 3-tab HTML (v0.4 / off / on v2) |
-| `output/clerk_report_v0_4.html` | v0.4 病案资料员视角 10 病人审计报告 (1110 裁决 = 76V/41I/993C) |
-| `output/router_v2_50patients.html` | (v0.5) 50 病人 router v2 全 ready 审计报告 (1.07 MB, 1764 裁决 = 275V/120I/1369C) |
-| `output/router_compare_J66252.html` | (v0.5) J66252 三轮对比报告 (v0.4 vs off vs on v2, 验证 router 不漏检) |
-| `docs/rule_design_guide.md` | yaml 字段含义 + 设计 checklist |
-| `docs/template_design_guide.md` | 模板 yaml schema + Jinja2 字段 + 三模式选用指南 (操作者实用手册) |
-| `docs/m1_r191_vars.json` | M1 模板 R191 personalization 数据 (round-trip verification 来源) |
-| `docs/m1_r045_vars.json` | M1 模板 R045 骨科重复收费 personalization 数据 |
-| `docs/sample_run_R191.md` | R191 dry-run 样本 (TODO) |
-| `docs/deployment_192_62.md` | (v0.6) 工作台 62 部署 runbook (systemd + .env + 升级流程 + 故障排查) |
-| `docs/deployment_243_gnome.md` | (2026-07-10) 243 医院机房产品实例 runbook (自包含: 本机 SQL 1533 + llama.cpp 30000 + web 8090; 只放 5 测试病人; 复制部署/排障/红线) |
-| `docs/review_workbench_user_guide.md` | (v0.6) 专家使用手册 (11 节, 从拿账号到改密到 Ctrl+F) |
-| `docs/数据接入清单.md` | (v0.7) 给对方医院 IT 的 1 页纸数据规格 (4 张表必填字段 + 时间预期 + 安全承诺) |
-
-### 工作台代码 (v0.6)
-| 路径 | 角色 |
-|------|------|
-| `src/javert/web/api/main.py` | `create_app(with_mssql)` 工厂, lifespan 启 SyncWorker + AuditWatcher |
-| `src/javert/web/middleware.py` | `AuthMiddleware` 保护 `/workbench /review /dashboard /export /sse/* /api/banner /api/patient/*`, API 401 + 浏览器 302 |
-| `src/javert/web/auth.py` | bcrypt hash/verify (4.x 直接调, 不走 passlib) + session helpers |
-| `src/javert/web/templating.py` | Jinja2 env + 自定义 filter (`humanize_delta` / `verdict_color` / `verdict_label` / `format_dt`) |
-| `src/javert/web/rule_meta.py` | 111 yaml lazy cache → `{domain}.{violation_type}.P0.模板Mx` subtitle (v0.9 加 `drug_rule_type`) |
-| `src/javert/web/patient_overview.py` | shi_zd (`inhosp_diag_name` / `inhosp_diag_code` / `ba_id`) + shi_ss (`oprn_oprt_name` / `main_oprn_flag`) + notes regex (性别/年龄从"病例特点") + fees 聚合; v0.9 加 `get_fees_sum_map` 进程缓存 + `get_primary_dx` + fee_categories 挂 items[] (类别就地展开) |
-| `src/javert/web/hit_resolver.py` | (v0.9) 确定性命中项目/锚点解析器: `resolve_hits` → `HitItem[]` (编码 join 患者 fee 行 + 限定 join drug_audit_kb + 锚点 D3 阶梯). 纯函数, `#3 跳转`与`#5 命中项目展示`共用. `hits_to_json`/`hits_from_json` 供 anchors_json 缓存 |
-| `scripts/backfill_anchors.py` | (v0.9) 回放确定性逻辑回填 `anchors_json` 缓存 (sqlite/mssql 目标, 不调 LLM, 幂等, 不增删行/不动批注) |
-| `src/javert/web/utils/humanize_zh.py` | 中文相对时间 (刚刚 / 5 分钟前 / 昨天 / 上周 / 2 个月前) |
-| `src/javert/web/api/routes_auth.py` | `/login` `/logout` `/register` (403 关闭) `/account/password` (改密) + slowapi 限流 5/min |
-| `src/javert/web/api/routes_workbench.py` | `/workbench` `/workbench/{pid}` `/review` `/dashboard` `/export` `/api/banner/dismiss` `/api/patient/{pid}/raw` + 单病人导出 |
-| `src/javert/web/api/routes_sse.py` | `/sse/reviews` + `EventBus` (asyncio Queue fan-out) + `AuditWatcher` (BIGINT id 严格递增 poll 1Hz) |
-| `src/javert/web/templates/*.html` | base / login / register_closed / password_change / workbench / patient_detail / dashboard / welcome_banner / _sidebar / _patient_overview |
-| `src/javert/web/static/style.css` | 蓝色商务风 (`--primary #1e40af`) + verdict 语义色 (V/I/C #b91c1c/#b45309/#047857) + tabs / search box / mark.search-hit |
-| `src/javert/web/static/app.js` | vanilla JS ~430 行: review form 提交 / SSE 订阅 / banner dismiss / 原始病历 modal + Ctrl+F + 2 tab |
-| `src/javert/web/static/favicon.svg` | 32x32 `#1e40af` 底白 "J" |
-| `src/javert/store/sqlserver_store.py` | SQLAlchemy + pyodbc + msodbcsql18, NVARCHAR hook **只 coerce string** (datetime/int 让 driver auto-detect, 防死循环), 工作台 read/write 全方法 |
-| `src/javert/store/models.py` | pydantic `User` / `ReviewRecord` / `AuditLogRecord` / `SinceLastLoginStats` / `PatientSidebarItem` / `RunWithReviews` / `DashboardStats` |
-| `src/javert/commands/ensure_schema.py` | CLI `javert ensure-mssql-schema` (4 表 + 2 视图, 幂等) |
-| `src/javert/commands/sync_to_mssql.py` | CLI `javert sync-to-mssql --dry-run/--pending-only --batch-size N` |
-| `src/javert/commands/mssql_user.py` | CLI `javert mssql-user list/create/delete/reset-password` (注册关闭, 走 CLI 分配) |
-| `scripts/sql/create_javert_tables.sql` | 4 张 javert_* 表 DDL (含 ALTER 老库 migration) + 2 个 v_javert_* JOIN 视图 |
-| `scripts/run_batch_new.py` | (v0.6) 第二批 50 病人 (data/batch_50_new.txt) router 全跑 8.7 h |
-| `deploy/javert-web.service` | systemd unit (User=admin2, EnvironmentFile=/home/admin2/javert/.env) |
-| `deploy/javert-web.env.example` | env 模板 (JAVERT_SQL_* / JAVERT_SESSION_SECRET / JAVERT_ALLOW_REGISTER=false) |
+`output/`、`data_import*`、`Scriv/`、`规则引擎代码/` 可能只存在于原项目、同级项目或部署机，
+不能假设每个 worktree 都有。
 
 ## 常用命令
 
 ```bash
-# 启动初始化 (首次)
-uv run javert init
+# 规则与单患者
+.venv/bin/javert list
+.venv/bin/javert dry-run R191 --patient <去标识测试号>
+.venv/bin/javert audit-patient <测试号> --priority all --use-router --concurrency 5
+.venv/bin/javert audit-patient <测试号> --rules RD04
 
-# 一次性把 docs/163规则可行性分析表.csv 的 priority 灌进所有 yaml + 为 P0 缺失项建骨架
-uv run python scripts/sync_priority_csv.py --dry-run   # 看 plan
-uv run python scripts/sync_priority_csv.py --write     # 实写
+# 模板与 Router
+.venv/bin/javert template list
+.venv/bin/javert template validate M8
+PYTHONPATH=src .venv/bin/python scripts/build_rule_mapping.py
 
-# 单条规则迭代闭环 (规则维度)
-uv run javert dry-run R191 --patient J66252        # 看 trace
-# (编辑 configs/rules/R191.yaml prompt_addon)
-uv run javert dry-run R191 --patient J66252        # 再看
-uv run javert mark R191 --status ready             # 满意了往前推
+# 肿瘤知识资产
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/build_oncology_eligibility_assets.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/build_oncology_regimen_kb.py
 
-# 批跑 (规则维度: 一条规则 × N 患者)
-uv run javert run R191 --pilot
+# 存储与工作台
+.venv/bin/javert ensure-mssql-schema
+.venv/bin/javert sync-to-mssql --dry-run
+.venv/bin/javert web --with-mssql --host 127.0.0.1 --port 8090
 
-# 患者维度: 一个患者 × 一组规则 (默认 P0, 跳 abandoned)
-uv run javert audit-patient J66252                       # 冷启动 baseline
-uv run javert audit-patient J66252 --share-tool-cache    # 跨规则共享 ToolExecutor 缓存
-uv run javert audit-patient J66252 --share-tool-cache --concurrency 5    # 并发 5 (M1 15 条 → ~4-6 min)
-uv run javert audit-patient J66252 --rules R045,R191     # 显式列表 (绕开 priority + abandoned 过滤)
-uv run javert audit-patient J66252 --priority P1         # 跑 P1 规则
-uv run javert audit-patient J66252 --priority all        # (v0.5) 跑 status=ready 全集 (143 条)
-
-# (v0.5) Router B prefilter: 砍掉 ~70-80% LLM 调用
-uv run javert audit-patient J66252 --use-router          # P0 + router, ~7 条 final (vs 57 全跑)
-uv run javert audit-patient J66252 --priority all --use-router --concurrency 5  # ready 全集 + router
-
-# (v0.5) Router 数据维护 (yaml 改完后重建)
-uv run python scripts/extract_router_data.py    # 重建 data/router/*.json (从规则引擎代码 xls)
-uv run python scripts/build_rule_mapping.py     # 扫 125 yaml → javert_rules_index.json + rule_mapping.json
-uv run python scripts/test_router_smoke.py      # 5 病人 smoke test 看 final 集合 + 耗时
-
-# (v0.5) Router 效果对比 (不调 LLM)
-uv run python scripts/compare_router_off_on.py        # 10 v0.4 病人 P0 / 全 ready 两档对比
-uv run python scripts/test_audit_patient_router_dryrun.py  # 3 病人完整 audit-patient 链路 dryrun
-
-# (v0.5) 50 病人 batch + 报告
-nohup uv run python scripts/run_batch_50patients.py > output/batch_50/_main.log 2>&1 &  # ~9h 跑
-uv run python scripts/build_50_html.py --cutoff-start "<batch-start>" --cutoff-end "2099-01-01"
-
-# (v0.5) 单 patient 三轮对比 (v0.4 / off / on v2)
-uv run python scripts/build_router_compare_html.py    # 3-tab 同 patient 不同规则集合
-
-# (v0.8) 药品类规则 (M8 药品适应症/限定审计)
-uv run python scripts/build_drug_kb.py                   # 4 xlsx → drug_audit_kb.json + 命中频次表 (改 KB 后重跑)
-uv run python scripts/init_drug_rules.py                 # 重建/重渲染 33 条 M8 药品规则 (改 M8.yaml 后必跑)
-uv run python scripts/build_rule_mapping.py              # 重建 router index (init_drug_rules 后必跑, router 读 index)
-uv run javert audit-patient J90508 --priority all --use-router --concurrency 5  # 综合科药品丰富 (出 V 信号)
-uv run javert audit-patient J66252 --priority P1 --use-router --concurrency 5   # 甲状腺 (on-label 闸: 甲状腺片/钙 应 CLEAN)
-
-# (v0.9) evidence-anchoring 命中项目锚点缓存回填 (可选加速; 渲染默认现算, 老数据即生效)
-uv run python scripts/backfill_anchors.py --target sqlite --dry-run   # 本地只算不写 (核对)
-uv run python scripts/backfill_anchors.py --target mssql              # 142 回填 anchors_json (工作台读此库; 先 ensure-mssql-schema 加列)
-
-# 汇总 / 反查
-uv run javert list                                       # 表头加 priority 列 + 末行汇总
-uv run javert report --rule R191
-uv run javert show <run_id>
-
-# 模板套填 (rule-templating capability)
-uv run javert template list                                                # 看 M1-M8 装配状态
-uv run javert template show M1                                             # 看 M1 master_prompt + fields
-uv run javert template validate M1                                         # empty / partial / ready / error
-uv run javert prompt-fit R191 --template M1 --vars docs/m1_r191_vars.json --dry-run --output -   # round-trip 验证
-uv run javert prompt-fit R045 --template M1 --vars docs/m1_r045_vars.json  # 写盘, 含 derived_from_template
-uv run javert prompt-fit R047 --template M1 --interactive                  # 一字段一字段问
-uv run javert prompt-fit R047 --template M1 --auto                         # Qwen 起草后人审确认
-
-# 测试
-uv run pytest tests/ -v
+# 外部数据
+.venv/bin/python scripts/etl_import.py --mapping configs/column_mapping.yaml --dry-run
+.venv/bin/python scripts/loaded_status.py
 ```
 
-### 外部医院数据接入
+仓库文档中的 `uv run` 命令适合标准环境；受限沙箱里优先直接调用 `.venv/bin/*`，
+避免 `uv` 写用户缓存失败。
 
-**可视化 (v0.12 现场自动驾驶, `/onboarding`)**: 登录工作台 → **拖 4 个 CSV (系统自动认表 + 预填映射)** →
-绿卡=就绪/琥珀卡=「调整▾」补缺必填 → (可选) 连接预检 🟢🟡🔴 (红灯给可执行诊断) → 点「载入数据」(落映射 + 跑 ETL
-+ 写诚实 `.loaded.env`) → 面板出「去终端敲 `jv-go`」(已复制剪贴板) → 终端 `jv-go` 一词跑全量.
-理想路径 = 两个动作 (拖文件 + 点载入) + 终端一词; 详见 `docs/数据接入清单.md` + `docs/sample_onboarding.md` §八.
+## 验证要求
 
-```bash
-# v0.12 jv-* 终端命令 (source ~/26er/Javert/scripts/javert.zsh 进 ~/.zshrc 后)
-jv-web              # 起本地工作台 → 浏览器 /onboarding 拖文件载入
-jv-status           # 看 data_import 已载入的表 + 可审核患者 + .loaded.env 写入时间
-jv-go               # 一词开跑: 载入后单敲此命令 (source .loaded.env + 摘要 + 逐患者进度跑全量)
-jv-run <患者号>     # 跑单患者审核 (实时输出, 本地 sqlite-only, 不入 142/工作台)
-jv-run-all          # 跑全部 (前台逐患者进度行); jv-run-bg + jv-watch 后台+tail
-jv-clear            # 清空 data_import (或走 GUI「清空已载入」按钮)
-```
+1. 先跑与改动直接相关的测试。
+2. 再跑受影响模块的组合测试和一个端到端命令。
+3. 修改规则/模板后验证 Router index；修改存储后验证旧行兼容和双写；修改 Web 后验证 API/SSE。
+4. 全量测试若受既有 fixture/环境债务影响，必须列出原始 collected/pass/skip/fail/error，
+   再给排除清单后的门禁；不能把“排除既有债务后全绿”写成“全量全绿”。
+5. 当前 oncology 门禁和既有债务清单以 `docs/oncology/qa_report.md` 为准。
+6. OpenSpec change 完成前运行严格校验，并让 `tasks.md` 与真实验证一致。
 
-**CLI (v0.7 等价路径, 手敲 yaml)**:
-```bash
-# 1. 改 configs/column_mapping.yaml (右侧填对方列名 + hospital_code; v0.10 可加 key_mode/bridge/normalize_dates)
-# 2. ETL (dry-run 校验必填+连接预检 → 实跑写 data_import/); 默认 manifest 驱动, --legacy 走旧路径
-uv run python scripts/etl_import.py --mapping configs/column_mapping.yaml --dry-run
-uv run python scripts/etl_import.py --mapping configs/column_mapping.yaml --output data_import
-# 3. 切 env 跑审计 (本地 sqlite-only, 完后批量 sync)
-export JAVERT_DATA_DIR=data_import JAVERT_ZD_FILE=shi_zd.csv JAVERT_SS_FILE=shi_ss.csv \
-       JAVERT_SQL_ENABLED=false JAVERT_BATCH_TAG=<tag>
-uv run javert audit-patient <ID> --priority all --use-router --concurrency 5   # 或 bash scripts/run_szx_batch.sh
-# 4. sync 到 142 (batch_tag 兜底): bash scripts/sync_szx_with_tag.sh
-#    62 工作台合并现有+外部数据: /tmp/merge_szx.py → *_with_szx.csv, .env 加 4 个 JAVERT_*_FILE
-```
+## 文档分工
 
-**数据中台扩展表 (HIS 对接; 全文 `Scriv/Data_Hub/扩展表必要性说明.md` 含 13类文书×46表落点矩阵)**: 终态两张 (v3, 2026-07-10), 判据=与国标列值重复才砍:
-- **② `TB_CIS_MEDICAL_DOCUMENT` = P0 必须给** (最小 5 列: 院区/流水/文书流水/文书名称/正文)。`fetch_notes` 产出 `case_notes`, 是全部文书工具 + zadig_agent 链路唯一文书源; 出院小结例外走标准表 `LEAVEHOSPITAL_SUMMARY` (fetch 双源合流, 医院只灌标准表也能跑)。其余 ~89% 文书类 46 表无正文列承载。
-- **③ `TB_HIS_ZY_FEE_DETAIL_EXT` = 性能必要, 18 列** (通用名/规格/原始类别码+名/科室医生8/自付比例/等级/目录类别)。编码列在 FS 原生列 (MXXMBMYB/MXXMBM), EXT 不重复; 医保分解 5 死列 (我方源全零) 已删。fetch_fees 缺表容忍 (sys.tables 探测)。
-- **① `TB_BA_SYSSK_EXT` = 已删除**。消费面实测=0: fetch_ss 走 SYSSK⋈OPRATION_DETAIL; 医保版手术双码走 zadig_agent 请求体。
-- ⚠ `push --recreate` 掉表连索引一起丢 — 重灌后必须重跑 `scripts/sql/create_data_hub_indexes.sql`。大表推送偶发 TCP 断 (08S01) — **推完必对账** (记录数用 pandas 数, wc -l 会被 nvarchar(max) 多行文本骗)。
-- ⚠ 配置优先级 **env > configs/llm.yaml > .env 文件** — yaml 里严禁放环境指向 (host/endpoint/库名), 否则压过部署机 .env (243 踩过)。
-- DE 交付: `Scriv/Data_Hub/扩展表建表.sql` + `扩展表_DE对接样例_v2.md`。
-- **环境矩阵 (2026-07-12 定稿)**: ①`sh_yb_platform`@142 = **数据中台, DE 维护, 我们只读** (数据源头; 严禁写入, push 保险栓已物理拦截) ②`TP_data_hub`@142 = **我们的开发库** (流程: 从中台取数/本地 CSV 填进来, 在这开发; 业务表走 `zadig` 库老 workbench) ③`sh_yb_platform`@243 = 产品 (5 病人冻结, hub+业务同库)。本地 `.env`: `JAVERT_HUB_DATABASE=TP_data_hub`。**142 无建库/ALTER DATABASE 权限**。
-- ⚠ 业务表不建视图 (DE 意见: 大数据量视图慢, 关联在程序层做; 代码零视图依赖); 业务表只存在于 TP/243, 不进中台。
+| 文档 | 受众与用途 |
+|---|---|
+| `README.md` | 新人入口、命令和当前能力 |
+| `docs/how_javert_works.md` | 面向管理层/信息科的当前架构 |
+| `docs/数据接入清单.md` | 医院数据接入 |
+| `docs/2c对接_javert审计服务.md` | 2C API 契约 |
+| `docs/deployment_192_62.md` | 62 运维 runbook |
+| `docs/review_workbench_user_guide.md` | 专家工作台使用 |
+| `docs/rule_design_guide.md` | Rule YAML 设计 |
+| `docs/template_design_guide.md` | M1-M8 模板维护 |
+| `docs/oncology/operations.md` | 肿瘤资格维护、shadow、生产与回滚 |
+| `docs/oncology/qa_report.md` | 肿瘤资格验收事实 |
+| `docs/CHANGES.md` | 完整历史；不要把版本流水账复制回本文件 |
 
-### 工作台 (v0.6) 运维命令
+## OpenSpec 工作流
 
-```bash
-# 一次性 schema 建 (142 上幂等; 改 scripts/sql/create_javert_tables.sql 后重跑)
-set -a && source .env && set +a
-uv run javert ensure-mssql-schema
-
-# sqlite → 142 一次性同步 (或补漏)
-uv run javert sync-to-mssql --dry-run               # 看 plan
-uv run javert sync-to-mssql --batch-size 200        # 实跑 (3345 行 ~3 min)
-uv run javert sync-to-mssql --pending-only          # 双写失败行的补漏
-
-# 账号管理 (注册关闭, 走 CLI)
-uv run javert mssql-user list
-uv run javert mssql-user create dr_zhang --display-name "张医生(放疗科)"  # 交互式输 2 遍默认密码
-uv run javert mssql-user reset-password dr_zhang     # 忘密码兜底
-uv run javert mssql-user delete dr_zhang --confirm   # latest review 自动降级 is_latest=0, log 保留
-
-# 起 web (本地 dev; 生产走 systemd)
-uv run javert web --with-mssql --host 127.0.0.1 --port 8090
-uv run javert web --no-mssql                         # Mac dev, 工作台路径 503
-
-# 第二批 50 病人 batch (在 62 后台跑)
-ssh admin2@192.168.31.62
-cd ~/javert && set -a && source .env && set +a
-nohup ~/.local/bin/uv run python scripts/run_batch_new.py > output/batch_new/_main.log 2>&1 &
-disown
-
-# 62 systemd 管理 (需 sudo 密码)
-ssh -t admin2@192.168.31.62 'sudo systemctl restart javert-web'
-ssh admin2@192.168.31.62 'sudo journalctl -u javert-web -f'
-
-# 升级 src 流程 (Mac 改完 → 62 跑)
-tar -czf /tmp/javert-src.tgz --exclude='__pycache__' -C . src
-scp /tmp/javert-src.tgz admin2@192.168.31.62:/tmp/
-ssh admin2@192.168.31.62 'cd ~/javert && tar xzf /tmp/javert-src.tgz \
-    && rm /tmp/javert-src.tgz && find . -name "._*" -delete 2>/dev/null'
-ssh -t admin2@192.168.31.62 'sudo systemctl restart javert-web'
-```
-
-## 设计原则
-
-1. **规则即文件**: 每条规则一个 yaml, 用 git diff 看演进, 不进 SQL.
-2. **模板复用而非逐条手抄**: 绿区 + Y 标注 109 条用 M1-M7 共 7 个模板填字段, 不重复造 prompt; v0.8 加 M8 (药品适应症/限定) 第 8 模板.
-3. **数据接入抽象**: 业务代码只调 `DataLoader.get_notes / get_fees`, csv 是初版实现, SQL 留口.
-4. **复用 = 拷贝粘贴**: zadig_agent 不是 PyPI 包, 拷代码避免互相干扰; 代价是手动 cherry-pick.
-5. **dry-run 是默认**: pilot 阶段所有改动都先 dry-run 5 患者看 trace, 再 mark ready 后批跑.
-6. **结构化 verdict**: LLM 必须输出 fenced JSON, 不是自由文本; 一次 repair 兜底, 二次失败转 INCONCLUSIVE. 裁决落库前再过 `verdict_gate` 确定性闸 (`src/javert/audit/verdict_gate.py` 的 `apply_gate`, runner 调用): 只对 VIOLATION 生效、只降不升 (V→I/C) 并打可解释标签, 消假阳性不伤已对判断; 闸集见 `configs/verdict_gate.yaml`, 临床判据来自病案首页 (`clinical_context.py`).
-7. **零跨机依赖**: pilot 阶段不连 142 SQL Server, 本地 SQLite 自洽.
-8. **N/A 优于乱跑**: 工具不够的规则 (P3) 标 abandoned + notes 说明原因, 不强行写 prompt.
-
-## 与 26er/CLAUDE.md 中 Bug 修复协议的衔接
-
-- 改完代码 → `uv run pytest tests/ -v` 全绿 → 跑 `dry-run` 看 trace 端到端验证 → 写新 yaml/prompt 验证 verdict 实际能产出.
-- 不要相信"代码看起来对了". Pilot 阶段每次改 prompt 都 5 患者 dry-run 看 trace.
-
-## 与 openspec workflow 的衔接
-
-```
-openspec/
-└── changes/
-    ├── archive/
-    ├── bootstrap-javert-mvp/        # 搭通管道, 已 complete
-    └── add-patient-centric-audit/   # 患者维度入口 + P0 baseline 测耗时
-        ├── proposal.md
-        ├── design.md
-        ├── specs/                   # rule-registry/audit-engine/cli 三个 capability 的 ADDED
-        └── tasks.md
-```
-
-## 路线图 (候选 changes)
-
-已交付见下方变更日志. 未做候选:
-- `add-cross-patient-stats` 🔥 — 跨患者算每条规则 V 率, ≥50% 提报系统性违规 (用 106 病人 ~5000 裁决基线); 解锁 R003/R280/R281/R286
-- `prompt-cache-optimize` / `tool-call-merge` 🔥 — 提速 (system prompt 顺序前置 hit_rate 36%→60%+ / 复合工具一次拉全 tool calls 8-9→2-3)
-- `add-java-engine-port` Phase 2 🟡 — Python 复现 11 valid=1 Java 规则, 独立产 java_violations[] (补"做得了"覆盖, 不省 GPU)
-- `add-catalog-loader` 🟡 — 医保药品/诊疗目录工具 (剩余 E 类 drafting; R007 已 v0.8 解锁)
-- `add-material-registry` 🟡 — 耗材规格/采购数据 (解锁 R013/R033 + M7 红区难 6 条)
-- `add-identity-verification` 🟢 — 解锁 R284 (虚假住院/挂床/冒名); `add-sql-loader` — csv → SQL Server (SqlLoader)
-
-## 变更日志 (最近 4 条; 完整历史 → `docs/CHANGES.md`)
-
-> 新条目全文追加 `docs/CHANGES.md`; 本节只滚动保留最近 3-5 条, 超出的直接删 (CHANGES.md 已有全文).
-
-- **M1 确定性预检 (pilot-deterministic-precheck)** (2026-07-08, 已部署 62; javert-web 2026-07-09 kill-9 重拉已 pickup): 把 M1「重复收费」可确定性判定的事实 (主项 A ∩ 附属 B 是否并存) 从 LLM 自由探索前移到确定性 `audit/precheck.py`. **① 短路**: A 或 B 费用缺失 → 直接 CLEAN 零 LLM 调用 (带 `precheck_tag`); **② 窄问题**: A∩B 并存 → 注入费用事实块, LLM 只用 `search_notes` 核实反证 (不再自己搜费用); **③ 机器锚点**: 判 V 时确定性并入 A/B 命中费用行 evidence (`source=search_fees`), `hit_resolver` 出码+锚点, 与 LLM 引用解耦. `Rule.precheck{a_items,b_items}` 结构化字段 + `config.precheck` 开关 (env `JAVERT_PRECHECK=off` 回滚); 迁移 `scripts/init_m1_precheck.py` 从 prompt_addon 抽取 → 21/22 条获 precheck (R112 bespoke 跨日期比对跳过, 走原路径). `verdict_gate` 零改 (②M2-scoped 不碰 M1, ③对两路同等). **590 测试 + 1 skip 绿** (+12). **实测 100 患者 ON vs OFF** (`scripts/compare_precheck.py`): **LLM 调用 4 vs 6993 = 降 99.9%** · 短路 2099/2100 · **0 真漏检** (唯一告警 = OFF 侧 LLM 噪声, 重跑翻回 CLEAN) · facts V 机器锚点 100%. **关键发现**: 全 3309 患者 A∩B 并存仅 4 例全在 R069 (血液透析); R069 项目集过粗 (a_items 子串命中耗材名 / b_items「滤器」命中呼吸耗材 → K01731 假阳性) → 已给 `_build_fact_block` 加两步语义护栏 (先确认 B 确为 A 附属再核反证), K01731 V→CLEAN 真并存仍 V; R069 项目集精化交 `make-rules-code-portable`. → `docs/precheck_compare_实测.md` + `openspec/changes/archive/2026-07-08-pilot-deterministic-precheck/`
-- **FN 回归案例库 (add-fn-regression-library)** (2026-07-08): 召回侧首个可复跑度量 — 项目此前所有机制单向压假阳性, "减少假阴性"无法验证. 专家协查 5 例假阴性 (`Javert问题汇总.md`) 中 4 例已裁定登记为 `tests/fn_cases/*.yaml` 可执行案例 (FN-004 R063×211440399 编号保留待专家裁定 75% 收费 ground truth). `scripts/fn_regression.py` 逐例真 LLM dry-run (不落生产库 + hub 患者自动取数缓存), 三档 catch (full/partial/miss, 严重度下限容漂移, 期望 CLEAN 严格等值) + 基线退化拦截. **基线 catch 1/4, 与人工归因完全一致**: FN-005×R225 **full** (规则粒度已修, anchor 防退化) / FN-003×R155 **miss** (gate 单次放过闸误杀, 待 recover-deterministic-recall) / FN-001·002 **miss** (虚构类无规则, 待 add-fabrication-burden-of-proof 落规则回填 rule_id). 纯增量, 不改生产路径. **10 新测试绿** (schema+grade 离线, runner 本体不进 pytest); 下游两 change 以本库案例升档为验收判据. → `openspec/changes/add-fn-regression-library/` + `docs/fn_baseline.md`
-- **M5 虚构类举证倒置 + companion 预检 (add-fabrication-burden-of-proof)** (2026-07-09): 专家 FN 归因中两例「规则覆盖空白」补齐, 共享缺陷 = M5 虚构类举证方向反了 (隐含"文书没提→CLEAN"). **① M5 举证倒置**: `configs/templates/M5.yaml` master prompt 加「裁决基准」段 — 治疗/手术费存在 + 文书无执行证据 → 默认下限 INCONCLUSIVE (证据缺失待人工, 举证责任在收费方), MUST NOT 因"未检索到"判 CLEAN; 仅文书**正面反证**操作已执行才 CLEAN; 正面显示未执行 (记录为其它操作/明确未做) → V. 加名称不匹配警示行 (收费名≠文书术式名, 禁因名称不同断言未收费/未执行, 按部位+类别交叉核对). 8 条既有 M5 规则**surgically 插入** (非 prompt-fit 全渲染, 因 vars 文件陈旧会覆盖 R015/R103/R105/R203/R224 的手调专家共识触发器 — 保留 bespoke, 只在 `审计步骤:` 前插块). **② companion 预检模式**: `precheck.py` + `Rule.precheck.mode` 加 `companion` (缺省 `coexist` 逐字不变) — A=术式 B=必备配套: A 无→clean 零 LLM / A 有 B 无→facts 注入「收术式无配套」事实块 (虚构信号非证明, LLM 只核操作文书反证) / 双有→skip 不注偏置. facts→evidence 复用 A 命中费用行机器锚点. **③ 2 条覆盖空白规则**: R317「脑血管介入溶栓虚构」(M5 + companion: 溶栓术↔溶栓药尿激酶/阿替普酶/rt-PA/替奈普酶/瑞替普酶) + R318「内镜治疗虚构」(M5 派生, 治疗费 vs 操作记录执行证据); 0325 清单 H 类无对应神经溶栓/内镜治疗虚构条目故新建. router index 重建. **④ 素材库** `docs/companion_术式配套表.md` (~20 高价术式配套小表, 本 change 只消费溶栓 1 条). **实测**: FN 回归 FN-001(211351896)/FN-002(211427558) **miss→full VIOLATION** (repeat=3 稳定), catch 率 25%→75%, `--against-baseline` 无退化 (FN-003 R155 单次闸仍 miss=待 recover-deterministic-recall, FN-005 R225 full 不动); 2 条既有 M5 规则 (R080/R134 on J66252) dry-run 仍 CLEAN 无回归. **633 passed + 1 skip** (+4 companion 单测 test_precheck 9→13; 另 2 个 test_hub_source_ba 失败为 session 前 `hub_source.py` 未提交改动所致, 与本 change 无关, stash 本 change 后仍失败已证). → `openspec/changes/add-fabrication-burden-of-proof/` + FN 案例 rule_id 回填 R317/R318. (2026-07-09 已部署 62; R317/R318 正式重跑上工作台 batch_tag=fn-fix-0709 各 1 V, 62 live 回归 FN-001/002 full)
-- **确定性召回回收 (recover-deterministic-recall)** (2026-07-09, 已部署 62; 存量重筛部分落地, 69 户 hub-only 待 EXT 恢复后重跑): 专家 FN 归因中三类漏检的根子全是**确定性机制** (零 LLM 改动即可回收), 各自独立开关回滚. **① 证据层保真**: `search_fees` 按项目名聚合退费净额 (消 211440399 式"2收1退当双收"误读) + 「含 N 次退费已抵消」注记 + 数量小数保真 (0.75 计价不取整); 退费净额逻辑统一到 `fee_netting.py` 共享 helper (patient_overview/precheck/search_fees 同口径); R063 prompt 50%→75% (现行条款) + 重建 router index. **② 单次闸场景化**: `verdict_gate.yaml` 加 `panel_rules` 节 (仅 R155 实证入集, R151 计次形态/R132 2项捆绑不入), 套餐类规则②闸计数从"收费次数"改"同日不同项目名数" (11 项细胞因子单日打包 ≥ min_distinct_items=3 → 保留 V, 不足 → 降 INCONCLUSIVE 进队列不落 CLEAN 黑洞; 费用不可得 fail-open); `fee_netting.max_same_day_distinct_items` + runner 传 `fee_df` 入 `apply_gate`; 非套餐规则逐字不变 (v2.1 消的 78 假阳性不还回). **③ 存量重筛** `scripts/rescreen_gated.py` (--dry-run 出翻转分布 / 落库 / --revert 一键还原, sqlite 先 142 后, 跳过有 review 行, 原地 UPDATE C→I + 可逆标签「单次闸重筛回升(原C)」). **④ drift guard** `result_persister` 写前查 sqlite 同 (rule,patient) 最新历史: 老V新C → 落 I + 「漂移防护(历史曾判V)」 (只升 I 不复活 V; 专家驳回的老 V 放行 C; `JAVERT_DRIFT_GUARD` 默认 on); `scripts/drift_report.py` 只读存量漂移清单 (不自动改, 交专家). **⑤ gate 击杀可见** 工作台 patient_detail「只看被闸降级」facet (gate_tag 非空维度, 复用 hide-missing-doc 模式, 与 verdict filter 正交). **653 测试 + 1 skip 绿** (+27: 套餐闸 4 / 漂移 8 / 重筛 4 / 漂移报告 3 / netting 3 + 更新). **62 实测 (2026-07-09)**: 重筛落库 sqlite 4 + 142 6 行 (全同日 11-12 项, 0 review 冲突); ⚠ 漏筛洞 — R155 候选 75 行中 69 行 szx2.0 hub-only 患者 CSV 无费用被静默跳过 (含 FN-003 本尊 211419211), ec669df 加 hub 批量兜底 + WARN, 待重跑 (2026-07-10 起 142 全量 EXT 已就绪, 可直接 `rescreen_gated.py --target mssql`) `--target mssql` 回收; drift_142.csv 506 对交专家; FN 回归 62: FN-005 full 不退化 · FN-003 重跑 miss = **新发现 R155 症状豁免口** (「肢体乏力」当炎症指征致 LLM 自判 C, prompt 收紧列 follow-up). → `openspec/changes/recover-deterministic-recall/` + `docs/deployment_192_62.md` §10.5
-- 🚧 R191 dry-run 样本待补 (`docs/sample_run_R191.md`)
+- 实现/继续 change：按 `.agents/skills/openspec-apply-change/SKILL.md`。
+- 探索或提案：使用对应 OpenSpec skill，不直接跳过 proposal/design/spec/tasks。
+- 只有用户明确要求归档时才 archive；完成实现不等于自动归档。
+- change 结束时同时检查代码、测试、README、架构、runbook、对接契约和 CHANGES，
+  不把 AGENTS.md 写成发布日志。

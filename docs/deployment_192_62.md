@@ -2,7 +2,8 @@
 
 **状态**: 🟢 已上线. systemd `javert-web.service` 运行中.
 
-部署日: 2026-05-21. 当前数据: 106 病人 / 5016 audit_runs 行 / 529 V 待审 (142 累计 13880 行含历史).
+部署日: 2026-05-21. 部署初始数据基线: 106 病人 / 5016 audit_runs 行 / 529 V 待审
+(当时 142 累计 13880 行含历史)；当前数量以工作台实时统计为准.
 工作台版本: **v0.9** — 违规卡「命中项目」块 (编码·名称·限定) + 点证据右侧 **parallel 滑出原文对照面板** + 病人列表 facet (tag/费用/主诊/时间) + 费用类别就地展开. 详见 `review_workbench_user_guide.md`.
 > **2026-06-03 UI 增量** (升级附加步骤见 §10.1): 病人列表按金额/生成时间排序 + 文书/费用右侧新增「检验记录」tab (检验+检查合并, 命中可 trace 跳转) + 命中名修复 (占位 locator → 具体药品/项目名) + 违规卡 AI 推理/证据块默认展开.
 
@@ -57,6 +58,7 @@ JAVERT_ALLOW_REGISTER=false       # 注册关闭, 走 mssql-user create
 
 # LLM (audit-patient 跑 audit 时)
 JAVERT_LLM_ENDPOINT=http://192.168.31.62:30000/v1
+JAVERT_LLM_MODEL=Qwen/Qwen3.6-35B-A3B-FP8
 
 # 肿瘤医保资格 v2（代码默认 off；62 于 2026-07-17 验收后启用）
 JAVERT_ONCOLOGY_ELIGIBILITY_V2=on
@@ -292,16 +294,18 @@ scp "data/sy_检验.csv" "data/sy_patient_examination.csv" admin2@192.168.31.62:
 
 本批改动 = `src/javert/{config.py, data/hub_source.py(新), web/hub_raw_source.py(新), web/api/routes_workbench.py}` + `scripts/etl_from_data_hub.py`(薄壳化). 按 §10 step 1-4 推 src + kill-9 重拉. 另需两步:
 
-**① `.env` 加开关 (开启 hub 原文源)**:
+**① `.env` 显式配置只读 hub 原文源**:
 
 ```bash
-ssh admin2@192.168.31.62 'echo "JAVERT_HUB_RAW_ENABLED=true" >> ~/javert/.env'
-# 重拉后生效. 回滚 = 该行改 false (或删) + 再重拉, 一步回纯 CSV.
+# 编辑 /home/admin2/javert/.env，避免 echo 重复键
+JAVERT_HUB_RAW_ENABLED=true
+JAVERT_HUB_DATABASE=sh_yb_platform
+# 重拉后生效；回滚 = RAW_ENABLED 改 false + 再重拉，一步回纯 CSV。
 ```
 
 不加开关部署 = 行为与升级前完全一致 (开关默认 false).
 
-**② TP_data_hub 索引 (已于 2026-07-06 从 Mac 建好, 幂等可重跑)** — `scripts/sql/create_data_hub_indexes.sql` (9 个: 5 表 JZLSH + fee⋈EXT + LIS join + 2 RIS). 实测索引后单患者首查 2.44s → 0.31s.
+**② TP_data_hub 索引（2026-07-06 历史开发库步骤）** — `scripts/sql/create_data_hub_indexes.sql` (9 个: 5 表 JZLSH + fee⋈EXT + LIS join + 2 RIS). 实测索引后单患者首查 2.44s → 0.31s。开发库重建后用 `sqlcmd <连接参数> -d TP_data_hub -v HUB_DATABASE=TP_data_hub -b -i scripts/sql/create_data_hub_indexes.sql`；脚本会在首条 DDL 前核对当前库。142 当前读取源 `sh_yb_platform` 由 DE 维护，Javert 侧不得直接执行 DDL，生产索引需求须交 DE/DBA 走变更。
 
 **效果**: 数据在 `TP_data_hub` 的患者 (如 szx2.0 批次 4680 人) 原文/费用/检验/主诊断**即查即得**, 不再需要拷 CSV 到 62 data_import / 不再需要重启; 62 的大 overlay 文件 (case_notes/shi_fee/lab_results 追加的 szx2 数据, ~1GB) 验证 hub 路径正常后可删除回收内存 (`*.bak.preszx2full` 为追加前备份, 恢复 = cp 回去).
 
@@ -315,7 +319,7 @@ ssh admin2@192.168.31.62 'echo "JAVERT_HUB_RAW_ENABLED=true" >> ~/javert/.env'
 
 **② raw 端点限流 + 留痕** — 默认 30/minute/会话, 超限 429; 每次点开原文在 `javert_audit_logs` 落一行 (`action=raw_access`, target=患者号, payload.source ∈ csv|hub|rate_limited). 专家反馈被误伤时 `.env` 加 `JAVERT_RAW_RATE_LIMIT=60/minute` 重拉.
 
-**③ 142 BA 四表索引 (幂等)** — `create_data_hub_indexes.sql` 追加了 SYJBK/SYZDK(+ZDDM)/SYSSK/SYSSK_EXT 5 个索引, 在 142 `TP_data_hub` 重跑整个脚本即可 (已有的 9 个 IF NOT EXISTS 跳过). 跑完量一次单患者 hub 首查耗时, 对照基线 0.31s.
+**③ 142 BA 四表索引（历史开发库步骤）** — `create_data_hub_indexes.sql` 追加了 SYJBK/SYZDK(+ZDDM)/SYSSK 索引；只可按上面的 `-d/-v/-b` 方式在自有 `TP_data_hub` 重跑（已有索引由 `IF NOT EXISTS` 跳过）。若当前服务读取 DE 的 `sh_yb_platform`，只提交索引需求，不在 Javert 侧执行该脚本。完成后量一次单患者 hub 首查耗时，对照历史基线 0.31s。
 
 **④ fees 匹配收紧核对** — 62 上跑一次 `uv run python scripts/diff_fee_match.py` (可加 `--overlay data_import`), 预期输出「新旧命中集合完全一致」或仅列出长号误归属短号的修正行 (Mac 本地快照实测: 完全一致).
 

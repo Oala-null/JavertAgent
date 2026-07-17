@@ -2,14 +2,18 @@
 
 > 面向 AI 工程师的架构复盘 · agentic clinical-coding & rule-based audit pipelines · 自用技术参考
 > 本文是 `技术深潜_Zadig与Javert.html` 的 markdown 底稿（同步内容，便于 git-diff / 复制）。
-> 版本：v1.0 ｜ 2026-06-10
+> 版本：v1.1 ｜ 2026-07-17
+>
+> **状态说明（2026-07-17）**：Tab 1 的 Qwen3.5/GPTQ 参数是 2026-06-10
+> Zadig 架构快照；62 当前共享推理端点已升级为 `Qwen3.6-35B-A3B-FP8`。
+> Tab 2 已按 Javert 当前 159/118 规则和肿瘤资格 v2 更新。
 
 > **诚实声明**：模型/loop 上限/工具清单/gate 逻辑/reconfirm 四档/缓存机制均从两个 codebase 实际读出。
 > 少数**具体魔数**（icd_lookup RRF 权重 0.7/0.3、细码 boost 1.1、fee 阈值等）系从 CLAUDE.md / 代码推断，标 `~`/`e.g.` 为近似；正式对外前建议核源码。
 
 ---
 
-# Tab 1 · zadig_agent
+# Tab 1 · zadig_agent（2026-06-10 历史快照）
 
 | domain | paradigm | llm | killer feature |
 |--------|----------|-----|----------------|
@@ -245,19 +249,22 @@ flowchart LR
 
 | domain | paradigm | llm | killer feature |
 |--------|----------|-----|----------------|
-| Insurance Audit（医保违规自查） | 2-layer（Router prefilter + ReAct agent） | Qwen3.5-35B（GPTQ-Int4 · sglang 共享） | Deterministic gate（病案首页 ground-truth 驳幻觉） |
+| Insurance Audit（医保违规自查） | Router + deterministic precheck / evaluator + ReAct agent + gate | Qwen3.6-35B-A3B-FP8（sglang 共享） | Deterministic gate + 肿瘤药双轴资格链 |
 
 ## §1 Two-layer architecture
 
-Javert = **Router B（确定性 prefilter）** + **Runner（LLM agent）** + **verdict_gate（确定性后置闸）**。规则即文件（143 条 YAML），LLM 只跑 router 留下的子集，裁决落库前再过 gate。三态裁决 `VIOLATION / INCONCLUSIVE / CLEAN`。
+Javert = **Router B（确定性 prefilter）** + **Runner（确定性预检/专项求值器或 LLM agent）**
+以及 **verdict_gate（确定性后置闸）**。规则即文件（159 条 YAML，其中 118 条 ready），
+只对 router 留下且无法确定性短路的子集调用 LLM。通用裁决为
+`VIOLATION / INCONCLUSIVE / CLEAN`；RD04 另带独立的医保资格轴。
 
 > **core thesis** — 把「能确定性判的」全部从 LLM 手里拿走：**前置** router 用 keyword/applicable 砍掉 70–80% 无关规则（省 GPU），**后置** gate 用病案首页硬事实把 LLM 的假阳性 **只降不升**地纠回。LLM 只做中间那段「读文书+费用判有无指征」的软判断。
 
 ```mermaid
 flowchart LR
     P["patient record<br/>fees + notes + 病案首页"] --> RT["Router B (单闸)<br/>status/priority + applicable_* + 弹性 keyword"]
-    RULES["143 rule YAMLs<br/>(M1–M8 模板生成)"] --> RT
-    RT -->|"~7/143 survive"| RUN["Runner (ReAct)<br/>Qwen3.5 · ≤10 tool calls<br/>fenced-JSON verdict"]
+    RULES["159 rule YAMLs<br/>118 ready · M1–M8"] --> RT
+    RT -->|"按患者召回 ready 子集"| RUN["Runner<br/>deterministic path or ReAct<br/>Qwen3.6 FP8 · ≤10 tool calls"]
     TOOLS["10 tools<br/>(manifest-registered)"] <--> RUN
     RUN --> G["verdict_gate.apply_gate()<br/>只对 V 生效 · 只降不升 V→I/C"]
     CTX["clinical_context<br/>shi_ss 手术/麻醉 · shi_zd 诊断"] --> G
@@ -270,7 +277,7 @@ flowchart LR
 
 | 项 | 值 / 机制 |
 |----|-----------|
-| model / serving | Qwen3.5-35B-GPTQ-Int4 · sglang `192.168.31.62:30000` · `httpx` 同步直连 |
+| model / serving | Qwen3.6-35B-A3B-FP8 · sglang `192.168.31.62:30000` · `httpx` 同步直连 |
 | sampling | `temperature=0.0` · `max_tokens=8192` · timeout 300s · retry budget 3（指数退避） |
 | tool protocol | `<tool_call>{json}</tool_call>` 正则 parse（备用 ```` ```tool_call ````）；parse 失败返回 error 字串不抛异常 |
 | degrade | sglang 不可达 → `LlmUnavailableError`；尽数重试失败 → INCONCLUSIVE |
@@ -291,7 +298,7 @@ flowchart LR
 
 每条违规情形 = 一个 `Rule` pydantic（YAML 落盘，git-diff 看演进，不进 SQL）。绿区 + 专家 Y 标注的规则不手抄 prompt，而是用 8 个模板填字段渲染。
 
-**Rule pydantic（13 字段）**：
+**Rule pydantic（当前核心字段）**：
 
 ```python
 rule_id          # R\d{3} | RD\d{2,3}
@@ -300,9 +307,13 @@ status           # drafting | ready | validated | abandoned
 priority         # P0 | P1 | P2 | P3
 prompt_addon     # 规则特定 prompt（模板渲染 or 手写）
 trigger_keywords # list[str] — router 弹性命中用
+trigger_codes    # list[str] — 编码/类别补充召回
+exam_keywords    # list[str] — verdict gate 项目匹配
 suggested_tools / expected_signal / notes
 derived_from_template  # M1..M8 | None
 drug_rule_type   # 限适应症|超说明书|限二线|禁忌症 (驱动 M8 比对逻辑)
+render_hash      # prompt-fit 覆盖护栏
+precheck         # {a_items,b_items,mode=coexist|companion} | None
 ```
 
 | template | 违规 pattern | 判定逻辑骨架 |
@@ -315,9 +326,21 @@ drug_rule_type   # 限适应症|超说明书|限二线|禁忌症 (驱动 M8 比�
 
 > **templating mechanics** — Jinja2 `StrictUndefined`（未声明变量立即报错，防静默漏填）。`prompt-fit` 三模式：**vars**（读 JSON）/ **interactive**（逐字段问）/ **auto**（`llm_drafter` 用 Qwen 起草 personalization 字段，人审确认）。一个模板渲染 4 个子产物：`master_prompt→prompt_addon` · `keywords` · `tools` · `signal`。
 
+### Deterministic fast paths
+
+- **M1 precheck**：`coexist` 模式在 LLM 前检查主项 A 与附属项 B；任一缺失直接
+  CLEAN、零 LLM，并存时只把窄事实块交给模型核反证。`companion` 模式用于术式与必备
+  配套，A 有而 B 无时形成待核事实。
+- **RD04 oncology evaluator**：生产 `on` 模式独占
+  `oncology=true AND source_type=insurance`。它按服务日期选择 approved 条件树，结合
+  病理标志物与方案上下文，直接产出 `audit_disposition` 和 `eligibility_status` 两轴；
+  无候选时零 LLM，缺版本/数据时 fail closed 为
+  `REVIEW_REQUIRED + DOCUMENTATION_GAP`。`R007` 只保留非肿瘤医保限定候选。
+
 ## §5 Router B — single-gate prefilter
 
-对 143 条 YAML 做三步 prune，把每患者要跑的规则从全集砍到 ~7 条。目标：砍 70–80% LLM 调用且 **0 false-negative**（漏检比误留代价高得多）。
+对 159 条 YAML 做三步 prune，先从 118 条 ready 中选出与患者有关的子集。候选数量随
+病种和数据完整度变化；目标仍是显著减少 LLM 调用且优先控制 false-negative。
 
 1. **status / priority** — 只留 `status=ready` ∧ priority ∈ enabled（默认 P0–P3 全开）
 2. **applicable_\*** — 可选硬过滤：visit_type / gender / age_min·max / diag_codes(ICD 前缀 \*通配) / departments。**缺省=不限制**
@@ -381,6 +404,19 @@ KB = `drug_audit_kb.json`（928 通用名 × 4 rule_type：限适应症/超说�
 
 on-label 闸：甲状腺片/钙 在甲状腺患者上应 CLEAN，靠诊断 ground-truth 防误报。
 
+### RD04 结构化资格输出
+
+RD04 不把“是否发现违规”和“患者是否满足资格”压成一个枚举：
+
+| 轴 | 枚举 |
+|---|---|
+| `audit_disposition` | `VIOLATION_FOUND / REVIEW_REQUIRED / NO_VIOLATION_FOUND` |
+| `eligibility_status` | `SATISFIED / NOT_SATISFIED / DOCUMENTATION_GAP / CONFLICT` |
+| condition state | `SATISFIED / NOT_SATISFIED / UNKNOWN / CONFLICT` |
+
+输出还包含 versioned proof tree、数据质量 flags、来源版本和只面向未来记录的
+documentation suggestions。建议文本不能生成事实，也不能改变条件状态。
+
 ## §8 Persistence & evidence anchoring
 
 | 组件 | 机制 |
@@ -389,6 +425,7 @@ on-label 闸：甲状腺片/钙 在甲状腺患者上应 CLEAN，靠诊断 groun
 | double-write | `result_persister` 立即试推 SQL Server 142；失败 mark `pending`，不阻塞 |
 | heartbeat | `SyncWorker` 后台补漏 pending；142 是 SQLAlchemy+pyodbc+msodbcsql18，NVARCHAR hook |
 | hit_resolver | 确定性 resolve_hits → `HitItem[]`（编码 join 患者 fee 行 + 限定 join drug_kb） |
+| oncology result | SQLite/SQL Server 均以可空 `eligibility_json` 保存；旧行读 `None`，不回填、不重判 |
 
 **D3 anchor ladder（证据→原文跳转的确定性落点）**：
 
