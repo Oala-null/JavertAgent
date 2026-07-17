@@ -85,6 +85,50 @@
         <div class="rule-question">{{ meta.question }}</div>
         {% endif %}
 
+        {# strengthen-oncology-drug-eligibility: 双轴结果与条件证明，不改变下方审核按钮 #}
+        {% if run.eligibility_evaluation %}
+        {% set ee = run.eligibility_evaluation %}
+        <section class="eligibility-panel" data-eligibility-status="{{ ee.eligibility_status.value }}">
+          <div class="eligibility-head">
+            <strong>肿瘤药医保资格</strong>
+            <span class="eligibility-axis">审核处置 · {{ ee.audit_disposition.value }}</span>
+            <span class="eligibility-axis">资格状态 · {{ ee.eligibility_status.value }}</span>
+          </div>
+          {% if ee.criterion_assessments %}
+          <div class="eligibility-criteria">
+            {% for item in ee.criterion_assessments %}
+            <div class="eligibility-criterion state-{{ item.state.value | lower }}">
+              <code>{{ item.criterion_id }}</code>
+              <span>{{ item.state.value }}</span>
+              {% if item.reason %}<small>{{ item.reason }}</small>{% endif %}
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+          {% if ee.data_quality_flags %}
+          <div class="eligibility-flags">
+            {% for flag in ee.data_quality_flags %}<span>⚠ {{ flag }}</span>{% endfor %}
+          </div>
+          {% endif %}
+          {% if ee.documentation_suggestions %}
+          <div class="documentation-suggestions">
+            <div class="documentation-suggestions-title">病历完善建议</div>
+            {% for suggestion in ee.documentation_suggestions %}
+            <article class="documentation-suggestion">
+              <strong>{{ suggestion.title }}</strong>
+              <p>{{ suggestion.suggested_content }}</p>
+              <small>{{ suggestion.safety_note }}</small>
+            </article>
+            {% endfor %}
+          </div>
+          {% endif %}
+          <details class="eligibility-proof">
+            <summary>查看条件证明树</summary>
+            <pre>{{ ee.proof_tree.model_dump(mode='json') | tojson }}</pre>
+          </details>
+        </section>
+        {% endif %}
+
         {# 命中项目 (evidence-anchoring) — 仅 fee/drug; note 类收敛成「查阅文书原文」按钮 #}
         {% set hits = (hits_by_run | default({}, true)).get(run.run_id, []) %}
         {% set fd_hits = hits | selectattr('source', 'in', ['fee', 'drug']) | list %}

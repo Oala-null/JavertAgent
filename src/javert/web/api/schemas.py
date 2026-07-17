@@ -89,6 +89,8 @@ class AuditRunSummary(BaseModel):
     duration_ms: int
     model: str
     started_at: datetime
+    audit_disposition: str | None = None
+    eligibility_status: str | None = None
 
 
 class AuditRunDetail(AuditRunSummary):
@@ -97,6 +99,7 @@ class AuditRunDetail(AuditRunSummary):
     reasoning: str
     evidence: list[dict[str, Any]] = Field(default_factory=list)
     tool_calls: list[dict[str, Any]] = Field(default_factory=list)
+    eligibility_evaluation: dict[str, Any] | None = None
 
 
 # 解决前向引用

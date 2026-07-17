@@ -1,5 +1,7 @@
 # 药品类规则 (M8) 实测报告 — v0.8 `add-drug-audit-rules`
 
+> **历史快照**：本文记录 v0.8 当时的 33 条规则验收，不代表当前执行状态。当前 production-ready 入口已收敛为 `RD04/R007/RD01/RD02/RD03` 五条 bulk；`RD10-RD37` 均为 abandoned。当前状态见 `docs/oncology/operations.md`.
+
 两批对照验证 M8 药品适应症/限定审计: **综合科批** (药品丰富, 验真违规信号) + **甲状腺批** (on-label 误报闸验收).
 
 > 验收硬指标 (proposal): 甲状腺批的 `甲状腺片` / 钙等**对症**用药必须**几乎全 CLEAN** —— 命中监管 KB ≠ 违规, LLM 须用「命中药 × 患者诊断」语义比对, 有指征即判 CLEAN.

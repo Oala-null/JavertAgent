@@ -1,16 +1,16 @@
 {
   "version": "1.0",
-  "generated_at": "2026-07-09T08:29:32+00:00",
+  "generated_at": "2026-07-17T12:30:52+00:00",
   "summary": {
-    "total_javert_rules": 158,
+    "total_javert_rules": 159,
     "overlapping_rules": 152,
-    "javert_only_rules": 82,
+    "javert_only_rules": 83,
     "by_template": {
       "_no_template": {
         "javert_only": 13
       },
       "M8": {
-        "javert_only": 32
+        "javert_only": 33
       },
       "M7": {
         "javert_only": 20
@@ -324,6 +324,7 @@
       "RD01",
       "RD02",
       "RD03",
+      "RD04",
       "RD10",
       "RD11",
       "RD12",
@@ -353,7 +354,7 @@
       "RD36",
       "RD37"
     ],
-    "count": 82
+    "count": 83
   },
   "reverse_index_javert_to_java": {
     "R003": [],
@@ -714,6 +715,7 @@
     "RD01": [],
     "RD02": [],
     "RD03": [],
+    "RD04": [],
     "RD10": [],
     "RD11": [],
     "RD12": [],

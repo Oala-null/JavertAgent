@@ -48,7 +48,9 @@ def _apply_drift_guard(result: AuditResult, sqlite_store: SqliteStore, sql_enabl
 
     只升到 INCONCLUSIVE (绝不恢复 V); 历史行不改写; 专家已驳回的老 V 放行 C.
     """
-    if result.verdict != "CLEAN":
+    # 结构化结果的旧 verdict 必须与双轴投影一致；漂移比较交由 shadow 报告，
+    # 不得在写库前把 CLEAN 就地改 I，制造自相矛盾的 eligibility_json。
+    if result.eligibility_evaluation is not None or result.verdict != "CLEAN":
         return
     prior = sqlite_store.find_by_rule_patient_latest(result.rule_id, result.patient_id)
     if prior is None or prior.verdict != "VIOLATION":

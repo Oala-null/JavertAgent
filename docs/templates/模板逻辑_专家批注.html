@@ -30,6 +30,8 @@
   #status{font-size:12px;opacity:.9}
   .tabs{display:flex;gap:4px;flex-wrap:wrap;padding:10px 20px 0;background:#fff;border-bottom:1px solid var(--line);
         position:sticky;top:52px;z-index:10}
+  .snapshot-warning{max-width:1100px;margin:14px auto 0;padding:10px 14px;border:1px solid #f59e0b;
+        border-radius:8px;background:#fffbeb;color:#92400e}
   .tab{padding:8px 14px;border:1px solid var(--line);border-bottom:none;border-radius:8px 8px 0 0;cursor:pointer;
        background:#f3f4f6;color:var(--muted);font-size:13px;white-space:nowrap}
   .tab .id{font-weight:700;color:var(--primary);margin-right:5px}
@@ -118,6 +120,10 @@
   <button class="btn ghost" onclick="clearTab()">🗑 清空本模板</button>
 </header>
 <div class="tabs" id="tabs"></div>
+<div class="snapshot-warning">
+  本页规则清单是 v0.8 专家批注历史快照，不代表当前执行状态。当前 M8 production-ready
+  为 RD04/R007/RD01-03 五条 bulk；RD10-RD37 均为 abandoned。
+</div>
 <main id="main"></main>
 
 <script>

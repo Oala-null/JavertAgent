@@ -100,3 +100,20 @@ def test_tool_result_max_chars_from_file(tmp_path: Path):
         yaml.safe_dump({"tool_result_max_chars": 4000}), encoding="utf-8"
     )
     assert load_config(config_file).tool_result_max_chars == 4000
+
+
+def test_oncology_eligibility_v2_defaults_off():
+    """默认关闭必须逐字保留现网药品审核路径."""
+    assert JavertConfig().oncology_eligibility_v2 == "off"
+
+
+@pytest.mark.parametrize("mode", ["off", "shadow", "on"])
+def test_oncology_eligibility_v2_env_modes(monkeypatch, mode):
+    monkeypatch.setenv("JAVERT_ONCOLOGY_ELIGIBILITY_V2", mode)
+    assert JavertConfig().oncology_eligibility_v2 == mode
+
+
+def test_oncology_eligibility_v2_rejects_unknown_mode(monkeypatch):
+    monkeypatch.setenv("JAVERT_ONCOLOGY_ELIGIBILITY_V2", "maybe")
+    with pytest.raises(ValueError):
+        JavertConfig()

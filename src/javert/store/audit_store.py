@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from javert.audit.result import AuditResult, Evidence, ToolCall
+from javert.oncology.contracts import EligibilityEvaluation
 
 logger = logging.getLogger("javert.store.audit_store")
 
@@ -65,7 +66,7 @@ class AuditStore(ABC):
 class SqliteStore(AuditStore):
     """SQLite 实现."""
 
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 6
 
     def __init__(self, db_path: Path):
         self.db_path = db_path
@@ -96,12 +97,12 @@ class SqliteStore(AuditStore):
         schema_sql = (Path(__file__).parent / "schema.sql").read_text(encoding="utf-8")
         with self.conn as c:
             c.executescript(schema_sql)
-        # v2 migration: 老库 ALTER 补三列, 新库一切就绪
+        # 累积 migration: 老库逐列幂等 ALTER, 新库一切就绪
         self._ensure_v2_columns()
         logger.info("audit_store schema 已初始化 (v%d): %s", self.SCHEMA_VERSION, self.db_path)
 
     def _ensure_v2_columns(self) -> None:
-        """v2 migration: 给 audit_runs 补 synced_at / sync_attempts / sync_last_error 列.
+        """累积 migration: 给 audit_runs 幂等补齐 v2-v6 可空列.
 
         幂等. 老库 (v1) 缺这三列 → ALTER TABLE 补; 新库 (v2) 已含 → 跳过.
         最后无条件 CREATE INDEX IF NOT EXISTS idx_audit_unsynced.
@@ -125,6 +126,9 @@ class SqliteStore(AuditStore):
         # v5 (add-verdict-gate-layer): gate_tag
         if "gate_tag" not in existing_cols:
             migrations.append("ALTER TABLE audit_runs ADD COLUMN gate_tag TEXT")
+        # v6 (strengthen-oncology-drug-eligibility): 单一可空 JSON 扩展
+        if "eligibility_json" not in existing_cols:
+            migrations.append("ALTER TABLE audit_runs ADD COLUMN eligibility_json TEXT")
 
         with self.conn as c:
             for sql in migrations:
@@ -137,7 +141,8 @@ class SqliteStore(AuditStore):
             )
             if migrations:
                 c.execute(
-                    "INSERT OR REPLACE INTO _meta(key, value) VALUES ('schema_version', '2')"
+                    "INSERT OR REPLACE INTO _meta(key, value) VALUES ('schema_version', ?)",
+                    (str(self.SCHEMA_VERSION),),
                 )
 
     # ---- write ----
@@ -150,14 +155,26 @@ class SqliteStore(AuditStore):
             [tc.model_dump() for tc in result.tool_calls],
             ensure_ascii=False,
         )
+        eligibility_json = (
+            json.dumps(
+                result.eligibility_evaluation.model_dump(mode="json"),
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+            if result.eligibility_evaluation is not None
+            else None
+        )
+        # 防止调用方在构造后就地改 verdict/eligibility，写入前再次验证投影.
+        AuditResult.model_validate(result.model_dump())
         with self._write_lock, self.conn as c:
             c.execute(
                 """
                 INSERT INTO audit_runs (
                     run_id, rule_id, patient_id, verdict, confidence,
                     reasoning, evidence_json, tool_calls_json,
-                    duration_ms, model, started_at, batch_tag, gate_tag
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    duration_ms, model, started_at, batch_tag, gate_tag,
+                    eligibility_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     result.run_id,
@@ -173,6 +190,7 @@ class SqliteStore(AuditStore):
                     result.started_at.isoformat(),
                     batch_tag,
                     result.gate_tag or "",
+                    eligibility_json,
                 ),
             )
 
@@ -183,6 +201,9 @@ class SqliteStore(AuditStore):
         started_at = datetime.fromisoformat(row["started_at"]) if row["started_at"] else datetime.now(timezone.utc)
         cols = row.keys()
         gate_tag = (row["gate_tag"] or "") if "gate_tag" in cols else ""
+        eligibility = None
+        if "eligibility_json" in cols and row["eligibility_json"]:
+            eligibility = EligibilityEvaluation.model_validate_json(row["eligibility_json"])
         return AuditResult(
             run_id=row["run_id"],
             rule_id=row["rule_id"],
@@ -196,6 +217,7 @@ class SqliteStore(AuditStore):
             model=row["model"] or "",
             started_at=started_at,
             gate_tag=gate_tag,
+            eligibility_evaluation=eligibility,
         )
 
     def find_by_run_id(self, run_id: str) -> AuditResult | None:

@@ -243,6 +243,43 @@ def test_bulk_rule_type_filter(loader, kb_path, zd_path):
     assert {m["generic_name"] for m in r["matches"]} == {"人血白蛋白"}
 
 
+def test_bulk_source_type_filter_selects_insurance_arm_only(tmp_path, zd_path):
+    """source_type=insurance 只留医保限定条目; 老 KB 无 source_type 条目一律不命中."""
+    kb = {
+        "version": "t",
+        "drugs": {
+            "仑伐替尼胶囊": {
+                "codes": [],
+                "entries": [{
+                    "rule_type": "限适应症", "basis": "限不可切除的肝细胞癌",
+                    "detect_logic": "诊断不符医保限定", "source_type": "insurance",
+                    "source_label": "医院药品总库 2026-06（医保限定，优先）",
+                }],
+            },
+            "人血白蛋白": [
+                {"rule_type": "限适应症", "detect_logic": "诊断不符限定", "basis": "限抢救/重症"}
+            ],
+        },
+    }
+    p = tmp_path / "kb_src.json"
+    p.write_text(json.dumps(kb, ensure_ascii=False), encoding="utf-8")
+    fees = pd.DataFrame({
+        "bah": ["H31010600042-J66252 "] * 2,
+        "medins_list_name": ["仑伐替尼胶囊", "人血白蛋白(基)"],
+        "medins_chrgitm_type": ["西药", "西药"],
+    })
+    r = dal.lookup_patient_drugs(
+        "J66252", _StubLoader(fees), p, zd_path,
+        rule_type="限适应症", source_type="insurance",
+    )
+    assert {m["generic_name"] for m in r["matches"]} == {"仑伐替尼胶囊"}
+    text = dal.format_for_agent(r)
+    assert "依据层级过滤: insurance" in text
+    # 不加过滤 → 两药都在
+    r2 = dal.lookup_patient_drugs("J66252", _StubLoader(fees), p, zd_path, rule_type="限适应症")
+    assert {m["generic_name"] for m in r2["matches"]} == {"仑伐替尼胶囊", "人血白蛋白"}
+
+
 def test_bulk_no_match_is_empty_not_error(kb_path, zd_path):
     fees = pd.DataFrame({
         "bah": ["H31010600042-J99999 "],

@@ -30,8 +30,13 @@ from pathlib import Path
 from typing import Any, Callable
 
 from javert.audit.runner import RETAIN_HEAD_MARKER  # 分段截断标记 (必留头部/可截明细)
-from javert.data.fee_netting import fee_group_key, fully_refunded_keys
+from javert.data.fee_netting import fee_group_key, fully_refunded_keys, net_fee_items
 from javert.data.loader import DataLoader
+from javert.oncology.runtime import (
+    encode_structured_payload,
+    evaluate_oncology_matches,
+    ownership_key,
+)
 from javert.routing.adapter import _load_zd_index  # 复用 routing 的 shi_zd 缓存索引
 
 logger = logging.getLogger("javert.tools.drug_audit_lookup")
@@ -39,7 +44,7 @@ logger = logging.getLogger("javert.tools.drug_audit_lookup")
 REQUIRES_PATIENT_ID = True
 
 DESCRIPTION = (
-    "药品违规审计: bulk(patient_id[, rule_type]) 返回该患者用药命中监管知识库的药品 "
+    "药品违规审计: bulk(patient_id[, rule_type, source_type]) 返回该患者用药命中监管知识库的药品 "
     "(限适应症/超说明书/限二线/禁忌症) + 有效依据 + 病案首页诊断; 肿瘤药依据已按 "
     "医保限定优先、未提取到医保限定时再用临床指导原则适应证的顺序选取；"
     "医保状态未知会显式标注待核对. "
@@ -53,6 +58,10 @@ INPUT_SCHEMA = {
         "rule_type": {
             "type": "string",
             "description": "可选, 只看某类型: 限适应症/超说明书/限二线/禁忌症",
+        },
+        "source_type": {
+            "type": "string",
+            "description": "可选, 只看某依据层级: insurance(医保限定优先)/guideline(指导原则兜底)",
         },
         "drug_name": {
             "type": "string",
@@ -149,7 +158,9 @@ def kb_codes(drug_val: Any) -> list[str]:
 # ────────────────────────── KB 加载 (lazy + 进程内缓存) ──────────────────────────
 
 _kb_cache: dict[str, dict] = {}
-_kb_stems_cache: dict[str, list[tuple[str, str, list[dict], list[str], str]]] = {}
+_kb_stems_cache: dict[
+    str, list[tuple[str, str, list[dict], list[str], str, bool]]
+] = {}
 
 
 def _load_kb(kb_path: Path) -> dict:
@@ -170,19 +181,30 @@ def _load_kb(kb_path: Path) -> dict:
     return _kb_cache[key]
 
 
-def _kb_stems(kb_path: Path) -> list[tuple[str, str, list[dict], list[str], str]]:
-    """预计算 [(通用名, stem, entries, codes, name_fallback), ...]."""
+def _kb_stems(
+    kb_path: Path,
+) -> list[tuple[str, str, list[dict], list[str], str, bool]]:
+    """预计算 [(通用名, stem, entries, codes, name_fallback, oncology), ...]."""
     key = str(kb_path)
     if key in _kb_stems_cache:
         return _kb_stems_cache[key]
     kb = _load_kb(kb_path)
-    out: list[tuple[str, str, list[dict], list[str], str]] = []
+    out: list[tuple[str, str, list[dict], list[str], str, bool]] = []
     for generic, drug_val in kb.get("drugs", {}).items():
         stem = kb_stem(generic)
         if len(stem) >= 2:
             oncology = drug_val.get("oncology", {}) if isinstance(drug_val, dict) else {}
             fallback = str((oncology or {}).get("name_fallback") or "")
-            out.append((generic, stem, kb_entries(drug_val), kb_codes(drug_val), fallback))
+            out.append(
+                (
+                    generic,
+                    stem,
+                    kb_entries(drug_val),
+                    kb_codes(drug_val),
+                    fallback,
+                    bool(oncology),
+                )
+            )
     _kb_stems_cache[key] = out
     return out
 
@@ -195,6 +217,13 @@ def lookup_patient_drugs(
     kb_path: Path,
     zd_path: Path,
     rule_type: str | None = None,
+    source_type: str | None = None,
+    *,
+    oncology_v2_mode: str = "off",
+    audit_rule_id: str = "",
+    eligibility_path: Path | None = None,
+    pathology_path: Path | None = None,
+    regimen_path: Path | None = None,
 ) -> dict[str, Any]:
     """bulk 模式: 患者用药 ∩ KB → 命中药 (+ 各 rule_type 依据) + 病案首页诊断."""
     fees_df = loader.get_fees(patient_id)
@@ -205,6 +234,7 @@ def lookup_patient_drugs(
     _seen_names: set[str] = set()
     # fix-fee-refund-netting: 完全充退 (净≤0) 的药不算患者用过 → 整组排除 (drug-audit spec)
     full_refunded = fully_refunded_keys(fees_df)
+    net_items = net_fee_items(fees_df)
     if not fees_df.empty and "medins_list_name" in fees_df.columns:
         ct_col = "medins_chrgitm_type"
         has_code = "med_list_codg" in fees_df.columns
@@ -233,7 +263,7 @@ def lookup_patient_drugs(
     # 命中: 按 (通用名, rule_type) 聚合, 记录命中的原始 fee 名
     # 码主路: 患者 fee 行国家码 ∈ 该知识点 code set; 无码 fee 行退 stem 子串 (needs_review).
     matches: dict[tuple[str, str], dict[str, Any]] = {}
-    for generic, stem, entries, codes, name_fallback in _kb_stems(kb_path):
+    for generic, stem, entries, codes, name_fallback, is_oncology in _kb_stems(kb_path):
         code_set = set(codes)
         # 码命中: 该知识点码集合 ∩ 患者已编码 fee 行
         matched_codes = fee_code_set & code_set if code_set else set()
@@ -260,20 +290,49 @@ def lookup_patient_drugs(
             rt = entry.get("rule_type", "")
             if rule_type and rt != rule_type:
                 continue
+            entry_source_type = str(entry.get("source_type") or "")
+            # v2 on 时所有权硬互斥: RD04 独占肿瘤医保限定，R007 保留非肿瘤限适应症.
+            if (
+                oncology_v2_mode == "on"
+                and audit_rule_id == "R007"
+                and is_oncology
+                and entry_source_type == "insurance"
+            ):
+                continue
+            if (
+                oncology_v2_mode in {"shadow", "on"}
+                and audit_rule_id == "RD04"
+                and not (is_oncology and entry_source_type == "insurance")
+            ):
+                continue
+            # 依据层级过滤 (肿瘤药专项): insurance=医保限定优先 / guideline=指导原则兜底;
+            # 老 KB 条目无 source_type 字段, 过滤时一律不命中.
+            if source_type and entry_source_type != source_type:
+                continue
             mkey = (generic, rt)
             if mkey not in matches:
+                candidate_keys = set(matched_codes)
+                candidate_keys.update(fee_group_key("", name) for name in name_fees)
+                net_quantity = (
+                    sum(net_items[key].net_qty for key in candidate_keys if key in net_items)
+                    if net_items
+                    else None
+                )
                 matches[mkey] = {
                     "generic_name": generic,
                     "rule_type": rt,
                     "basis": entry.get("basis", ""),
                     "detect_logic": entry.get("detect_logic", ""),
-                    "source_type": entry.get("source_type", ""),
+                    "source_type": entry_source_type,
                     "source_label": entry.get("source_label", ""),
                     "source_refs": entry.get("source_refs", []),
                     "requires_insurance_review": bool(
                         entry.get("requires_insurance_review")
                     ),
                     "fee_names": [],
+                    "fee_codes": sorted(matched_codes),
+                    "net_quantity": net_quantity,
+                    "oncology": is_oncology,
                     "needs_review": needs_review,
                 }
             for hf in hit_fees:
@@ -297,15 +356,68 @@ def lookup_patient_drugs(
             "is_main": str(zd.get("maindiag_flag") or "").strip() in ("1", "1.0"),
         })
 
-    return {
+    result = {
         "mode": "bulk",
         "patient_id": patient_id,
         "rule_type_filter": rule_type or "",
+        "source_type_filter": source_type or "",
         "total_drug_fees": len(distinct_fees),
         "matches": match_list,
         "diagnoses": diagnoses,
         "zd_available": bool(zd_idx.get(patient_id)),
     }
+    for match in match_list:
+        match["ownership_key"] = ownership_key(
+            patient_id=patient_id,
+            generic_name=match["generic_name"],
+            fee_names=match["fee_names"],
+            fee_codes=match["fee_codes"],
+            basis=match["basis"],
+            source_refs=match["source_refs"],
+        )
+
+    if (
+        oncology_v2_mode in {"shadow", "on"}
+        and audit_rule_id == "RD04"
+    ):
+        if not match_list:
+            result["oncology_structured"] = {
+                "mode": oncology_v2_mode,
+                "no_candidate": True,
+                "candidate_evaluations": [],
+                "selected_eligibility_evaluation": None,
+            }
+        elif not all((eligibility_path, pathology_path, regimen_path)):
+            result["oncology_structured"] = {
+                "mode": oncology_v2_mode,
+                "error": "oncology knowledge asset path missing",
+                "candidate_evaluations": [],
+                "selected_eligibility_evaluation": None,
+            }
+        else:
+            try:
+                structured = evaluate_oncology_matches(
+                    matches=match_list,
+                    fees=fees_df,
+                    notes=loader.get_notes(patient_id),
+                    diagnoses=diagnoses,
+                    eligibility_path=eligibility_path,
+                    pathology_path=pathology_path,
+                    regimen_path=regimen_path,
+                )
+                result["oncology_structured"] = {
+                    "mode": oncology_v2_mode,
+                    **structured,
+                }
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("RD04 结构化资格求值失败 patient=%s", patient_id)
+                result["oncology_structured"] = {
+                    "mode": oncology_v2_mode,
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "candidate_evaluations": [],
+                    "selected_eligibility_evaluation": None,
+                }
+    return result
 
 
 def lookup_single_drug(drug_name: str, kb_path: Path) -> dict[str, Any]:
@@ -393,12 +505,23 @@ def _source_desc(entry: dict[str, Any]) -> str:
 def _format_bulk(result: dict[str, Any]) -> str:
     pid = result["patient_id"]
     rt_filter = result.get("rule_type_filter") or ""
-    filter_desc = f" (rule_type 过滤: {rt_filter})" if rt_filter else ""
+    st_filter = result.get("source_type_filter") or ""
+    parts = [p for p in (
+        f"rule_type 过滤: {rt_filter}" if rt_filter else "",
+        f"依据层级过滤: {st_filter}" if st_filter else "",
+    ) if p]
+    filter_desc = f" ({'; '.join(parts)})" if parts else ""
     matches = result.get("matches", [])
     if not matches:
-        return (
+        text = (
             f"患者 {pid} 的 {result.get('total_drug_fees', 0)} 种用药里, "
             f"无任何药品命中监管知识库{filter_desc} → 本规则不适用 (建议 CLEAN)."
+        )
+        structured = result.get("oncology_structured")
+        return (
+            f"{text}\n{encode_structured_payload(structured)}"
+            if structured
+            else text
         )
     # 必留头部: 汇总行 + 病案首页诊断 (ground truth). 命中药明细一多就会撑爆截断上限,
     # 把判"有无适应症"的唯一硬证据放头部必留段 (fix-drug-audit-precision D1), 截断只砍明细.
@@ -416,6 +539,32 @@ def _format_bulk(result: dict[str, Any]) -> str:
             lines.append(f"  - {tag}{d['name']}{code}")
     else:
         lines.append("  (shi_zd 未收录该患者诊断, 请改用 note_diagnosis 工具取文书诊断)")
+    structured = result.get("oncology_structured")
+    if structured:
+        lines.extend(["", "【肿瘤医保结构化资格求值】"])
+        if structured.get("error"):
+            lines.append(f"  - 求值被阻断: {structured['error']}")
+        for candidate in structured.get("candidate_evaluations", []):
+            evaluation = candidate.get("selected_eligibility_evaluation") or {}
+            lines.append(
+                f"  - {candidate.get('generic_name', '?')}: "
+                f"{evaluation.get('audit_disposition', 'REVIEW_REQUIRED')} + "
+                f"{evaluation.get('eligibility_status', 'DOCUMENTATION_GAP')}; "
+                f"branch={evaluation.get('indication_branch_id', '?')}"
+            )
+            for assessment in evaluation.get("criterion_assessments", []):
+                lines.append(
+                    f"      {assessment.get('criterion_id', '?')}: "
+                    f"{assessment.get('state', 'UNKNOWN')} — "
+                    f"{assessment.get('reason', '')}"
+                )
+            for regimen in candidate.get("regimen_evidence", []):
+                lines.append(
+                    f"      方案 {regimen.get('canonical_name') or regimen.get('matched_text')}: "
+                    f"status={regimen.get('event_status')} "
+                    f"cycle={regimen.get('cycle_no')} line={regimen.get('line_of_therapy')} "
+                    f"conflicts={regimen.get('conflicts', [])}"
+                )
     lines.append(RETAIN_HEAD_MARKER)
     lines.append("")
     lines.append("【命中药品 (命中知识库 ≠ 违规, 须结合诊断判定)】")
@@ -431,13 +580,22 @@ def _format_bulk(result: dict[str, Any]) -> str:
         lines.append(f"   限定/说明书依据: {m['basis']}")
         if m.get("detect_logic"):
             lines.append(f"   检出逻辑: {m['detect_logic']}")
+    if structured:
+        lines.extend(["", encode_structured_payload(structured)])
     return "\n".join(lines)
 
 
 # ────────────────────────── executor 工厂 ──────────────────────────
 
 def create_executor(
-    loader: DataLoader, kb_path: Path, zd_path: Path
+    loader: DataLoader,
+    kb_path: Path,
+    zd_path: Path,
+    *,
+    oncology_v2_mode: str = "off",
+    eligibility_path: Path | None = None,
+    pathology_path: Path | None = None,
+    regimen_path: Path | None = None,
 ) -> Callable[..., str]:
     """绑定 loader + KB 路径 + shi_zd 路径, 返回 drug_audit_lookup(...) 函数.
 
@@ -449,6 +607,8 @@ def create_executor(
         patient_id: str | None = None,
         rule_type: str | None = None,
         drug_name: str | None = None,
+        source_type: str | None = None,
+        _audit_rule_id: str | None = None,
         **_kwargs,
     ) -> str:
         if drug_name and str(drug_name).strip():
@@ -456,8 +616,15 @@ def create_executor(
         if not patient_id or not str(patient_id).strip():
             return "drug_audit_lookup 需要 patient_id (bulk) 或 drug_name (single)."
         rt = str(rule_type).strip() if rule_type else None
+        st = str(source_type).strip() if source_type else None
         result = lookup_patient_drugs(
-            str(patient_id).strip(), loader, kb_path, zd_path, rule_type=rt
+            str(patient_id).strip(), loader, kb_path, zd_path,
+            rule_type=rt, source_type=st,
+            oncology_v2_mode=oncology_v2_mode,
+            audit_rule_id=str(_audit_rule_id or ""),
+            eligibility_path=eligibility_path,
+            pathology_path=pathology_path,
+            regimen_path=regimen_path,
         )
         return format_for_agent(result)
 

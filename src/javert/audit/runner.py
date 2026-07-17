@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 from javert.config import JavertConfig, get_config
+from javert.oncology.contracts import EligibilityEvaluation
+from javert.oncology.runtime import decode_structured_payload
 from javert.tools.llm_provider import LlmUnavailableError, Qwen35Provider
 from javert.tools.tool_executor import ToolExecutor
 
@@ -135,6 +137,43 @@ def _coerce_evidence(raw: list | None) -> list[Evidence]:
     return out
 
 
+def _structured_evidence(evaluation: EligibilityEvaluation) -> list[Evidence]:
+    out: list[Evidence] = []
+    seen: set[tuple[str, str, str]] = set()
+    for assessment in evaluation.criterion_assessments:
+        for anchor in assessment.evidence_anchors:
+            key = (anchor.source, anchor.locator, anchor.text)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(
+                Evidence(
+                    source=anchor.source,
+                    locator=anchor.locator,
+                    text=anchor.text[:1000],
+                    anchor=anchor.anchor,
+                )
+            )
+    return out
+
+
+def _structured_reasoning(evaluation: EligibilityEvaluation) -> str:
+    lines = [
+        (
+            f"结构化肿瘤医保资格: {evaluation.audit_disposition.value} + "
+            f"{evaluation.eligibility_status.value}; "
+            f"branch={evaluation.indication_branch_id}; version={evaluation.rule_version or '?'}."
+        )
+    ]
+    for item in evaluation.criterion_assessments:
+        lines.append(f"- {item.criterion_id}: {item.state.value} — {item.reason}")
+    for suggestion in evaluation.documentation_suggestions:
+        lines.append(f"[病历完善建议] {suggestion.suggested_content}")
+    if evaluation.data_quality_flags:
+        lines.append(f"[数据质量] {'; '.join(evaluation.data_quality_flags)}")
+    return "\n".join(lines)
+
+
 class Runner:
     """执行单条 (rule, patient_id) 的 agent loop."""
 
@@ -250,6 +289,10 @@ class Runner:
         tool_calls: list[dict[str, Any]],
         messages: list[dict[str, str]],
         tool_records: list[ToolCall],
+        *,
+        audit_rule_id: str = "",
+        structured_payloads: list[dict[str, Any]] | None = None,
+        feed_messages: bool = True,
     ) -> int:
         """执行一批 tool_call: 记录到 tool_records、把结果回灌对话, 返回成功次数.
 
@@ -260,13 +303,30 @@ class Runner:
         n_ok = 0
         for call in tool_calls:
             t0 = time.perf_counter()
-            result_text, cached = self.executor.execute(call)
+            execute_call = call
+            if call["name"] == "drug_audit_lookup" and audit_rule_id:
+                execute_call = {
+                    **call,
+                    "arguments": {
+                        **(call.get("arguments", {}) or {}),
+                        "_audit_rule_id": audit_rule_id,
+                    },
+                }
+            result_text, cached = self.executor.execute(execute_call)
             elapsed_ms = int((time.perf_counter() - t0) * 1000)
+            structured_output = (
+                decode_structured_payload(result_text)
+                if call["name"] == "drug_audit_lookup"
+                else None
+            )
+            if structured_output is not None and structured_payloads is not None:
+                structured_payloads.append(structured_output)
             truncated = _truncate(result_text, self.config.tool_result_max_chars)
             tool_records.append(ToolCall(
                 tool_name=call["name"],
                 arguments=call.get("arguments", {}) or {},
                 result=truncated,
+                structured_output=structured_output,
                 duration_ms=elapsed_ms,
                 cached=cached,
             ))
@@ -278,8 +338,9 @@ class Runner:
                 f"({elapsed_ms}ms{', cached' if cached else ''})"
             )
             tool_results_text.append(f"工具 {call['name']} 返回:\n{truncated}")
-        messages.append({"role": "assistant", "content": content})
-        messages.append({"role": "user", "content": "\n\n".join(tool_results_text)})
+        if feed_messages:
+            messages.append({"role": "assistant", "content": content})
+            messages.append({"role": "user", "content": "\n\n".join(tool_results_text)})
         return n_ok
 
     # --- 确定性预检 (pilot-deterministic-precheck) ---
@@ -369,11 +430,46 @@ class Runner:
         ]
 
         tool_records: list[ToolCall] = []
+        structured_payloads: list[dict[str, Any]] = []
         n_success = 0  # 成功 (非错误串) 的 tool_call 次数 — 放行裁决的门槛
         verdict_data: dict[str, Any] | None = None
         final_reason = ""
 
-        max_calls = self.config.max_tool_calls
+        # v2: RD04 先确定性取候选/条件树，保证每个净正收费候选都进入结构化求值。
+        # shadow 只记录预取结果，不喂回 LLM、也不计入旧「至少一次工具成功」门槛。
+        if (
+            rule.rule_id == "RD04"
+            and self.config.oncology_eligibility_v2 in {"shadow", "on"}
+        ):
+            oncology_mode = self.config.oncology_eligibility_v2
+            prefetch_success = self._execute_and_record(
+                "[Oncology v2] 预取 RD04 肿瘤医保候选与结构化资格证明。",
+                [{
+                    "name": "drug_audit_lookup",
+                    "arguments": {
+                        "patient_id": patient_id,
+                        "rule_type": "限适应症",
+                        "source_type": "insurance",
+                    },
+                }],
+                messages,
+                tool_records,
+                audit_rule_id=rule.rule_id,
+                structured_payloads=structured_payloads,
+                feed_messages=oncology_mode == "on",
+            )
+            if oncology_mode == "on":
+                n_success += prefetch_success
+
+        oncology_no_candidate = (
+            rule.rule_id == "RD04"
+            and self.config.oncology_eligibility_v2 == "on"
+            and any(payload.get("no_candidate") for payload in structured_payloads)
+        )
+        if oncology_no_candidate:
+            self.emit("[Oncology v2] 未发现 RD04 候选，确定性短路 CLEAN，跳过 LLM。")
+
+        max_calls = 0 if oncology_no_candidate else self.config.max_tool_calls
         for turn in range(1, max_calls + 1):
             try:
                 resp = self.provider.chat_with_retry(messages)
@@ -386,7 +482,14 @@ class Runner:
 
             tool_calls = self.executor.parse_tool_calls(content)
             if tool_calls:
-                n_success += self._execute_and_record(content, tool_calls, messages, tool_records)
+                n_success += self._execute_and_record(
+                    content,
+                    tool_calls,
+                    messages,
+                    tool_records,
+                    audit_rule_id=rule.rule_id,
+                    structured_payloads=structured_payloads,
+                )
                 continue
 
             # 没 tool_call: 尝试解析最终 verdict
@@ -434,7 +537,14 @@ class Runner:
             # repair 响应含 tool_call → 执行并回主循环续跑, 不再丢弃直接 INCONCLUSIVE
             repair_calls = self.executor.parse_tool_calls(content_repair)
             if repair_calls:
-                n_success += self._execute_and_record(content_repair, repair_calls, messages, tool_records)
+                n_success += self._execute_and_record(
+                    content_repair,
+                    repair_calls,
+                    messages,
+                    tool_records,
+                    audit_rule_id=rule.rule_id,
+                    structured_payloads=structured_payloads,
+                )
                 continue
             verdict_data = _parse_verdict_block(content_repair)
             if verdict_data is not None and n_success > 0:
@@ -448,7 +558,9 @@ class Runner:
             # for-else: max_calls 用完未 break — 触顶兜底前先发 deadline turn
             # 给 LLM 最后一次基于已有 tool result 出 verdict 的机会 (fix-tool-call-budget-fallback).
             # 仅在已经调过工具时尝试 deadline; 完全没调过工具 → 不救, 走旧兜底.
-            if tool_records:
+            if oncology_no_candidate:
+                final_reason = "RD04 no candidate (deterministic short circuit)"
+            elif tool_records:
                 self.emit(
                     f"[Runner] tool budget 用尽 ({max_calls} 轮 LLM call, {len(tool_records)} tc), "
                     "发起 deadline turn 强制收敛 verdict"
@@ -497,12 +609,70 @@ class Runner:
             reasoning = str(verdict_data.get("reasoning", ""))
             evidence = _coerce_evidence(verdict_data.get("evidence"))
 
+        eligibility_evaluation: EligibilityEvaluation | None = None
+        selected_structured = next(
+            (
+                payload.get("selected_eligibility_evaluation")
+                for payload in reversed(structured_payloads)
+                if payload.get("selected_eligibility_evaluation")
+            ),
+            None,
+        )
+        if rule.rule_id == "RD04" and self.config.oncology_eligibility_v2 == "shadow":
+            if selected_structured:
+                shadow = EligibilityEvaluation.model_validate(selected_structured)
+                self.emit(
+                    f"[Oncology shadow] legacy={verdict} structured={shadow.legacy_verdict} "
+                    f"status={shadow.eligibility_status.value}"
+                )
+        elif rule.rule_id == "RD04" and self.config.oncology_eligibility_v2 == "on":
+            if selected_structured:
+                eligibility_evaluation = EligibilityEvaluation.model_validate(
+                    selected_structured
+                )
+                verdict = eligibility_evaluation.legacy_verdict
+                confidence = 1.0 if verdict != "INCONCLUSIVE" else 0.9
+                reasoning = _structured_reasoning(eligibility_evaluation)
+                evidence = _structured_evidence(eligibility_evaluation)
+                verdict_data = {
+                    "verdict": verdict,
+                    "confidence": confidence,
+                    "reasoning": reasoning,
+                    "evidence": [item.model_dump() for item in evidence],
+                }
+            elif any(payload.get("no_candidate") for payload in structured_payloads):
+                verdict = "CLEAN"
+                confidence = 1.0
+                reasoning = "RD04 未发现净正收费的肿瘤医保限定候选，本规则不适用。"
+                evidence = []
+                verdict_data = {
+                    "verdict": verdict,
+                    "confidence": confidence,
+                    "reasoning": reasoning,
+                    "evidence": [],
+                }
+            elif (
+                any(payload.get("error") for payload in structured_payloads)
+                or any(
+                    record.tool_name == "drug_audit_lookup"
+                    and ToolExecutor.is_error_result(record.result)
+                    for record in tool_records
+                )
+            ):
+                # 知识资产/求值异常不得静默退回 LLM 自由解释.
+                verdict = "INCONCLUSIVE"
+                confidence = 0.0
+                reasoning = "肿瘤医保结构化资格求值被阻断，需人工复核。"
+                evidence = []
+                verdict_data = None
+
         # --- 裁决后确定性 gate (add-verdict-gate-layer) ---
         # 解析完 verdict、构建 AuditResult 之前调 apply_gate; 仅作用 VIOLATION, 只降不升.
         gate_tag = ""
         if (
             verdict_data is not None
             and verdict == "VIOLATION"
+            and eligibility_evaluation is None
             and str(self.config.verdict_gate).lower() != "off"
         ):
             outcome = apply_gate(
@@ -533,6 +703,20 @@ class Runner:
                     evidence.append(e)
                     seen.add((e.source, e.locator))
 
+        # 药品类 V 数据缺口提醒 (med_rst): 费用数据无自付明细 + 病理文书常缺,
+        # 药品违规判定有系统性盲区 → 确定性追加提醒 (不依赖 LLM 记性; 只加文字, 不动 verdict).
+        if (
+            verdict == "VIOLATION"
+            and getattr(rule, "drug_rule_type", None)
+            and eligibility_evaluation is None
+            and "建议复查病理" not in reasoning
+        ):
+            reasoning = (
+                reasoning.rstrip()
+                + "\n建议复查病理文书及该项目是否自费后再最终定性 "
+                "(本项目费用数据无自付明细、病理文书常缺, 药品违规存在系统性盲区)."
+            ).strip()
+
         result = AuditResult(
             run_id=run_id,
             rule_id=rule.rule_id,
@@ -547,6 +731,7 @@ class Runner:
             started_at=started,
             gate_tag=gate_tag,
             precheck_tag=precheck_tag,
+            eligibility_evaluation=eligibility_evaluation,
         )
         self.emit(
             f"[Verdict] {verdict[0]} conf={confidence:.2f} "

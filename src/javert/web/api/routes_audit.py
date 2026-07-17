@@ -68,6 +68,11 @@ def _result_payload(result: Any) -> dict:
         "duration_ms": result.duration_ms,
         "model": result.model,
         "started_at": result.started_at.isoformat(),
+        "eligibility_evaluation": (
+            result.eligibility_evaluation.model_dump(mode="json")
+            if result.eligibility_evaluation is not None
+            else None
+        ),
     }
 
 
@@ -151,27 +156,13 @@ async def run_audit(
         # 持久化: 本地 SQLite + 立即推 142 + mark sync state
         state = persist_one(result, rule, triggered_by="web")
 
-        yield _format_sse(
-            "result",
-            {
-                "run_id": result.run_id,
-                "rule_id": result.rule_id,
-                "patient_id": result.patient_id,
-                "verdict": result.verdict,
-                "confidence": result.confidence,
-                "reasoning": result.reasoning,
-                "evidence": [e.model_dump() for e in result.evidence],
-                "tool_calls": [tc.model_dump() for tc in result.tool_calls],
-                "duration_ms": result.duration_ms,
-                "model": result.model,
-                "started_at": result.started_at.isoformat(),
-                "persisted": {
-                    "sqlite": state["sqlite"],
-                    "sqlserver_142": state["sqlserver_142"],
-                    "sync_state": state["sync_state"],
-                },
-            },
-        )
+        payload = _result_payload(result)
+        payload["persisted"] = {
+            "sqlite": state["sqlite"],
+            "sqlserver_142": state["sqlserver_142"],
+            "sync_state": state["sync_state"],
+        }
+        yield _format_sse("result", payload)
 
     return StreamingResponse(
         event_generator(),
@@ -303,6 +294,11 @@ def list_audit_runs(
     db_path = cfg.audit_db_path
     if not db_path.exists():
         return []
+    migration_store = SqliteStore(db_path)
+    try:
+        migration_store.init_schema()
+    finally:
+        migration_store.close()
 
     where_parts: list[str] = []
     params: list[Any] = []
@@ -318,7 +314,7 @@ def list_audit_runs(
         conn.row_factory = sqlite3.Row
         sql = (
             "SELECT run_id, rule_id, patient_id, verdict, confidence, "
-            "       duration_ms, model, started_at "
+            "       duration_ms, model, started_at, eligibility_json "
             f"FROM audit_runs{where_clause} "
             "ORDER BY started_at DESC LIMIT ?"
         )
@@ -342,6 +338,20 @@ def list_audit_runs(
                 duration_ms=row["duration_ms"] or 0,
                 model=row["model"] or "",
                 started_at=started,
+                audit_disposition=(
+                    (json.loads(row["eligibility_json"]) or {}).get(
+                        "audit_disposition"
+                    )
+                    if row["eligibility_json"]
+                    else None
+                ),
+                eligibility_status=(
+                    (json.loads(row["eligibility_json"]) or {}).get(
+                        "eligibility_status"
+                    )
+                    if row["eligibility_json"]
+                    else None
+                ),
             )
         )
     return out
@@ -667,6 +677,11 @@ def results_2c(syxh: str):
                     "verdict_label": _VERDICT_LABEL.get(r.verdict, r.verdict),
                     "confidence": r.confidence,
                     "reasoning": humanize_reasoning(r.reasoning),
+                    "eligibility_evaluation": (
+                        r.eligibility_evaluation.model_dump(mode="json")
+                        if r.eligibility_evaluation is not None
+                        else None
+                    ),
                     "evidence": [
                         {"source": e.source, "locator": e.locator, "text": e.text}
                         for e in r.evidence
@@ -723,4 +738,19 @@ def get_audit_run(run_id: str) -> AuditRunDetail:
         reasoning=result.reasoning,
         evidence=[e.model_dump() for e in result.evidence],
         tool_calls=[tc.model_dump() for tc in result.tool_calls],
+        audit_disposition=(
+            result.eligibility_evaluation.audit_disposition.value
+            if result.eligibility_evaluation is not None
+            else None
+        ),
+        eligibility_status=(
+            result.eligibility_evaluation.eligibility_status.value
+            if result.eligibility_evaluation is not None
+            else None
+        ),
+        eligibility_evaluation=(
+            result.eligibility_evaluation.model_dump(mode="json")
+            if result.eligibility_evaluation is not None
+            else None
+        ),
     )

@@ -6,7 +6,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+from javert.oncology.contracts import EligibilityEvaluation
 
 Verdict = Literal["VIOLATION", "CLEAN", "INCONCLUSIVE"]
 
@@ -30,6 +32,10 @@ class ToolCall(BaseModel):
     tool_name: str
     arguments: dict[str, Any] = Field(default_factory=dict)
     result: str = Field(default="", description="工具返回文本 (≤2000 char)")
+    structured_output: dict[str, Any] | None = Field(
+        default=None,
+        description="可选确定性工具结果；shadow 比较随 tool_calls_json 持久化，不改变旧 verdict",
+    )
     duration_ms: int = Field(default=0, ge=0)
     cached: bool = Field(default=False)
 
@@ -54,3 +60,17 @@ class AuditResult(BaseModel):
     # pilot-deterministic-precheck: 确定性预检标签 ∈ {"", 无A项, 无B项, A∩B并存待核反证}.
     # 空 = 未走预检 (原 LLM 路径); 前两者 = 预检短路 CLEAN; 后者 = 预检事实成立后进 LLM.
     precheck_tag: str = Field(default="")
+    # strengthen-oncology-drug-eligibility: 旧规则保持 None；结构化肿瘤审核带完整双轴结果.
+    eligibility_evaluation: EligibilityEvaluation | None = None
+
+    @model_validator(mode="after")
+    def _validate_eligibility_projection(self) -> "AuditResult":
+        if (
+            self.eligibility_evaluation is not None
+            and self.verdict != self.eligibility_evaluation.legacy_verdict
+        ):
+            raise ValueError(
+                f"verdict={self.verdict} 与 eligibility_evaluation 的兼容投影 "
+                f"{self.eligibility_evaluation.legacy_verdict} 不一致"
+            )
+        return self

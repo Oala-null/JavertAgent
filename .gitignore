@@ -15,12 +15,20 @@ test1/
 test2/
 test3/
 test4/
+# 同类测试集复制目录也可能含真实患者数据（例如 `test4 copy/`）
+/test[0-9]*/
 
 # 审计结果与日志 (含患者裁决)
 output/
 
 # 文档中的真实审核记录 (含患者 ID + 临床批注)
 docs/javert_vio_review.csv
+
+# 本机静态参考资料（保留在工作区，不作为产品版本依赖）
+/docs/243部署手册.md
+/docs/templates/260611医保基金监管规则框架总表.xlsx
+/截至20260701诊疗项目.xls
+/docs/*算力配置单*
 
 # ============================================================
 # 公司既有 Java 监管引擎源码 (内部专有, 不入公开仓库)
@@ -32,6 +40,7 @@ docs/javert_vio_review.csv
 # ============================================================
 .env
 .env.*
+243_config.env
 configs/llm.local.yaml
 *.local.yaml
 
@@ -62,6 +71,7 @@ htmlcov/
 .idea/
 *.swp
 *.swo
+~$*
 
 # OS
 .DS_Store

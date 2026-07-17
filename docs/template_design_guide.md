@@ -195,7 +195,7 @@ diff <(uv run python -c "import yaml; print(yaml.safe_load(open('configs/rules/R
 | M5 | 虚构医药服务 | ✅ 完成 | 8 | (无单独 reference) |
 | M6 | 过度诊疗 | ✅ 完成 | 9 | R310 (精神科住院) |
 | M7 | 项目身份串换收费 | ✅ 完成 | 20 | R083 (冰袋 vs 冷疗) |
-| **M8** | **药品适应症/限定审计** | ✅ **完成 (v0.8)** | 33 (R007+RD01-03 类型级+RD10-37 精选) | 由 `scripts/init_drug_rules.py` 批量渲染 |
+| **M8** | **药品适应症/限定审计** | ✅ **bulk 收敛；肿瘤 v2 on** | 5 ready (RD04+R007+RD01-03)；RD10-37 abandoned | `scripts/init_drug_rules.py` 维护通用 bulk；RD04 独立维护 |
 
 #### M8 schema 特殊点 (与 M1-M7 不同)
 
@@ -204,6 +204,7 @@ diff <(uv run python -c "import yaml; print(yaml.safe_load(open('configs/rules/R
 - **on-label 误报闸 + 同名异药/剂型复核**: master_prompt 硬写「命中 KB ≠ 违规」「诊断与依据合理临床外延算落在范围内」「fee 剂型与依据明显不符 → 同名异药 → INCONCLUSIVE」.
 - 诊断源: 工具 `drug_audit_lookup` bulk 直接带出 shi_zd 病案首页诊断 (ground truth), M8 引导优先用它, `note_diagnosis` 兜底.
 - 配套 Rule 字段: `drug_rule_type` (optional, M8 规则填; 非药品规则 None). 禁忌症规则 `violation_type` 单列「用药安全/禁忌」.
+- 当前所有权: `RD04` 负责肿瘤医保限定臂，`R007` 负责非肿瘤医保限适应症，`RD01-03` 负责其余三类 bulk；`RD10-RD37` 不进入默认执行集。详见 `docs/oncology/operations.md`.
 
 ---
 

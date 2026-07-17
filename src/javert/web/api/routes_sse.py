@@ -130,6 +130,17 @@ class AuditWatcher:
                         "rule_id": row["rule_id"],
                         "verdict": row["verdict"],
                         "confidence": row["confidence"],
+                        "eligibility_evaluation": row.get("eligibility_evaluation"),
+                        "audit_disposition": (
+                            (row.get("eligibility_evaluation") or {}).get(
+                                "audit_disposition"
+                            )
+                        ),
+                        "eligibility_status": (
+                            (row.get("eligibility_evaluation") or {}).get(
+                                "eligibility_status"
+                            )
+                        ),
                         "is_new_patient": is_new_p,
                     })
                     self._last_id = int(row["id"])

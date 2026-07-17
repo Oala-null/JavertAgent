@@ -6,7 +6,7 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import Field
@@ -53,6 +53,10 @@ class JavertConfig(BaseSettings):
     # recover-deterministic-recall: persist 层重跑漂移防护开关 (老 V 新 C → 落 I + 标签).
     # env JAVERT_DRIFT_GUARD=off 直通 (回滚, 落库行为与本 change 之前逐字一致).
     drift_guard: str = "on"
+
+    # strengthen-oncology-drug-eligibility: 肿瘤药结构化资格求值.
+    # off=完全保留现网旧路径; shadow=另存比较但不改旧 verdict; on=结构化结果生效.
+    oncology_eligibility_v2: Literal["off", "shadow", "on"] = "off"
 
     # Paths (字符串, 相对项目根)
     data_dir: str = "data"

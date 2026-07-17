@@ -129,7 +129,15 @@ def build_executor(loader: DataLoader, config: JavertConfig | None = None) -> To
     drug_kb_path = cfg.resolve("configs") / "drug_audit_kb.json"
     executor.register(
         "drug_audit_lookup",
-        drug_audit_lookup.create_executor(loader, drug_kb_path, cfg.zd_path),
+        drug_audit_lookup.create_executor(
+            loader,
+            drug_kb_path,
+            cfg.zd_path,
+            oncology_v2_mode=cfg.oncology_eligibility_v2,
+            eligibility_path=cfg.resolve("configs/oncology_eligibility_rules.json"),
+            pathology_path=cfg.resolve("configs/pathology_biomarker_kb.json"),
+            regimen_path=cfg.resolve("configs/oncology_regimen_kb.json"),
+        ),
         description=drug_audit_lookup.DESCRIPTION,
         requires_patient_id=getattr(drug_audit_lookup, "REQUIRES_PATIENT_ID", False),
     )

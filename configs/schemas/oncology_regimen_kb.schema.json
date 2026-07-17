@@ -1,0 +1,161 @@
+{
+  "$defs": {
+    "KnowledgeMetadata": {
+      "description": "三个知识资产共享的发布元数据.",
+      "properties": {
+        "checksum": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Checksum",
+          "type": "string"
+        },
+        "content_version": {
+          "minLength": 1,
+          "title": "Content Version",
+          "type": "string"
+        },
+        "effective_from": {
+          "format": "date",
+          "title": "Effective From",
+          "type": "string"
+        },
+        "effective_to": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effective To"
+        },
+        "review_status": {
+          "$ref": "#/$defs/ReviewStatus"
+        },
+        "schema_version": {
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_refs": {
+          "items": {
+            "$ref": "#/$defs/SourceReference"
+          },
+          "minItems": 1,
+          "title": "Source Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "content_version",
+        "effective_from",
+        "source_refs",
+        "checksum",
+        "review_status"
+      ],
+      "title": "KnowledgeMetadata",
+      "type": "object"
+    },
+    "ReviewStatus": {
+      "enum": [
+        "approved",
+        "needs_review",
+        "retired"
+      ],
+      "title": "ReviewStatus",
+      "type": "string"
+    },
+    "SourceReference": {
+      "description": "不可变知识来源引用.",
+      "properties": {
+        "checksum": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Checksum",
+          "type": "string"
+        },
+        "effective_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effective Date"
+        },
+        "publication_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Publication Date"
+        },
+        "retrieval_date": {
+          "format": "date",
+          "title": "Retrieval Date",
+          "type": "string"
+        },
+        "source_id": {
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "version": {
+          "default": "",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "title",
+        "retrieval_date",
+        "checksum"
+      ],
+      "title": "SourceReference",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "asset_type": {
+      "const": "regimen",
+      "default": "regimen",
+      "title": "Asset Type",
+      "type": "string"
+    },
+    "entries": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Entries",
+      "type": "array"
+    },
+    "metadata": {
+      "$ref": "#/$defs/KnowledgeMetadata"
+    }
+  },
+  "required": [
+    "metadata",
+    "entries"
+  ],
+  "title": "RegimenAssetEnvelope",
+  "type": "object"
+}

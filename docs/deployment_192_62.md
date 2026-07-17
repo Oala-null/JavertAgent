@@ -57,6 +57,9 @@ JAVERT_ALLOW_REGISTER=false       # 注册关闭, 走 mssql-user create
 
 # LLM (audit-patient 跑 audit 时)
 JAVERT_LLM_ENDPOINT=http://192.168.31.62:30000/v1
+
+# 肿瘤医保资格 v2（代码默认 off；62 于 2026-07-17 验收后启用）
+JAVERT_ONCOLOGY_ELIGIBILITY_V2=on
 ```
 
 ---
@@ -135,6 +138,11 @@ uv run javert ensure-mssql-schema
 uv run python scripts/backfill_anchors.py --target mssql --dry-run   # 看量
 uv run python scripts/backfill_anchors.py --target mssql             # 全量回填 anchors_json
 ```
+
+**肿瘤资格 v2 迁移**: 同一命令会幂等增加
+`javert_audit_runs.eligibility_json NVARCHAR(MAX) NULL`；SQLite 启动时自动增加
+`audit_runs.eligibility_json TEXT NULL`。旧行保持 `NULL`，无需回填。运行模式、RD04/R007
+所有权和回滚见 [`docs/oncology/operations.md`](oncology/operations.md)。
 
 ---
 

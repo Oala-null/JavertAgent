@@ -1,5 +1,5 @@
 {
-  "count": 158,
+  "count": 159,
   "rules": [
     {
       "rule_id": "R003",
@@ -2479,6 +2479,18 @@
       "trigger_keywords": [],
       "trigger_codes": [],
       "question": "申请医保支付的「禁忌症类药品」，用于存在该药说明书疾病禁忌的患者 (用药安全)。"
+    },
+    {
+      "rule_id": "RD04",
+      "yaml_path": "configs/rules/RD04.yaml",
+      "domain": "药品",
+      "violation_type": "超医保限定支付适应症用药",
+      "status": "ready",
+      "priority": "P1",
+      "derived_from_template": "M8",
+      "trigger_keywords": [],
+      "trigger_codes": [],
+      "question": "申请医保支付的肿瘤药 (医院在用且有明确医保限定支付条件)，超出医保药品目录限定支付范围。"
     },
     {
       "rule_id": "RD10",

@@ -495,7 +495,7 @@ uv run javert audit-patient <ID> --priority all --use-router --concurrency 5   #
 - **② `TB_CIS_MEDICAL_DOCUMENT` = P0 必须给** (最小 5 列: 院区/流水/文书流水/文书名称/正文)。`fetch_notes` 产出 `case_notes`, 是全部文书工具 + zadig_agent 链路唯一文书源; 出院小结例外走标准表 `LEAVEHOSPITAL_SUMMARY` (fetch 双源合流, 医院只灌标准表也能跑)。其余 ~89% 文书类 46 表无正文列承载。
 - **③ `TB_HIS_ZY_FEE_DETAIL_EXT` = 性能必要, 18 列** (通用名/规格/原始类别码+名/科室医生8/自付比例/等级/目录类别)。编码列在 FS 原生列 (MXXMBMYB/MXXMBM), EXT 不重复; 医保分解 5 死列 (我方源全零) 已删。fetch_fees 缺表容忍 (sys.tables 探测)。
 - **① `TB_BA_SYSSK_EXT` = 已删除**。消费面实测=0: fetch_ss 走 SYSSK⋈OPRATION_DETAIL; 医保版手术双码走 zadig_agent 请求体。
-- ⚠ `push --recreate` 掉表连索引一起丢 — 重灌后必须重跑 `scripts/sql/create_data_hub_indexes.sql`。
+- ⚠ `push --recreate` 掉表连索引一起丢 — 重灌后必须重跑 `scripts/sql/create_data_hub_indexes.sql`。大表推送偶发 TCP 断 (08S01) — **推完必对账** (记录数用 pandas 数, wc -l 会被 nvarchar(max) 多行文本骗)。
 - ⚠ 配置优先级 **env > configs/llm.yaml > .env 文件** — yaml 里严禁放环境指向 (host/endpoint/库名), 否则压过部署机 .env (243 踩过)。
 - DE 交付: `Scriv/Data_Hub/扩展表建表.sql` + `扩展表_DE对接样例_v2.md`。
 - **环境矩阵 (2026-07-12 定稿)**: ①`sh_yb_platform`@142 = **数据中台, DE 维护, 我们只读** (数据源头; 严禁写入, push 保险栓已物理拦截) ②`TP_data_hub`@142 = **我们的开发库** (流程: 从中台取数/本地 CSV 填进来, 在这开发; 业务表走 `zadig` 库老 workbench) ③`sh_yb_platform`@243 = 产品 (5 病人冻结, hub+业务同库)。本地 `.env`: `JAVERT_HUB_DATABASE=TP_data_hub`。**142 无建库/ALTER DATABASE 权限**。

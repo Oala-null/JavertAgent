@@ -14,6 +14,8 @@
 
 **v0.8 (2026-05-29)**: **药品违规审计上线** — M8 模板 + `drug_audit_lookup` 工具 + 928 通用名监管 KB, 33 条规则 (R007 限适应症 + RD01-37), on-label 误报闸. 详见 `docs/sample_drug_audit.md`.
 
+**肿瘤医保资格 v2（62 已验收启用）**: M8 当前生产入口收敛为 `RD04/R007/RD01/RD02/RD03` 五条 bulk；`RD04` 已 ready 并在 `on` 模式独占肿瘤医保限定臂；`RD10-RD37` 保持 abandoned。详见 `docs/oncology/operations.md`.
+
 **v0.7 (2026-05-27)**: **外部医院数据接入** — ETL (`scripts/etl_import.py`) + 列名映射 + `【段落】` 自动拆分, 首次跑外部院真数据验证不依赖 shi 数据结构. 详见 `docs/数据接入清单.md`.
 
 **v0.6 (2026-05-21)**: 🟢 **审核工作台上线** — 实装专家审核 web 工作台 (FastAPI + Jinja2 + SSE), 部署到 192.168.31.62:8090. 注册关闭走运维分配账号 + 自助改密. 106 病人 / 5016 audit_runs / 529 V 待审. 详见 [审核工作台](#审核工作台-v06).
@@ -39,7 +41,7 @@
 
 dry-run → 看 trace → 改 yaml → 再 dry-run; 成熟后 `mark ready` / `validated`, 不成熟 `mark abandoned`.
 
-## 八大模板 (M1-M7 骗保类覆盖 109 Y 中 101 条 92.7% + M8 药品类 33 条)
+## 八大模板 (M1-M7 骗保类覆盖 109 Y 中 101 条 92.7% + M8 药品类 bulk)
 
 | 模板 | 模式 | ready | 原型 | 设计文档 |
 |------|------|-------|------|---------|
@@ -50,13 +52,13 @@ dry-run → 看 trace → 改 yaml → 再 dry-run; 成熟后 `mark ready` / `va
 | **M5 虚构服务** | fee 见 X / 文书无 X | 8 | R203 | `docs/templates/模板5_虚构医药服务.md` |
 | **M6 过度诊疗** | treatment + 排除指征 / 限制超 | 9 | R310 | `docs/templates/模板6_过度诊疗.md` |
 | **M7 项目身份串换** | 做 X (低价) 收 Y (高价) | 20 | R083 | `docs/templates/模板7_串换收费.md` |
-| **M8 药品适应症/限定** | 药品 fee 命中 KB + 诊断∉依据 (禁忌 反向) | 33 | R007 + RD01-37 | (`scripts/init_drug_rules.py` 渲染) |
-| **合计** | | **144** | | |
+| **M8 药品适应症/限定** | 药品 fee 命中 KB + 诊断∉依据 (禁忌 反向) | 5 | RD04 + R007 + RD01-03 | (`scripts/init_drug_rules.py` 维护通用 bulk；RD04 独立维护) |
+| **合计 production-ready** | | **116** | | |
 
 每份模板文档含: master prompt 骨架 + 一条 reference yaml + 所有规则的 personalized 字段填充表.
 
 Y 装载: **101/109 = 92.7% ready** (M1-M7 骗保类; 剩 8 条等外部数据/工具, 详见 `docs/y_rules_status_v0_4.md`).
-药品类: **M8 33 条** (R007 限适应症 + RD01-03 类型级全覆盖 928 药 + RD10-37 精选 28 高频高危药), v0.8 由 `drug_audit_lookup` + 928 药监管 KB 解锁, 详见 `docs/sample_drug_audit.md`.
+药品类: **M8 当前 5 条 production-ready bulk** (`RD04/R007/RD01-03`)；`RD04` 是结构化肿瘤医保限定入口，`RD10-RD37` 已 abandoned，避免与 bulk 重复裁决。v0.8 历史验收见 `docs/sample_drug_audit.md`，当前所有权与启用流程见 `docs/oncology/operations.md`.
 
 ## 分析产出 (docs/)
 
@@ -67,6 +69,7 @@ Y 装载: **101/109 = 92.7% ready** (M1-M7 骗保类; 剩 8 条等外部数据/�
 | `docs/163规则可行性分析表.csv` | 给医保领域专家做 Y/N 标注 (4 优先级 + 留空 Y/N 列) |
 | `docs/templates/模板{1-7}.md` | 7 大模板的完整设计 + 全 109 条 Y personalization 数据 |
 | `docs/sample_drug_audit.md` | (v0.8) M8 药品类规则两批对照实测 + on-label 误报闸验收 + 抽样 ground-truth |
+| `docs/oncology/operations.md` | 肿瘤医保资格 v2 知识维护、运行验证、RD04/R007 所有权与回滚 |
 | `docs/rule_design_guide.md` | yaml 字段含义与设计 checklist |
 | `docs/y_rules_status_v0_4.md` | **(当前版)** Y 装载现状 92.7% + 4 档质量分类 + 8 条缺口归因 |
 | `docs/y_rules_analysis.md` | (v0.3 旧版) 已被 v0.4 supersede |
@@ -324,6 +327,7 @@ abandoned (任意状态可达, 无需 force)
 | `add-batch-new-50` ✅ (v0.6) | 第二批 50 病人 (J/K + 50-400 段文书) 全 router 跑 8.7 h, 48 ok + 2 部分失败, 累计 106 患者 / 5016 行 / 529 V / 238 I / 3287 C | 验证 + 体量 |
 | `add-external-data-import` ✅ (v0.7) | 外部医院数据接入: ETL (`etl_import.py`) + 列名映射 + `【段落】` 自动拆分 + 合成复合键, 首跑外部院真数据 (szx 5 患者) | 接入层 |
 | `add-drug-audit-rules` ✅ (v0.8) | 药品违规审计: M8 模板 + `drug_audit_lookup` + 928 药监管 KB + 33 条规则 (R007/RD01-37) + on-label 误报闸, R007 红区 E 解锁 | 33 条 M8 |
+| `strengthen-oncology-drug-eligibility` ✅（62 on） | M8 生产入口收敛为 RD04/R007/RD01-03 bulk；RD04 接结构化肿瘤资格并独占肿瘤医保限定臂；RD10-RD37 abandoned | 肿瘤医保限定 v2 |
 | `enhance-workbench-usability` ✅ (v0.9) | 工作台 5 项易用性 + evidence-anchoring: `hit_resolver` 命中项目/锚点 + facet 富卡片 + 费用类别展开 + parallel 原文对照面板 + 评语 hover + `anchors_json` 缓存回填 | 工作台 + 锚点 |
 | `add-cross-patient-stats` (候选, 最高) | 跨患者算每条规则 V 率, ≥50% 提报医院级整改 (利用 100+ 病人 ~5000 裁决基线) | 解锁 R003/R280/R281/R286 + 系统性违规量化 |
 | `add-java-engine-port` Phase 2 (候选) | Python 复现 11 valid=1 Java 规则 + LLM 润色 warn_msg, 独立 Track A 输出 java_violations[] | 补"做得了"覆盖 (不省 GPU 但拓宽监管面) |

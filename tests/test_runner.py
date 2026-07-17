@@ -124,6 +124,57 @@ def test_happy_path_with_tool_then_verdict(cfg, executor):
     assert result.confidence == pytest.approx(0.9)
 
 
+def _make_drug_rule() -> Rule:
+    return Rule(
+        rule_id="RD04",
+        domain="药品",
+        violation_type="超医保限定支付适应症用药",
+        question="肿瘤药超医保限定支付.",
+        example="",
+        drug_rule_type="限适应症",
+    )
+
+
+def test_drug_violation_appends_data_blindspot_notice(cfg, executor):
+    """药品类 V 确定性追加病理/自费提醒 (不依赖 LLM 记性)."""
+    contents = [
+        '<tool_call>{"name": "search_notes", "arguments": {"patient_id": "J66252"}}</tool_call>',
+        '```json\n{"verdict": "VIOLATION", "confidence": 0.9, '
+        '"evidence": [{"source":"note","locator":"诊断","text":"鼻咽癌"}], '
+        '"reasoning": "诊断不在限定内"}\n```',
+    ]
+    runner = Runner(executor=executor, provider=FakeProvider(contents), config=cfg)
+    result = runner.audit(_make_drug_rule(), "J66252")
+    assert result.verdict == "VIOLATION"
+    assert "建议复查病理文书及该项目是否自费" in result.reasoning
+
+
+def test_drug_violation_notice_not_duplicated_when_llm_already_added(cfg, executor):
+    """LLM 已自带提醒 → 不重复追加."""
+    contents = [
+        '<tool_call>{"name": "search_notes", "arguments": {"patient_id": "J66252"}}</tool_call>',
+        '```json\n{"verdict": "VIOLATION", "confidence": 0.9, '
+        '"evidence": [{"source":"note","locator":"诊断","text":"鼻咽癌"}], '
+        '"reasoning": "诊断不在限定内. 建议复查病理文书及该项目是否自费后再定性."}\n```',
+    ]
+    runner = Runner(executor=executor, provider=FakeProvider(contents), config=cfg)
+    result = runner.audit(_make_drug_rule(), "J66252")
+    assert result.reasoning.count("建议复查病理") == 1
+
+
+def test_non_drug_violation_no_notice(cfg, executor):
+    """非药品规则 V 不追加提醒."""
+    contents = [
+        '<tool_call>{"name": "search_notes", "arguments": {"patient_id": "J66252"}}</tool_call>',
+        '```json\n{"verdict": "VIOLATION", "confidence": 0.9, '
+        '"evidence": [{"source":"note","locator":"诊断","text":"x"}], '
+        '"reasoning": "重复收费"}\n```',
+    ]
+    runner = Runner(executor=executor, provider=FakeProvider(contents), config=cfg)
+    result = runner.audit(_make_rule(), "J66252")
+    assert "建议复查病理" not in result.reasoning
+
+
 def test_gate_downgrade_normalizes_confidence(cfg, executor):
     """fix-scan-residuals: gate 降级 (V→I) 时 conf 归一 0.5, 原值进 [gate: ...] 注记.
 

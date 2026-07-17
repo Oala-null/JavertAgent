@@ -10,6 +10,7 @@ llm_enable_thinking: false
 max_tool_calls: 10
 retry_budget: 3                 # LLM 不可达时的重试次数
 tool_result_max_chars: 2000     # 单工具结果喂 LLM 上限 (含必留标记者只截明细段)
+oncology_eligibility_v2: "off"  # off=旧路径; shadow=只比较; on=结构化资格结果生效
 
 # 路径
 # data_dir 由 .env/环境变量提供 (默认 data)

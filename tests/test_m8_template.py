@@ -7,9 +7,12 @@ from pathlib import Path
 
 import pytest
 
+from javert.audit.rule_loader import load_rule
 from javert.templating import load_template, render_template
+from scripts.init_drug_rules import CURATED, CURATED_STATUS
 
 M8_PATH = Path(__file__).resolve().parents[1] / "configs" / "templates" / "M8.yaml"
+RULES_PATH = M8_PATH.parents[1] / "rules"
 
 
 @pytest.fixture(scope="module")
@@ -54,11 +57,12 @@ def test_limited_indication_renders_within_basis_logic(m8):
     assert "病案首页诊断" in out and "note_diagnosis" in out
 
 
-def test_offlabel_and_contraindication_default_tools_exclude_search_notes(m8):
-    rendered = _render(m8, "限适应症")
-    tools = rendered.get("suggested_tools") or []
-    assert "drug_audit_lookup" in tools and "note_diagnosis" in tools
-    assert "search_notes" not in tools
+def test_all_types_include_search_notes_for_selfpay_gate(m8):
+    # med_rst: 自费门 (search_notes 查自费同意书) 对所有 M8 类型通用
+    for rt in ("限适应症", "超说明书", "限二线", "禁忌症"):
+        tools = _render(m8, rt).get("suggested_tools") or []
+        assert "drug_audit_lookup" in tools and "note_diagnosis" in tools
+        assert "search_notes" in tools
 
 
 def test_curated_trigger_keywords_render(m8):
@@ -71,3 +75,10 @@ def test_type_level_empty_trigger_keywords(m8):
     # 类型级: trigger_kw 留空 → trigger_keywords 为空 (router always-on)
     rendered = _render(m8, "禁忌症")
     assert (rendered.get("trigger_keywords") or []) == []
+
+
+def test_curated_rules_remain_abandoned_after_render():
+    """精选规则只供显式单跑，不能被生成器重新加入默认 router。"""
+    assert CURATED_STATUS == "abandoned"
+    for rule_id, *_ in CURATED:
+        assert load_rule(RULES_PATH / f"{rule_id}.yaml").status == CURATED_STATUS

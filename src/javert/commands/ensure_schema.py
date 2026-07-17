@@ -67,11 +67,11 @@ def run_ensure_schema(*, drop_first: bool = False) -> int:
     with engine.connect() as conn:
         rows = conn.execute(
             text(
-                "SELECT name FROM sys.tables WHERE name IN "
+                "SELECT name FROM sys.tables WHERE LOWER(name) IN "
                 "('javert_audit_runs', 'javert_users', 'javert_vio_review', 'javert_audit_logs')"
             )
         ).fetchall()
-        found = {r[0] for r in rows}
+        found = {str(r[0]).lower() for r in rows}
     missing = [t for t in expected if t not in found]
     if missing:
         click.echo(f"warn: 表缺失 {missing}", err=True)
