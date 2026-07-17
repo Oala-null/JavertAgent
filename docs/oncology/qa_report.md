@@ -120,31 +120,43 @@ dirty-tree 指纹，避免输出自引用。
 净差异 squash 到原项目分支，不合并或推送 integration 分支，因此这些中间 commit
 不会成为原项目分支祖先，也不会随本次交付传播。
 
-## 全量非慢测试
+## 完整测试套件
 
-原始全量：
+本 change 验收时最初复现的历史基线为：
 
 ```text
 803 collected
 747 passed, 12 skipped, 14 failed, 30 errors
 ```
 
-14 个 failure 和 30 个 error 与修复前基线完全同形，本 change 没有新增失败：
+随后只清理测试契约与 fixture，不放宽生产安全行为：
 
-- `test_backfill_anchors.py`：1 个既有 review-note 文案断言；
-- `test_config.py`：2 个旧默认值断言仍期待 `.62 / TP_data_hub`；
-- `test_hub_source_ba.py`：2 个既有 mock 缺 `SYXH`；
-- `test_onboarding_routes.py`：缺 `data/szx/random_5pts_fee.csv`；
-- `test_patient_overview.py`、`test_workbench_routes.py`：缺本地病例/费用/首页快照；
-- `test_routes_2c.py`、`test_run_batch_integrity.py`、`test_web_api.py`、
-  `test_web_app.py`：测试未注入非默认 session secret，触发既有生产安全 fail-fast。
+- 默认值断言对齐 localhost 与 `sh_yb_platform`，并隔离项目 `.env`，确保测试的是真默认值；
+- Web/API fixture 显式注入测试 session secret、临时 SQLite 和合成患者，不绕过
+  `create_app()` 的生产 fail-fast；
+- backfill、patient overview、workbench raw 和 onboarding 删除测试改用最小合成数据，
+  不再依赖本机病例、费用、首页或 szx 快照；
+- hub BA SQL stub 改为精确分发并断言 SELECT 列契约；
+- SSE 断言纳入向后兼容的可空结构化资格字段；
+- 新增 4 个 data-hub 写入安全防回归测试，锁定显式数据库参数、自有库白名单和索引
+  SQL 在首条 DDL 前的双重数据库校验。
 
-排除上述 10 个既有环境/fixture 债务文件后的全量非慢结果：
+当前完整命令：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src \
+  .venv/bin/pytest -p no:cacheprovider -q --tb=short -ra
+```
+
+结果：
 
 ```text
-699 collected
-690 passed, 9 skipped
+807 collected
+795 passed, 12 skipped, 0 failed, 0 errors
 ```
+
+12 个 skip 均为显式条件：10 个缺可选 szx fixture，1 个缺本机真 CSV 快照，1 个
+runner `for-else` 分支在当前结构下不可达。该测试债务闭环子步骤没有修改生产代码。
 
 ## 62 生产激活与三例复跑
 
@@ -159,8 +171,8 @@ SQL/Hub 连接值无回显固化进 mode 0600 的 `.env` 并完成可回滚备�
 请求批 `med_rst1.2` 的三条 RD04 均成功运行并在 142 写入非空结构化结果，去标识顺序下
 旧→新裁决为 `C→I / V→I / C→I`。复核第三条时发现一个真实抽取缺陷：鉴别诊断中描述
 其他疾病的“治疗有效”模板句被误当成当前肿瘤反证，同时“已行多次…化疗”未命中既往
-治疗模式。修复后新增去标识回归，排除既有环境债务的全量门禁提升为上面的
-`690 passed, 9 skipped`。
+治疗模式。修复后新增去标识回归；当时排除既有环境债务的门禁结果为
+`690 passed, 9 skipped`，随后已完成全部失败/错误的 fixture 闭环，当前完整结果见上节。
 
 补充批 `med_rst1.2-fix1` 复跑同三条：第一条因结构化结果字节等价触发确定性 run-id
 去重，继续复用请求批结果；第二、三条产生新归档行。最终有效结果为：

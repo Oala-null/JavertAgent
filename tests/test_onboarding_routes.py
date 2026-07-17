@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
 import pytest
@@ -148,23 +149,35 @@ def test_profile_endpoint_rejects_traversal(client_mssql, monkeypatch):
     assert "越权" in r.json()["error"]
 
 
-def test_delete_upload_removes_file_and_blocks_data_dir(monkeypatch):
+def test_delete_upload_removes_file_and_blocks_data_dir(tmp_path, monkeypatch):
     import javert.web.middleware as mw
+    import javert.web.api.routes_onboarding as ro
+
     monkeypatch.setattr(mw, "_path_protected", lambda p: False)
+    project_root = tmp_path / "project"
+    upload_dir = project_root / "data_import/_uploads"
+    protected = project_root / "data/router/violation_dict.json"
+    protected.parent.mkdir(parents=True)
+    protected.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(ro, "PROJECT_ROOT", project_root)
+    monkeypatch.setattr(ro, "UPLOAD_DIR", upload_dir)
+
     c = TestClient(create_app(with_mssql=True))
-    from javert.web.api.routes_onboarding import PROJECT_ROOT
     # 上传 → 删除 → 文件消失
-    with open(SZX_DIR / "random_5pts_fee.csv", "rb") as f:
-        up = c.post("/api/onboarding/upload", files={"file": ("del_t.csv", f, "text/csv")}).json()
-    assert (PROJECT_ROOT / up["file"]).exists()
+    source = io.BytesIO(b"Patient_ID,medins_list_name,cnt,pric\nTEST-P001,item,1,10\n")
+    up = c.post(
+        "/api/onboarding/upload",
+        files={"file": ("del_t.csv", source, "text/csv")},
+    ).json()
+    assert (project_root / up["file"]).exists()
     r = c.post("/api/onboarding/delete-upload", json={"file": up["file"]})
     assert r.json()["ok"] is True
-    assert not (PROJECT_ROOT / up["file"]).exists()
+    assert not (project_root / up["file"]).exists()
     # 不能删 _uploads 之外的既有数据
     bad = c.post("/api/onboarding/delete-upload",
-                 json={"file": "data/szx/random_5pts_fee.csv"})
+                 json={"file": "data/router/violation_dict.json"})
     assert bad.status_code == 400
-    assert (PROJECT_ROOT / "data/szx/random_5pts_fee.csv").exists()
+    assert protected.exists()
 
 
 def test_upload_path_replaces_same_name(tmp_path, monkeypatch):

@@ -34,6 +34,12 @@ _SPEC.loader.exec_module(backfill)
 _KB = {
     "布地奈德肠溶胶囊": [{"rule_type": "限适应症", "basis": "限IgAN成人。"}],
 }
+_KB_CODED = {
+    "布地奈德肠溶胶囊": {
+        "entries": _KB["布地奈德肠溶胶囊"],
+        "codes": ["XH02ABB"],
+    },
+}
 _FEE_DF = pd.DataFrame(
     [["(集)吸入用布地奈德混悬液", "XR03BAB", "0731"]],
     columns=["medins_list_name", "med_list_codg", "medins_list_codg"],
@@ -42,6 +48,12 @@ _EV = json.dumps(
     [{"source": "drug_audit_lookup", "locator": "布地奈德肠溶胶囊", "text": "x"}],
     ensure_ascii=False,
 )
+
+
+class _SyntheticFeeLoader:
+    def get_fees(self, patient_id: str) -> pd.DataFrame:
+        assert patient_id == "TEST-P001"
+        return _FEE_DF.copy()
 
 
 # =========================================================
@@ -90,15 +102,14 @@ def test_backfill_sqlite_end_to_end(tmp_path):
     )
     con.execute(
         "INSERT INTO audit_runs VALUES (?,?,?,?,?,?)",
-        ("aud_x1", "R007", "J90508", "VIOLATION", _EV, "[]"),
+        ("aud_x1", "R007", "TEST-P001", "VIOLATION", _EV, "[]"),
     )
     con.commit()
     con.close()
 
-    cfg = get_config()
-    loader = CsvLoader(cfg.notes_path, cfg.fees_path)
-    meta = load_rule_meta()
-    kb = load_kb_drugs()
+    loader = _SyntheticFeeLoader()
+    meta = {"R007": {"drug_rule_type": "限适应症"}}
+    kb = _KB_CODED
 
     n1 = backfill.backfill_sqlite(db, loader, meta, kb)
     assert n1 == 1
@@ -112,7 +123,7 @@ def test_backfill_sqlite_end_to_end(tmp_path):
     assert aj1  # anchors_json 已回填
     hits = hits_from_json(aj1)
     assert hits and hits[0].source == "drug"
-    # fix-drug-code-match: J90508 实际用「吸入用布地奈德混悬液」(R03 呼吸, 码 XR03BAB…),
+    # fix-drug-code-match: 合成费用为「吸入用布地奈德混悬液」(R03 呼吸, 码 XR03BAB…),
     # 与 KB「布地奈德肠溶胶囊」(限 IgAN, H02 消化, 码 XH02ABB…) 码不同 → 码精确不命中.
     # 码全不中 → 名兜底但编码留空 + needs_review, 不臆造相似药码 (anti-串味, 修复旧子串误配).
     assert all(h.code_nat == "" for h in hits)

@@ -41,6 +41,7 @@ def client(monkeypatch, tmp_path):
             monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("JAVERT_SQL_ENABLED", "false")
     monkeypatch.setenv("JAVERT_AUDIT_DB", str(tmp_path / "audit.sqlite"))
+    monkeypatch.setenv("JAVERT_SESSION_SECRET", "pytest-session-secret-not-for-prod")
 
     from javert.config import reset_config_cache
     reset_config_cache()
@@ -60,7 +61,7 @@ def client(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
     from javert.web.api.main import create_app
 
-    app = create_app()
+    app = create_app(with_mssql=True)
     with TestClient(app) as c:
         yield c
 

@@ -14,10 +14,11 @@ from javert.config import JavertConfig, load_config, reset_config_cache
 
 @pytest.fixture(autouse=True)
 def _clear_env_and_cache(monkeypatch):
-    """清掉 JAVERT_* 环境变量与 lru_cache."""
+    """清掉 JAVERT_*、项目 .env 与 lru_cache，确保真测字段默认值."""
     for key in list(os.environ):
         if key.startswith("JAVERT_"):
             monkeypatch.delenv(key, raising=False)
+    monkeypatch.setitem(JavertConfig.model_config, "env_file", None)
     reset_config_cache()
     yield
     reset_config_cache()
@@ -54,7 +55,7 @@ def test_env_overrides_file(tmp_path: Path, monkeypatch):
 
 def test_missing_file_uses_defaults(tmp_path: Path):
     cfg = load_config(tmp_path / "does_not_exist.yaml")
-    assert cfg.llm_endpoint == "http://192.168.31.62:30000/v1"
+    assert cfg.llm_endpoint == "http://127.0.0.1:30000/v1"
     assert cfg.max_tool_calls == 10
 
 
@@ -77,7 +78,7 @@ def test_hub_raw_defaults():
     """add-workbench-sql-raw-source: 开关默认关 = 纯 CSV 行为不变."""
     cfg = JavertConfig()
     assert cfg.hub_raw_enabled is False
-    assert cfg.hub_database == "TP_data_hub"
+    assert cfg.hub_database == "sh_yb_platform"
 
 
 def test_hub_raw_env_override(monkeypatch):

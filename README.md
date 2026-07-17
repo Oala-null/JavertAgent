@@ -353,8 +353,9 @@ abandoned (任意状态可达, 无需 force)
 uv run pytest tests/ -v
 ```
 
-完整测试中仍有既有 fixture/环境债务；不要把排除债务后的门禁写成“全量全绿”。
-当前精确 collected/pass/skip/fail/error 与排除清单见 `docs/oncology/qa_report.md`。
+2026-07-17 当前完整套件为 `807 collected / 795 passed / 12 skipped /
+0 failed / 0 errors`。12 个 skip 均有显式原因；精确命令、历史债务闭环和跳过清单见
+`docs/oncology/qa_report.md`。
 
 ## 与 zadig_agent 的关系
 

@@ -36,14 +36,24 @@ def _stub_q(tables: dict[str, pd.DataFrame]):
             return tables.get("jbk", _df(["YLJGYQDM", "SYXH", "ZYZD"], []))
         if "FROM TB_BA_SYZDK" in s:
             return tables.get("zdk", _df(["YLJGYQDM", "SYXH", "ZDXH", "ZDDM", "ZDMC"], []))
-        if "FROM TB_OPRATION_DETAIL" in s:
-            return tables.get("op", _df(
-                ["YLJGYQDM", "JZLSH", "SSCZMC", "SSCZBM", "ZCBZ", "SSKSSJ",
-                 "SSJB", "MZFS", "SXYHRYXM", "MZYHRYXM"], []))
-        if "FROM TB_BA_SYSSK" in s:
+        # BA 手术查询内嵌 OPRATION_DETAIL 时间回退子查询，必须先精确分发 BA。
+        if "FROM TB_BA_SYSSK s" in s:
+            assert (
+                "SELECT s.YLJGYQDM, s.SYXH, s.SSXH, s.SSRQ, s.SSDM, s.SSMC, "
+                "s.SSJB, s.MZFS, s.SSYS, s.MZYS, s.SFZYSS, o.SSKSSJ "
+                "FROM TB_BA_SYSSK s"
+            ) in s
             return tables.get("syssk", _df(
                 ["YLJGYQDM", "SYXH", "SSXH", "SSRQ", "SSDM", "SSMC", "SSJB",
                  "MZFS", "SSYS", "MZYS", "SFZYSS", "SSKSSJ"], []))
+        if "FROM TB_OPRATION_DETAIL WHERE" in s:
+            assert (
+                "SELECT YLJGYQDM, JZLSH, SSCZMC, SSCZBM, ZCBZ, SSKSSJ, SSJB, "
+                "MZFS, SXYHRYXM, MZYHRYXM FROM TB_OPRATION_DETAIL WHERE"
+            ) in s
+            return tables.get("op", _df(
+                ["YLJGYQDM", "JZLSH", "SSCZMC", "SSCZBM", "ZCBZ", "SSKSSJ",
+                 "SSJB", "MZFS", "SXYHRYXM", "MZYHRYXM"], []))
         raise AssertionError(f"stub 未覆盖的 SQL: {s[:120]}")
 
     return q

@@ -122,7 +122,7 @@ def test_normal_path_result_payload_unchanged(batch_client, monkeypatch):
     events = _parse_sse(r.text)
     results = [d for e, d in events if e == "result"]
     assert len(results) == 1
-    # 逐字回归: 与本 change 之前的 _result_payload 字段完全一致 (不多不少)
+    # 当前 SSE 契约：旧字段不变，结构化肿瘤资格字段以可空值向后兼容。
     expected = {
         "run_id": "aud_abcdef123456",
         "rule_id": "R191",
@@ -133,10 +133,12 @@ def test_normal_path_result_payload_unchanged(batch_client, monkeypatch):
         "evidence": [{"source": "note", "locator": "入院诊断",
                       "text": "测试", "anchor": None}],
         "tool_calls": [{"tool_name": "note_diagnosis", "arguments": {},
-                        "result": "", "duration_ms": 0, "cached": False}],
+                        "result": "", "duration_ms": 0, "cached": False,
+                        "structured_output": None}],
         "duration_ms": 10,
         "model": "fake-qwen",
         "started_at": "2026-07-07T00:00:00+00:00",
+        "eligibility_evaluation": None,
     }
     assert results[0] == expected
     done = [d for e, d in events if e == "done"][0]
