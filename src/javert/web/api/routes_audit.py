@@ -556,6 +556,25 @@ def submit_2c(items: list[SubmitItem]):
     return {"accepted": accepted, "rejected": rejected}
 
 
+def _latest_runs_for_patient(syxh: str) -> list[str]:
+    """sqlite 兜底: 该患者每条规则的最新 run_id (重启后任务表丢失时供 results 回放)."""
+    cfg = get_config()
+    if not cfg.audit_db_path.exists():
+        return []
+    try:
+        with sqlite3.connect(cfg.audit_db_path) as conn:
+            rows = conn.execute(
+                "SELECT run_id FROM audit_runs a WHERE patient_id = ? AND started_at = ("
+                "  SELECT MAX(started_at) FROM audit_runs b"
+                "  WHERE b.patient_id = a.patient_id AND b.rule_id = a.rule_id)",
+                (syxh,),
+            ).fetchall()
+        return [r[0] for r in rows]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("2c sqlite 历史回放失败 %s: %s", syxh, exc)
+        return []
+
+
 @router.get("/results/{syxh}")
 def results_2c(syxh: str):
     """2C 查结果: unknown / running(增量) / done + summary + results[]."""
@@ -567,6 +586,17 @@ def results_2c(syxh: str):
         run_ids = list(task["run_ids"]) if task else []
         data_dir = task.get("data_dir") if task else None
         error = task.get("error", "") if task else ""
+
+    if task is None:
+        # 服务重启后任务表清空, 但裁决本体在 sqlite — 回退查历史 (每规则最新一条),
+        # 有则按 done 返回, 2C 不必因我方重启而重跑
+        run_ids = _latest_runs_for_patient(syxh)
+        if run_ids:
+            status = "done"
+            total = len(run_ids)
+            hub_dir = get_config().resolve(_2C_HUB_CACHE) / syxh
+            if hub_dir.exists():
+                data_dir = str(hub_dir)
 
     results: list[dict] = []
     if run_ids:

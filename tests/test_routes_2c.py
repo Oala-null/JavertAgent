@@ -213,3 +213,10 @@ def test_results_done_with_runs(client):
     assert item["behavior_name"] == "重复收费"
     # reasoning 对外自然语言化: 术语全部映射, R 代号/工具名/英文判定词不外泄
     assert item["reasoning"] == "本规则 经 费用明细检索 核实, 应判 违规"
+
+    # 重启恢复: 任务表清空后, results 回放 sqlite 历史 (每规则最新) 按 done 返回
+    routes_audit._2c_tasks.clear()
+    body2 = client.get("/api/audit/results/J66252").json()
+    assert body2["status"] == "done"
+    assert body2["summary"]["total"] == 1
+    assert body2["results"][0]["run_id"] == "aud_TESTtest0001"

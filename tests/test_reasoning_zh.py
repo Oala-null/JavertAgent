@@ -55,6 +55,20 @@ def test_contextual_vic_letters_and_run_ids():
     assert "维生素C" in keep and "CT" in keep
 
 
+def test_cjk_adjacent_and_leaked_terms():
+    """中英相邻 (\\b 失效场景) + 62 实测漏网: sy_ 文件名/专家代号/版本号/替换残渣."""
+    s = humanize_reasoning(
+        "影像报告单（sy_patient_examination）缺失（ETL未数字化）, "
+        "根据规则 R155 的 v1.5 硬规则及专家共识（wangxin 标准）, 按R191规则处理"
+    )
+    assert "sy_patient_examination" not in s and "检查报告库" in s
+    assert "ETL" not in s and "数据接入" in s
+    assert "wangxin" not in s and "专家" in s
+    assert "v1.5" not in s
+    assert "R155" not in s and "R191" not in s
+    assert "规则 本规则" not in s  # 残渣 "根据规则 R155" → "根据本规则"
+
+
 def test_precheck_wording_humanized():
     s = humanize_reasoning("预检: 未见 A 类 (主项) 费用命中, 规则不适用 → CLEAN")
     assert "预检" not in s
