@@ -125,8 +125,8 @@ dirty-tree 指纹，避免输出自引用。
 原始全量：
 
 ```text
-801 collected
-745 passed, 12 skipped, 14 failed, 30 errors
+803 collected
+747 passed, 12 skipped, 14 failed, 30 errors
 ```
 
 14 个 failure 和 30 个 error 与修复前基线完全同形，本 change 没有新增失败：
@@ -142,9 +142,38 @@ dirty-tree 指纹，避免输出自引用。
 排除上述 10 个既有环境/fixture 债务文件后的全量非慢结果：
 
 ```text
-697 collected
-688 passed, 9 skipped
+699 collected
+690 passed, 9 skipped
 ```
+
+## 62 生产激活与三例复跑
+
+2026-07-17 已把运行时 commit `260a4d2` 部署到 62。覆盖源码前先将旧版实际生效的
+SQL/Hub 连接值无回显固化进 mode 0600 的 `.env` 并完成可回滚备份；部署后验证：
+
+- `JAVERT_ONCOLOGY_ELIGIBILITY_V2=on` 由 systemd 新进程实际读取，非仅检查配置文件；
+- RD04 YAML 与 router index 均为 `ready`；
+- 142 `javert_audit_runs.eligibility_json` 幂等迁移完成；
+- 远端专项为 `20 passed`，工作台登录页 HTTP 200。
+
+请求批 `med_rst1.2` 的三条 RD04 均成功运行并在 142 写入非空结构化结果，去标识顺序下
+旧→新裁决为 `C→I / V→I / C→I`。复核第三条时发现一个真实抽取缺陷：鉴别诊断中描述
+其他疾病的“治疗有效”模板句被误当成当前肿瘤反证，同时“已行多次…化疗”未命中既往
+治疗模式。修复后新增去标识回归，排除既有环境债务的全量门禁提升为上面的
+`690 passed, 9 skipped`。
+
+补充批 `med_rst1.2-fix1` 复跑同三条：第一条因结构化结果字节等价触发确定性 run-id
+去重，继续复用请求批结果；第二、三条产生新归档行。最终有效结果为：
+
+| 去标识目标 | 旧裁决 | 最终裁决 | 资格状态 | 说明 |
+|---|---:|---:|---|---|
+| target_1 | CLEAN | INCONCLUSIVE | DOCUMENTATION_GAP | 服务日期没有生效且 approved 的条件树，fail-closed 人工复核 |
+| target_2 | VIOLATION | CLEAN | DOCUMENTATION_GAP | 复发/难治臂仅缺移植适合性评估；仍保留 `CANCER_CONTEXT_CONFLICT` 数据质量标志 |
+| target_3 | CLEAN | CLEAN | DOCUMENTATION_GAP | 既往多次化疗与疾病进展被正确识别，仅缺移植适合性评估 |
+
+补充批结束后再次确认 62 服务 active、登录页 HTTP 200、进程实读 feature flag 为 `on`。
+运行日志仅以 target 编号存放在 0700 私有目录，未写入 Git；本文不记录患者号、run_id、
+推理原文或证据原文。
 
 ## 复现命令
 

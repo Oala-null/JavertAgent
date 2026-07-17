@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-- 代码默认仍为 `JAVERT_ONCOLOGY_ELIGIBILITY_V2=off`，用于新环境安全落地和一键回滚；62 生产发布值为 `on`，必须在部署机受控 `.env` 中核对。
+- 代码默认仍为 `JAVERT_ONCOLOGY_ELIGIBILITY_V2=off`，用于新环境安全落地和一键回滚；62 已于 2026-07-17 部署运行时 commit `260a4d2`，生产值为 `on`，并已从 systemd 新进程环境实读验证。
 - `RD04` 已于 2026-07-17 经 shadow/golden 验收并获明确生产授权后转为 `ready`，进入默认审计集。
 - `RD04/R007/RD01/RD02/RD03` 是生产 bulk 入口；`RD10-RD37` 保持 `abandoned`，仅可显式单条复核。
 - `on` 模式下，`RD04` 独占 `oncology=true AND source_type=insurance`；`R007` 只保留非肿瘤限适应症候选。`off/shadow` 不改变 R007 旧候选集合。
