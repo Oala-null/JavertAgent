@@ -28,6 +28,7 @@ from pydantic import BaseModel
 from javert.audit.rule_loader import load_all, load_rule
 from javert.audit.runner import Runner
 from javert.config import get_config
+from javert.data.csv_loader import CsvLoader
 from javert.routing import RuleRouter, build_patient_record_for_router, default_shi_zd_path
 from javert.store.audit_store import SqliteStore
 from javert.store.result_persister import persist_one
@@ -369,14 +370,71 @@ class SubmitItem(BaseModel):
     YLZZJGDM: str = ""
 
 
-def _2c_run_patient(syxh: str) -> None:
-    """单患者全流程: ready 全集 → router 预筛 → 规则并发 5 跑 LLM → 逐条落库."""
+# ─── 142 数据中台兜底 (2C 提交真实患者, 本地 CSV 查无 → hub 取数入审) ───
+_2C_HUB_CACHE = "output/hub_cache_2c"  # 每患者一目录, 每次提交重取保新鲜
+
+
+def _hub_probe(syxh: str) -> bool:
+    """中台是否有该患者费用数据 (submit 受理判据). 连接失败向上抛, 调用方给诚实 reason."""
+    from javert.data import hub_source as hs
     cfg = get_config()
-    loader = _get_loader()
+    cn = hs.connect(cfg, timeout=10)
+    try:
+        yq2org = hs.fetch_hospital_map(cn)
+        return len(hs.fetch_fees(cn, [syxh], yq2org)) > 0
+    finally:
+        cn.close()
+
+
+def _hub_fetch_patient(syxh: str, out) -> None:
+    """中台 → out/ 6 CSV (镜像 scripts/etl_from_data_hub.py 的单患者切片)."""
+    from javert.data import hub_source as hs
+    cfg = get_config()
+    out.mkdir(parents=True, exist_ok=True)
+    cn = hs.connect(cfg)
+    try:
+        yq2org = hs.fetch_hospital_map(cn)
+        kw = {"index": False, "encoding": "utf-8-sig"}
+        hs.fetch_fees(cn, [syxh], yq2org).to_csv(out / "shi_fee.csv", **kw)
+        hs.fetch_notes(cn, [syxh]).to_csv(out / "case_notes.csv", **kw)
+        hs.fetch_zd(cn, [syxh], yq2org).to_csv(out / "shi_zd.csv", **kw)
+        hs.fetch_ss(cn, [syxh], yq2org).to_csv(out / "shi_ss.csv", **kw)
+        hs.fetch_labs(cn, [syxh]).to_csv(out / "lab_results.csv", **kw)
+        hs.fetch_exams(cn, [syxh]).to_csv(out / "examinations.csv", **kw)
+    finally:
+        cn.close()
+
+
+def _hub_cfg_for(cfg, data_dir) -> Any:
+    """cfg 副本切到 hub 取数目录 — Runner/工具/临床闸整链路跟随 (文件名=取数桥产出)."""
+    return cfg.model_copy(update={
+        "data_dir": str(data_dir),
+        "zd_file": "shi_zd.csv",
+        "ss_file": "shi_ss.csv",
+        "labs_file": "lab_results.csv",
+        "examinations_file": "examinations.csv",
+    })
+
+
+def _2c_run_patient(syxh: str) -> None:
+    """单患者全流程: (hub 患者先取数) → ready 全集 → router 预筛 → 规则并发 5 → 逐条落库."""
+    cfg = get_config()
+    with _2c_lock:
+        source = _2c_tasks[syxh].get("source", "local")
+    if source == "hub":
+        hub_dir = cfg.resolve(_2C_HUB_CACHE) / syxh
+        _hub_fetch_patient(syxh, hub_dir)
+        cfg = _hub_cfg_for(cfg, hub_dir)
+        loader = CsvLoader(cfg.notes_path, cfg.fees_path)
+        zd_path = cfg.zd_path
+        with _2c_lock:
+            _2c_tasks[syxh]["data_dir"] = str(hub_dir)
+    else:
+        loader = _get_loader()
+        zd_path = default_shi_zd_path()
     ready = [r for r in load_all(cfg.rules_path).values() if r.status == "ready"]
 
     rule_router = RuleRouter.from_defaults(enabled_priorities=("P0", "P1", "P2", "P3"))
-    zd_path = default_shi_zd_path()
     record = build_patient_record_for_router(
         syxh, loader, shi_zd_path=zd_path if zd_path.exists() else None,
     )
@@ -425,8 +483,11 @@ def _2c_worker_loop() -> None:
         syxh = _2c_queue.get()
         try:
             _2c_run_patient(syxh)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             logger.exception("2c audit patient failed: %s", syxh)
+            with _2c_lock:
+                if syxh in _2c_tasks:
+                    _2c_tasks[syxh]["error"] = f"审计中断: {exc.__class__.__name__}"
         finally:
             with _2c_lock:
                 if syxh in _2c_tasks:
@@ -457,24 +518,35 @@ def submit_2c(items: list[SubmitItem]):
             has_data = len(loader.get_notes(syxh)) > 0 or len(loader.get_fees(syxh)) > 0
         except Exception:  # noqa: BLE001
             has_data = False
+        source = "local"
         if not has_data:
-            rejected.append({"SYXH": syxh, "reason": "查无此患者数据"})
-            continue
+            # 本地 CSV 查无 → 142 数据中台兜底 (真实院内患者数据源头在中台)
+            try:
+                if _hub_probe(syxh):
+                    source = "hub"
+                else:
+                    rejected.append({"SYXH": syxh, "reason": "本地与数据中台均查无此患者"})
+                    continue
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("2c hub probe 失败 %s: %s", syxh, exc)
+                rejected.append({"SYXH": syxh, "reason": "本地查无, 数据中台连接失败"})
+                continue
         with _2c_lock:
             existing = _2c_tasks.get(syxh)
             if existing is not None and existing["status"] == "running":
-                accepted.append({"SYXH": syxh})  # 已在跑, 幂等受理
-                continue
+                accepted.append({"SYXH": syxh, "source": existing.get("source", "local")})
+                continue  # 已在跑, 幂等受理
             _2c_tasks[syxh] = {
                 "YLZZJGDM": item.YLZZJGDM,
                 "status": "running",
+                "source": source,
                 "total": None,
                 "run_ids": [],
                 "failed": [],
                 "submitted_at": datetime.now(timezone.utc).isoformat(),
             }
         _2c_queue.put(syxh)
-        accepted.append({"SYXH": syxh})
+        accepted.append({"SYXH": syxh, "source": source})
     if accepted:
         _2c_ensure_worker()
     return {"accepted": accepted, "rejected": rejected}
@@ -489,13 +561,21 @@ def results_2c(syxh: str):
         ylzzjgdm = task["YLZZJGDM"] if task else ""
         total = task["total"] if task else None
         run_ids = list(task["run_ids"]) if task else []
+        data_dir = task.get("data_dir") if task else None
+        error = task.get("error", "") if task else ""
 
     results: list[dict] = []
     if run_ids:
         metas = load_rule_meta()
         cfg = get_config()
         try:
-            fee_df = _get_loader().get_fees(syxh)
+            if data_dir:  # hub 患者: fee 行在取数目录, 不在全局 CSV
+                from pathlib import Path as _P
+                fee_df = CsvLoader(
+                    _P(data_dir) / "case_notes.csv", _P(data_dir) / "shi_fee.csv"
+                ).get_fees(syxh)
+            else:
+                fee_df = _get_loader().get_fees(syxh)
         except Exception:  # noqa: BLE001
             fee_df = None
         store = SqliteStore(cfg.audit_db_path)
@@ -568,7 +648,7 @@ def results_2c(syxh: str):
             store.close()
     results.sort(key=lambda x: x["rule_id"])
 
-    return {
+    out: dict[str, Any] = {
         "SYXH": syxh,
         "YLZZJGDM": ylzzjgdm,
         "status": status,
@@ -580,6 +660,9 @@ def results_2c(syxh: str):
         },
         "results": results,
     }
+    if error:
+        out["error"] = error
+    return out
 
 
 @router.get("/runs/{run_id}", response_model=AuditRunDetail)

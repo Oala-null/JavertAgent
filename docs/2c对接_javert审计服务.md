@@ -30,12 +30,16 @@
 
 ```json
 {
-  "accepted": [ { "SYXH": "J30860" }, { "SYXH": "J30933" } ],
-  "rejected": [ { "SYXH": "J99999", "reason": "查无此患者数据" } ]
+  "accepted": [ { "SYXH": "J30860", "source": "local" }, { "SYXH": "211449756", "source": "hub" } ],
+  "rejected": [ { "SYXH": "J99999", "reason": "本地与数据中台均查无此患者" } ]
 }
 ```
 
-rejected 的不跑; accepted 的进后台队列, 去接口 2 轮询。
+**⚠ 202 ≠ 全部受理**: 必须检查 `rejected` 数组, 被驳回的患者不要轮询 (results 永远 unknown)。
+
+**数据源自动兜底**: 本地无数据的患者会自动查 142 数据中台 (`source: "hub"`),
+有则实时取数入审 — hub 患者首轮结果比本地患者**多等约 1~2 分钟** (取数耗时)。
+两边都查无才 rejected。
 
 ## 接口 2: 查结果
 
@@ -81,7 +85,8 @@ rejected 的不跑; accepted 的进后台队列, 去接口 2 轮询。
 
 | 字段 | 说明 |
 |------|------|
-| status | `unknown`(没提交过) / `running`(审计中, results 为已完成部分) / `done`(全部完成) |
+| status | `unknown`(没提交过/被驳回) / `running`(审计中, results 为已完成部分) / `done`(全部完成) |
+| error | (可选, 仅异常时出现) 审计中断的简述, 如中台取数失败; 正常流程无此字段 |
 | summary | 三档裁决计数 |
 | results[].verdict | **`VIOLATION`(违规) / `INCONCLUSIVE`(待人工复核) / `CLEAN`(合规)** |
 | results[].behavior_name | **行为认定名称** (监管规则框架总表口径, 如"重复收费"/"超范围支付"), 前端展示用这个, 可不显示 rule_id |

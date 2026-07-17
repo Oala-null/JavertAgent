@@ -54,6 +54,7 @@ def client(monkeypatch, tmp_path):
     from javert.web.api import routes_audit
     monkeypatch.setattr(routes_audit, "_get_loader", lambda: _FakeLoader())
     monkeypatch.setattr(routes_audit, "_2c_run_patient", lambda syxh: None)
+    monkeypatch.setattr(routes_audit, "_hub_probe", lambda syxh: False)  # 默认中台也查无
     routes_audit._2c_tasks.clear()
 
     from fastapi.testclient import TestClient
@@ -96,9 +97,9 @@ def test_submit_accept_and_reject(client):
     ])
     assert resp.status_code == 202
     body = resp.json()
-    assert body["accepted"] == [{"SYXH": "J66252"}]
+    assert body["accepted"] == [{"SYXH": "J66252", "source": "local"}]
     assert {r["SYXH"]: r["reason"] for r in body["rejected"]} == {
-        "J99999": "查无此患者数据",
+        "J99999": "本地与数据中台均查无此患者",
         "": "SYXH 为空",
     }
     body = _wait_done(client, "J66252")
@@ -106,8 +107,40 @@ def test_submit_accept_and_reject(client):
 
     # 重复提交已 done 的患者 → 重新受理 (重跑)
     resp2 = client.post("/api/audit/submit", json=[{"SYXH": "J66252"}])
-    assert resp2.json()["accepted"] == [{"SYXH": "J66252"}]
+    assert resp2.json()["accepted"] == [{"SYXH": "J66252", "source": "local"}]
     _wait_done(client, "J66252")  # 等 worker 消费完再 teardown, 防 monkeypatch 撤销后跑真审计
+
+
+def test_submit_hub_fallback(client, monkeypatch):
+    """本地查无 → 中台有 → 受理 source=hub; 中台连接失败 → 诚实 reason."""
+    from javert.web.api import routes_audit
+
+    monkeypatch.setattr(routes_audit, "_hub_probe", lambda syxh: True)
+    body = client.post("/api/audit/submit", json=[{"SYXH": "211449756"}]).json()
+    assert body["accepted"] == [{"SYXH": "211449756", "source": "hub"}]
+    assert routes_audit._2c_tasks["211449756"]["source"] == "hub"
+    _wait_done(client, "211449756")
+
+    def _boom(syxh):
+        raise RuntimeError("hub down")
+
+    monkeypatch.setattr(routes_audit, "_hub_probe", _boom)
+    body = client.post("/api/audit/submit", json=[{"SYXH": "211000000"}]).json()
+    assert body["rejected"] == [{"SYXH": "211000000", "reason": "本地查无, 数据中台连接失败"}]
+
+
+def test_hub_cfg_paths(tmp_path):
+    """_hub_cfg_for: 整链路路径 (notes/fees/zd/ss/labs/exams) 全指向取数目录."""
+    from javert.config import get_config
+    from javert.web.api.routes_audit import _hub_cfg_for
+
+    cfg2 = _hub_cfg_for(get_config(), tmp_path)
+    assert cfg2.notes_path == tmp_path / "case_notes.csv"
+    assert cfg2.fees_path == tmp_path / "shi_fee.csv"
+    assert cfg2.zd_path == tmp_path / "shi_zd.csv"
+    assert cfg2.ss_path == tmp_path / "shi_ss.csv"
+    assert cfg2.labs_path == tmp_path / "lab_results.csv"
+    assert cfg2.examinations_path == tmp_path / "examinations.csv"
 
 
 def test_results_unknown(client):
