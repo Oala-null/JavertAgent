@@ -114,6 +114,10 @@ RD04 在 62 的 `on` 模式会返回结构化资格结果；旧三态 `verdict` 
   "rule_version": "2026.1",
   "indication_branch_id": "example-branch",
   "source_versions": ["eligibility:2026.1", "regimen:2026.1"],
+  "rule_effective_from": "2026-01-01",
+  "rule_effective_to": "2027-12-31",
+  "evaluated_service_date": "2025-08-22",
+  "effective_date_enforced": false,
   "criterion_assessments": [
     {
       "criterion_id": "example-criterion",
@@ -161,6 +165,14 @@ RD04 在 62 的 `on` 模式会返回结构化资格结果；旧三态 `verdict` 
 旧三态投影固定为
 `NO_VIOLATION_FOUND→CLEAN`、`VIOLATION_FOUND→VIOLATION`、
 `REVIEW_REQUIRED→INCONCLUSIVE`。文书建议不能充当证据，也不会改变条件状态。
+
+生效期字段（2026-07-18 新增，**只加不改名**，旧行/旧客户端不解析即可）：
+
+| 字段 | 说明 |
+|---|---|
+| `rule_effective_from` / `rule_effective_to` | 该医保限定条件树声明的生效期（可空；`to` 空=长期） |
+| `evaluated_service_date` | 本次求值采用的就诊/收费日期（可空） |
+| `effective_date_enforced` | 是否按生效期过滤。`false` 且就诊日在声明窗口外时，`data_quality_flags` 含「未按生效期过滤·需核查就诊时该医保限定是否已生效」，该结果定性前须人工核查生效期 |
 
 ### hits[] 字段 (违规项 ↔ 费用明细关联键)
 

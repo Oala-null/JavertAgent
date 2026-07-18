@@ -74,6 +74,9 @@ ready 模板分布 M1-M8 为 22/22/17/13/10/9/20/5。CLI 有 15 个顶层命令�
 
 - `JAVERT_ONCOLOGY_ELIGIBILITY_V2` 仅允许 `off|shadow|on`；代码和仓库配置默认 `off`，
   62 的受控运行值为 `on`。
+- `JAVERT_ONCOLOGY_ENFORCE_EFFECTIVE_DATE` 控生效期过滤；代码默认 `true`，62 为 `false`
+  （不分时间全部生效 + 窗口外「核查生效时间」提示）。生效期闸在条件树选择与免疫组化阈值
+  选择两处，须一起放开；审核状态闸不受此开关影响。KB 生效期本身不得私改，见 operations.md。
 - `on` 模式下 RD04 独占 `oncology=true AND source_type=insurance`，R007 只处理非肿瘤
   限适应症候选；`off/shadow` 保留 R007 旧候选集合。RD04 当前 ready，
   RD10-RD37 保持 abandoned。

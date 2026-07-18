@@ -147,6 +147,11 @@ class EligibilityEvaluation(BaseModel):
     proof_tree: ProofNode
     data_quality_flags: list[str] = Field(default_factory=list)
     documentation_suggestions: list[DocumentationSuggestion] = Field(default_factory=list)
+    # 生效期透明化: 声明生效窗口 + 本次就诊日 + 是否按生效期过滤 (旧行读为默认值, 前端据此提示核查).
+    rule_effective_from: date | None = None
+    rule_effective_to: date | None = None
+    evaluated_service_date: date | None = None
+    effective_date_enforced: bool = True
 
     @model_validator(mode="after")
     def _validate_legacy_projection(self) -> "EligibilityEvaluation":

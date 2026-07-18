@@ -53,6 +53,92 @@ def _verdict_label_zh(verdict: str | None) -> str:
     }.get(v, verdict or "")
 
 
+# 肿瘤资格 follow-up 面板: criterion_type / state 英文 → 中文 (前端友好清单).
+_CRITERION_TYPE_ZH = {
+    "diagnosis": "诊断",
+    "stage": "分期 / 转移",
+    "biomarker": "病理标志物（免疫组化）",
+    "prior_therapy": "既往治疗",
+    "line_of_therapy": "治疗线数",
+    "treatment_status": "复发 / 难治状态",
+    "clinician_assessment": "移植适合性评估",
+    "payer_scope": "支付性质",
+    "unsupported": "其他条件",
+}
+_STATE_ZH = {
+    "SATISFIED": "满足",
+    "NOT_SATISFIED": "不满足",
+    "UNKNOWN": "文书未见",
+    "CONFLICT": "证据冲突",
+}
+_STATE_MARK = {"SATISFIED": "✓", "NOT_SATISFIED": "✗", "UNKNOWN": "？", "CONFLICT": "⚠"}
+
+
+def _criterion_label(criterion_type: str | None) -> str:
+    return _CRITERION_TYPE_ZH.get((criterion_type or "").strip(), criterion_type or "条件")
+
+
+def _state_zh(state: str | None) -> str:
+    return _STATE_ZH.get((state or "").strip(), state or "")
+
+
+def _state_mark(state: str | None) -> str:
+    return _STATE_MARK.get((state or "").strip(), "·")
+
+
+# criterion 证据锚点 → 可跳原文的 anchor (复用命中项目的 openSourcePanel 高亮机制).
+# 免疫组化等 criterion 命中文书时, follow-up 面板给一个「定位原文」双链.
+_NOTE_ANCHOR_SOURCES = ("note", "path", "shi_zd", "diag")
+
+
+def _onco_evidence_anchor(assessment) -> dict | None:
+    """把 criterion 的证据锚点转成 {tab,subsection,query,label}；无文书锚点返回 None.
+
+    biomarker(免疫组化) 优先用归一到的观察原文片段(如 ``CerbB2(1+)``, 是文书 verbatim
+    子串)做精确高亮；其余 criterion 退回原文引文/最长 n-gram。
+    """
+    from .hit_resolver import _quoted_or_ngram  # 延迟导入避免加载期耦合
+
+    anchors = getattr(assessment, "evidence_anchors", None) or []
+    note_anchor = next(
+        (
+            a
+            for a in anchors
+            if any(s in (getattr(a, "source", "") or "").lower() for s in _NOTE_ANCHOR_SOURCES)
+            and (getattr(a, "text", "") or "").strip()
+        ),
+        None,
+    )
+    if note_anchor is None:
+        return None
+    query = ""
+    for fact in getattr(assessment, "normalized_facts", None) or []:
+        value = str(getattr(fact, "value", "") or "").strip()
+        if value and 1 < len(value) <= 40:
+            query = value
+            break
+    if not query:
+        query = _quoted_or_ngram(note_anchor.text or "")
+    if not query:
+        return None
+    return {
+        "tab": "notes",
+        "subsection": getattr(note_anchor, "locator", "") or "",
+        "query": query,
+        "label": query,
+    }
+
+
+def _onco_needs_date_check(evaluation) -> bool:
+    """就诊日在声明生效窗口之外 (即结果未按生效期过滤) → 前端需提示核查生效时间."""
+    sd = getattr(evaluation, "evaluated_service_date", None)
+    ef = getattr(evaluation, "rule_effective_from", None)
+    et = getattr(evaluation, "rule_effective_to", None)
+    if sd is None or ef is None:
+        return False
+    return sd < ef or (et is not None and sd > et)
+
+
 def _format_dt(dt: datetime | None, fmt: str = "%Y-%m-%d %H:%M") -> str:
     if dt is None:
         return "—"
@@ -72,6 +158,11 @@ def build_env() -> Environment:
     env.filters["humanize_since"] = humanize_since_zh
     env.filters["verdict_color"] = _verdict_color
     env.filters["verdict_label"] = _verdict_label_zh
+    env.filters["criterion_label"] = _criterion_label
+    env.filters["state_zh"] = _state_zh
+    env.filters["state_mark"] = _state_mark
+    env.filters["onco_evidence_anchor"] = _onco_evidence_anchor
+    env.filters["onco_needs_date_check"] = _onco_needs_date_check
     env.filters["format_dt"] = _format_dt
     env.globals["now"] = lambda: datetime.now(timezone.utc)
     env.globals["asset_v"] = _asset_version()

@@ -62,6 +62,8 @@ JAVERT_LLM_MODEL=Qwen/Qwen3.6-35B-A3B-FP8
 
 # 肿瘤医保资格 v2（代码默认 off；62 于 2026-07-17 验收后启用）
 JAVERT_ONCOLOGY_ELIGIBILITY_V2=on
+# 生效期闸（代码默认 true；62 于 2026-07-18 设 false = 不分时间全部生效 + 窗口外核查提示）
+JAVERT_ONCOLOGY_ENFORCE_EFFECTIVE_DATE=false
 ```
 
 ---
@@ -377,6 +379,14 @@ uv run python scripts/drift_report.py --target mssql --out output/drift_142.csv
 **⑤ search_fees 输出形状变化 (聚合按项目名净额)** — 关键词/类别/目录检索现按项目名聚合净额 (退费自动相抵 + 「含 N 次退费已抵消」注记 + 数量小数保真). 既有规则 prompt 依赖行式形态 → 只改聚合行内容不改结构. 抽查: 任意 M1/M4 精选规则 dry-run 看 search_fees 结果仍逐行可读.
 
 **§10.5 实测落地记录 (2026-07-09)**: 部署 (git archive HEAD 干净包) + kill-9 重拉 ✓ http 200. ① 重筛已落: sqlite 4 行 + 142 6 行 (全部同日 11-12 项, 0 review 冲突, 阈值 3 保持). ⚠ 首轮暴露漏筛洞: R155 候选 75 行中 **69 行为 szx2.0 hub-only 患者** (CSV 取不到费用被当 0 项静默跳过, 含 211419211) — ec669df 已加 hub 批量兜底 + 双 miss WARN; 兜底依赖 `TB_HIS_ZY_FEE_DETAIL_EXT` (v2.2 恢复中), 就绪后**重跑 `rescreen_gated.py --target mssql` 回收 69 户** (211419211 单日 11 项必翻). ② `output/drift_142.csv` 506 对已出交专家. ④ FN 回归 62 实测: FN-001/002/005 full; FN-003 重跑 miss = **非闸问题** — R155 症状扫描豁免口把病程「肢体乏力」(脑梗神经科症状) 当炎症指征, LLM 自判 C; prompt 收紧列 follow-up. R317/R318 已正式重跑上工作台 (batch_tag=fn-fix-0709, 各 1 V).
+
+### 10.6 本次升级附加步骤 (2026-07-18 RD04 卡片改造 + 生效期闸)
+
+本批改动 = `src/javert/{config.py, audit/runner.py, oncology/{contracts,eligibility,pathology,runtime}.py, tools/{drug_audit_lookup,registry}.py, web/{templating.py, templates/patient_detail.html, static/style.css}}` + `tests/`。纯 `src` 覆盖, 按 §10 step 1-4 推 + kill-9 重拉。**无 schema 变更**（新字段在 `eligibility_json` blob 内, 无新列）。附加两点:
+
+**① `.env` 加生效期开关**（见 §2）: `JAVERT_ONCOLOGY_ENFORCE_EFFECTIVE_DATE=false`, 重拉后 `/proc/<pid>/environ` 验实值。不加 = 行为按代码默认 `true`（按生效期过滤, 与升级前一致）。回滚改 `true` 重拉。
+
+**② 受影响患者重跑**: RD04 卡片改造（自然语言推理 + 命中药明细定位 + 「肿瘤靶向药用药方案合理性」follow-up + 免疫组化定位原文双链）只对**新 run** 生效, 旧 `med_rst*` 卡进历史。生效期闸关闭后, 窗口外就诊也会求值并带"核查生效时间"提示——如 K57728 维迪西妥单抗（HER2 IHC 1+ < 2+/3+）已翻 VIOLATION（batch `onco-uro-fix`）, 定性前须人工核查该限定 2025 就诊时是否已生效（见 `docs/oncology/operations.md` KB 生效期待核对）。重跑: `export JAVERT_BATCH_TAG=<≤20字符>; uv run javert audit-patient <号> --rules RD04`。
 
 ---
 

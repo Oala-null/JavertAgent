@@ -201,6 +201,7 @@ def _select_threshold(
     policy_context: str,
     method: BiomarkerMethod,
     service_date: date,
+    enforce_effective_date: bool = True,
 ) -> BiomarkerRule | None:
     matches = [
         entry
@@ -210,7 +211,7 @@ def _select_threshold(
         and entry.policy_context == policy_context
         and method in entry.methods
         and entry.metadata.review_status == ReviewStatus.APPROVED
-        and _effective(entry.metadata, service_date)
+        and (not enforce_effective_date or _effective(entry.metadata, service_date))
     ]
     return matches[0] if len(matches) == 1 else None
 
@@ -225,6 +226,7 @@ def evaluate_biomarker_criterion(
     inputs: list[PathologyInput],
     service_date: date,
     asset: PathologyKnowledgeAsset,
+    enforce_effective_date: bool = True,
 ) -> CriterionAssessment:
     """按完整上下文选择阈值并保留时序冲突和非适用方法."""
     observations = [
@@ -243,6 +245,7 @@ def evaluate_biomarker_criterion(
         policy_context=policy_context,
         method=expected_method,
         service_date=service_date,
+        enforce_effective_date=enforce_effective_date,
     )
     expected = {
         "marker_id": marker_id,
@@ -313,9 +316,9 @@ def evaluate_biomarker_criterion(
     elif len(states) == 1:
         state = next(iter(states))
         reason = (
-            f"观察值 {applicable[0][0].score} "
-            f"{'符合' if state == CriterionState.SATISFIED else '不符合'} "
-            f"阈值 {threshold.accepted_values}"
+            f"病理免疫组化 {applicable[0][0].score} "
+            f"{'符合' if state == CriterionState.SATISFIED else '不符合'}"
+            f"医保限定阈值 {'/'.join(threshold.accepted_values)}"
         )
     else:
         state = CriterionState.UNKNOWN

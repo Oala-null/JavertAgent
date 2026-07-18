@@ -224,6 +224,7 @@ def lookup_patient_drugs(
     eligibility_path: Path | None = None,
     pathology_path: Path | None = None,
     regimen_path: Path | None = None,
+    enforce_effective_date: bool = True,
 ) -> dict[str, Any]:
     """bulk 模式: 患者用药 ∩ KB → 命中药 (+ 各 rule_type 依据) + 病案首页诊断."""
     fees_df = loader.get_fees(patient_id)
@@ -404,6 +405,7 @@ def lookup_patient_drugs(
                     eligibility_path=eligibility_path,
                     pathology_path=pathology_path,
                     regimen_path=regimen_path,
+                    enforce_effective_date=enforce_effective_date,
                 )
                 result["oncology_structured"] = {
                     "mode": oncology_v2_mode,
@@ -596,6 +598,7 @@ def create_executor(
     eligibility_path: Path | None = None,
     pathology_path: Path | None = None,
     regimen_path: Path | None = None,
+    enforce_effective_date: bool = True,
 ) -> Callable[..., str]:
     """绑定 loader + KB 路径 + shi_zd 路径, 返回 drug_audit_lookup(...) 函数.
 
@@ -625,6 +628,7 @@ def create_executor(
             eligibility_path=eligibility_path,
             pathology_path=pathology_path,
             regimen_path=regimen_path,
+            enforce_effective_date=enforce_effective_date,
         )
         return format_for_agent(result)
 

@@ -49,6 +49,18 @@ PYTHONPATH=src .venv/bin/python -m pytest -q \
 | `shadow` | 旧 verdict 不变；结构化比较保存在 `tool_calls_json[].structured_output` |
 | `on` | RD04 的净正收费候选采用确定性双轴结果，并写入 `eligibility_json`；R007 排除相同肿瘤医保臂 |
 
+### 生效期闸（`JAVERT_ONCOLOGY_ENFORCE_EFFECTIVE_DATE`）
+
+控制是否按知识资产声明的生效期过滤候选。**代码默认 `true`（只审就诊日落在声明窗口内的候选）；62 的受控运行值为 `false`（不分时间全部生效）。**审核状态闸（`review_status=approved`）与本开关无关，始终生效。
+
+- 生效期闸在**两处**：`eligibility.select_effective_rules`（选条件树）与 `pathology._select_threshold`（选免疫组化阈值）。开关一路透传，两处一起放开——只放开前者会让免疫组化 criterion 落 `UNKNOWN`。
+- `false` 且就诊日在声明窗口外时，结果照常求值，但追加数据质量提示「未按生效期过滤·需核查就诊时该医保限定是否已生效」，`eligibility_json` 记录 `rule_effective_from/to`、`evaluated_service_date`、`effective_date_enforced`，工作台 fail-loud 展示"核查生效时间"橙框。
+- 回滚 = 该 env 改 `true` 重拉，一步回到按生效期过滤。
+
+**⚠ KB 生效期待核对**：`oncology_eligibility_rules.json` 与 `pathology_biomarker_kb.json` 里维迪西妥单抗/HER2 生效期填的是 `2026-01-01~2027-12-31`，但该药早已进国谈目录，2025 就诊多半应可审。生效期是带 checksum 的受审资产，不得私改；需医保办确认真实生效日后走构建脚本补对应生效窗口版本。生效期闸关闭是过渡手段，不替代把生效期填对。
+
+**术语归一**：`cancer_context` 推导已把「移行细胞癌 / 移行上皮癌」（尿路上皮癌 WHO 2004 前旧名，同一诊断）归一到「尿路上皮癌」，并纳入文书原文（与 diagnosis 叶子同口径），否则病案首页只编码旧名时 HER2 阈值匹配不上。
+
 单患者 smoke 示例（仅排障，不构成全候选验收）：
 
 ```bash

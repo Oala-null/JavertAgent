@@ -444,6 +444,7 @@ def _treatment_status_assessment(
         if "鉴别诊断" not in str(record.get("section") or "")
     ]
     expected = str(node.expected.get("equals") or "")
+    expected_zh = {"relapsed": "复发", "refractory": "难治"}.get(expected, expected)
     if expected == "relapsed":
         negative_pattern = r"无复发|未见复发"
         positive_pattern = r"复发"
@@ -457,7 +458,7 @@ def _treatment_status_assessment(
     if positive and negative:
         return _conflict_assessment(
             node,
-            f"{expected} 状态存在相互矛盾的适用证据",
+            f"{expected_zh}状态存在相互矛盾的证据",
             [positive, negative],
             service_date,
         )
@@ -467,13 +468,13 @@ def _treatment_status_assessment(
         return _assessment(
             node,
             state,
-            f"{'支持' if positive else '反对'} {expected} 状态",
+            f"文书{'支持' if positive else '不支持'}{expected_zh}状态",
             locator=found["locator"],
             text=found["text"],
             normalized_value=expected,
             service_date=service_date,
         )
-    return _assessment(node, CriterionState.UNKNOWN, f"{expected} 状态未明确")
+    return _assessment(node, CriterionState.UNKNOWN, f"文书未见明确的{expected_zh}状态")
 
 
 def _clinician_assessment(
@@ -710,6 +711,7 @@ def _evaluate_rule_leaves(
     service_date: date,
     pathology_path: Path,
     cancer_context: str,
+    enforce_effective_date: bool = True,
 ) -> dict[str, CriterionAssessment]:
     pathology_asset = load_pathology_kb(pathology_path)
     applicable_records = [
@@ -759,6 +761,7 @@ def _evaluate_rule_leaves(
                 inputs=pathology_inputs,
                 service_date=service_date,
                 asset=pathology_asset,
+                enforce_effective_date=enforce_effective_date,
             )
         else:
             item = _assessment(node, CriterionState.UNKNOWN, "不支持的确定性条件类型")
@@ -776,19 +779,28 @@ def evaluate_oncology_matches(
     pathology_path: Path,
     regimen_path: Path,
     documentation_templates_path: Path | None = None,
+    enforce_effective_date: bool = True,
 ) -> dict[str, Any]:
-    """为已有净正收费的 RD04 matches 附加方案证据与条件树结果."""
+    """为已有净正收费的 RD04 matches 附加方案证据与条件树结果.
+
+    enforce_effective_date=False 时不按声明生效期过滤 (不分时间全部生效)，就诊日落在
+    声明窗口外的候选会追加"核查生效时间"提示，前端 fail-loud 展示。
+    """
     rules_asset = load_eligibility_rules(eligibility_path)
     by_name, by_code, concept_terms = _concept_index(regimen_path)
     records = _note_records(notes)
     diagnosis_text = " / ".join(str(item.get("name") or "") for item in diagnoses)
+    # 诊断语境也纳入文书原文: 病案首页可能只编码为「移行细胞癌/膀胱恶性肿瘤」等,
+    # 而文书病理明确写「尿路上皮癌」组织学型 (与 diagnosis 叶子同源判断口径).
+    context_text = diagnosis_text + " / " + " ".join(r["text"] for r in records)
     guidance_path = documentation_templates_path or _DEFAULT_GUIDANCE_PATH
     guidance_templates = (
         load_documentation_templates(guidance_path)
         if guidance_path.exists()
         else None
     )
-    if "尿路上皮" in diagnosis_text:
+    # 移行细胞癌 / 移行上皮癌 是尿路上皮癌 (WHO 2004 前后) 异名, 归一到医保限定用语.
+    if any(k in context_text for k in ("尿路上皮", "移行细胞癌", "移行上皮癌")):
         cancer_context = "尿路上皮癌"
     elif "弥漫大B" in diagnosis_text or "DLBCL" in diagnosis_text.upper():
         cancer_context = "弥漫大B细胞淋巴瘤"
@@ -845,6 +857,7 @@ def evaluate_oncology_matches(
                     rules_asset,
                     drug_concept_id=concept_id,
                     service_date=service_date,
+                    enforce_effective_date=enforce_effective_date,
                 )
                 for rule in selection.rules:
                     assessments = _evaluate_rule_leaves(
@@ -855,6 +868,7 @@ def evaluate_oncology_matches(
                         service_date=service_date,
                         pathology_path=pathology_path,
                         cancer_context=cancer_context,
+                        enforce_effective_date=enforce_effective_date,
                     )
                     evaluation = evaluate_rule(rule, assessments)
                     flags = list(evaluation.data_quality_flags)
@@ -862,6 +876,19 @@ def evaluate_oncology_matches(
                         flags.extend(regimen.conflicts)
                         if regimen.temporal_conflict:
                             flags.append("治疗叙述年份与就诊/收费年份冲突")
+                    # 生效期核查: 未强制过滤且就诊日在声明窗口外 → fail-loud 提示 (不静默)
+                    if (
+                        not enforce_effective_date
+                        and evaluation.rule_effective_from is not None
+                        and (
+                            service_date < evaluation.rule_effective_from
+                            or (
+                                evaluation.rule_effective_to is not None
+                                and service_date > evaluation.rule_effective_to
+                            )
+                        )
+                    ):
+                        flags.append("未按生效期过滤·需核查就诊时该医保限定是否已生效")
                     evaluation = evaluation.model_copy(
                         update={"data_quality_flags": sorted(set(flags))}
                     )
@@ -885,7 +912,9 @@ def evaluate_oncology_matches(
                         ),
                     },
                     templates=guidance_templates,
-                )
+                ),
+                "evaluated_service_date": service_date,
+                "effective_date_enforced": enforce_effective_date,
             }
         )
         evaluations = [

@@ -137,9 +137,54 @@ def _coerce_evidence(raw: list | None) -> list[Evidence]:
     return out
 
 
-def _structured_evidence(evaluation: EligibilityEvaluation) -> list[Evidence]:
+# 结构化资格 → 自然语言: 状态词 + 结论句. 前端 follow-up 面板另有逐条清单.
+_STATE_MARK = {
+    "SATISFIED": "✓",
+    "NOT_SATISFIED": "✗",
+    "UNKNOWN": "？",
+    "CONFLICT": "⚠",
+}
+_DISPOSITION_ZH: dict[tuple[str, str], str] = {
+    ("NO_VIOLATION_FOUND", "SATISFIED"): "患者情况满足该药全部医保限定支付条件，未见超范围支付。",
+    ("NO_VIOLATION_FOUND", "DOCUMENTATION_GAP"): (
+        "现有病历未见明确违规，但部分限定条件缺少文书佐证，"
+        "建议补充相关记录后归档（不影响本次合规结论）。"
+    ),
+    ("VIOLATION_FOUND", "NOT_SATISFIED"): "患者情况明确不满足该药医保限定支付条件，属超范围支付。",
+    ("REVIEW_REQUIRED", "DOCUMENTATION_GAP"): "关键限定条件缺少文书佐证，无法自动定性，需人工复核。",
+    ("REVIEW_REQUIRED", "CONFLICT"): "限定条件出现相互矛盾的证据，需人工复核。",
+}
+
+
+def _oncology_candidate_names(structured_payloads: list[dict[str, Any]]) -> list[str]:
+    """从最近一次 oncology 结构化 payload 取候选药通用名 (去重保序)."""
+    for payload in reversed(structured_payloads):
+        rows = payload.get("candidate_evaluations")
+        if not rows:
+            continue
+        names: list[str] = []
+        for row in rows:
+            name = str(row.get("generic_name") or "").strip()
+            if name and name not in names:
+                names.append(name)
+        if names:
+            return names
+    return []
+
+
+def _structured_evidence(
+    evaluation: EligibilityEvaluation,
+    candidate_names: list[str] | None = None,
+) -> list[Evidence]:
     out: list[Evidence] = []
     seen: set[tuple[str, str, str]] = set()
+    # 命中项目 (target item): 候选药作 drug 锚点, 让 hit_resolver 在明细表定位该药 + 附医保限定.
+    for name in candidate_names or []:
+        key = ("drug_audit_lookup", name, "")
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(Evidence(source="drug_audit_lookup", locator=name, text=""))
     for assessment in evaluation.criterion_assessments:
         for anchor in assessment.evidence_anchors:
             key = (anchor.source, anchor.locator, anchor.text)
@@ -157,20 +202,33 @@ def _structured_evidence(evaluation: EligibilityEvaluation) -> list[Evidence]:
     return out
 
 
-def _structured_reasoning(evaluation: EligibilityEvaluation) -> str:
-    lines = [
-        (
-            f"结构化肿瘤医保资格: {evaluation.audit_disposition.value} + "
-            f"{evaluation.eligibility_status.value}; "
-            f"branch={evaluation.indication_branch_id}; version={evaluation.rule_version or '?'}."
-        )
-    ]
-    for item in evaluation.criterion_assessments:
-        lines.append(f"- {item.criterion_id}: {item.state.value} — {item.reason}")
+def _structured_reasoning(
+    evaluation: EligibilityEvaluation,
+    candidate_names: list[str] | None = None,
+) -> str:
+    names = candidate_names or []
+    if names:
+        drug_clause = "、".join(names[:3]) + (
+            f" 等 {len(names)} 种" if len(names) > 3 else ""
+        ) + "（医保限定支付肿瘤药）"
+    else:
+        drug_clause = "本例医保限定支付肿瘤药"
+    conclusion = _DISPOSITION_ZH.get(
+        (evaluation.audit_disposition.value, evaluation.eligibility_status.value),
+        "肿瘤药医保限定支付条件核对结果见下。",
+    )
+    lines = [f"{drug_clause}：{conclusion}"]
+    if evaluation.criterion_assessments:
+        lines.append("")
+        lines.append("逐条核对：")
+        for item in evaluation.criterion_assessments:
+            mark = _STATE_MARK.get(item.state.value, "·")
+            reason = item.reason or item.criterion_id
+            lines.append(f"{mark} {reason}")
     for suggestion in evaluation.documentation_suggestions:
-        lines.append(f"[病历完善建议] {suggestion.suggested_content}")
+        lines.append(f"\n[病历完善建议] {suggestion.suggested_content}")
     if evaluation.data_quality_flags:
-        lines.append(f"[数据质量] {'; '.join(evaluation.data_quality_flags)}")
+        lines.append(f"\n[数据质量] {'; '.join(evaluation.data_quality_flags)}")
     return "\n".join(lines)
 
 
@@ -630,10 +688,15 @@ class Runner:
                 eligibility_evaluation = EligibilityEvaluation.model_validate(
                     selected_structured
                 )
+                candidate_names = _oncology_candidate_names(structured_payloads)
                 verdict = eligibility_evaluation.legacy_verdict
                 confidence = 1.0 if verdict != "INCONCLUSIVE" else 0.9
-                reasoning = _structured_reasoning(eligibility_evaluation)
-                evidence = _structured_evidence(eligibility_evaluation)
+                reasoning = _structured_reasoning(
+                    eligibility_evaluation, candidate_names
+                )
+                evidence = _structured_evidence(
+                    eligibility_evaluation, candidate_names
+                )
                 verdict_data = {
                     "verdict": verdict,
                     "confidence": confidence,

@@ -348,8 +348,10 @@ def test_api_payload_and_workbench_show_pola_transplant_gap_suggestion():
         filter_label="全部",
         runs=[run],
     )
-    assert "NO_VIOLATION_FOUND" in html
-    assert "DOCUMENTATION_GAP" in html
+    # 面板改造: 英文双轴/裸 JSON 不再铺在卡片主体; 改为 reasoning 之后的折叠 follow-up.
+    assert "肿瘤靶向药用药方案合理性" in html
+    assert "待补文书" in html  # DOCUMENTATION_GAP 的中文 pill
+    assert "移植适合性评估" in html  # criterion_type 中文标签
     assert TRANSPLANT_SUGGESTION_TEXT in html
     assert "认同 (V)" in html
     assert "改判不明 (I)" in html

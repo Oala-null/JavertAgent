@@ -85,50 +85,6 @@
         <div class="rule-question">{{ meta.question }}</div>
         {% endif %}
 
-        {# strengthen-oncology-drug-eligibility: 双轴结果与条件证明，不改变下方审核按钮 #}
-        {% if run.eligibility_evaluation %}
-        {% set ee = run.eligibility_evaluation %}
-        <section class="eligibility-panel" data-eligibility-status="{{ ee.eligibility_status.value }}">
-          <div class="eligibility-head">
-            <strong>肿瘤药医保资格</strong>
-            <span class="eligibility-axis">审核处置 · {{ ee.audit_disposition.value }}</span>
-            <span class="eligibility-axis">资格状态 · {{ ee.eligibility_status.value }}</span>
-          </div>
-          {% if ee.criterion_assessments %}
-          <div class="eligibility-criteria">
-            {% for item in ee.criterion_assessments %}
-            <div class="eligibility-criterion state-{{ item.state.value | lower }}">
-              <code>{{ item.criterion_id }}</code>
-              <span>{{ item.state.value }}</span>
-              {% if item.reason %}<small>{{ item.reason }}</small>{% endif %}
-            </div>
-            {% endfor %}
-          </div>
-          {% endif %}
-          {% if ee.data_quality_flags %}
-          <div class="eligibility-flags">
-            {% for flag in ee.data_quality_flags %}<span>⚠ {{ flag }}</span>{% endfor %}
-          </div>
-          {% endif %}
-          {% if ee.documentation_suggestions %}
-          <div class="documentation-suggestions">
-            <div class="documentation-suggestions-title">病历完善建议</div>
-            {% for suggestion in ee.documentation_suggestions %}
-            <article class="documentation-suggestion">
-              <strong>{{ suggestion.title }}</strong>
-              <p>{{ suggestion.suggested_content }}</p>
-              <small>{{ suggestion.safety_note }}</small>
-            </article>
-            {% endfor %}
-          </div>
-          {% endif %}
-          <details class="eligibility-proof">
-            <summary>查看条件证明树</summary>
-            <pre>{{ ee.proof_tree.model_dump(mode='json') | tojson }}</pre>
-          </details>
-        </section>
-        {% endif %}
-
         {# 命中项目 (evidence-anchoring) — 仅 fee/drug; note 类收敛成「查阅文书原文」按钮 #}
         {% set hits = (hits_by_run | default({}, true)).get(run.run_id, []) %}
         {% set fd_hits = hits | selectattr('source', 'in', ['fee', 'drug']) | list %}
@@ -184,6 +140,82 @@
           <div class="reasoning">{{ run.reasoning or '(无 reasoning)' }}</div>
           {% if run.evidence_json %}<pre>{{ run.evidence_json }}</pre>{% endif %}
         </details>
+
+        {# 肿瘤靶向药用药方案合理性 — 绑在 reasoning 之后的 follow-up, 默认折叠, 点开看逐条医保限定核对 #}
+        {% if run.eligibility_evaluation %}
+        {% set ee = run.eligibility_evaluation %}
+        {% set _st = ee.eligibility_status.value %}
+        <details class="onco-followup" data-eligibility-status="{{ _st }}">
+          <summary>
+            🎯 肿瘤靶向药用药方案合理性
+            <span class="onco-pill onco-pill-{{ _st | lower }}">
+              {% if _st == 'SATISFIED' %}✓ 符合医保限定
+              {% elif _st == 'NOT_SATISFIED' %}✗ 不符合医保限定
+              {% elif _st == 'CONFLICT' %}⚠ 证据冲突
+              {% else %}？ 待补文书{% endif %}
+            </span>
+            <span class="onco-hint">点击展开逐条核对</span>
+          </summary>
+          <div class="onco-body">
+            {% if ee | onco_needs_date_check %}
+            <div class="onco-date-warn">
+              ⚠ 核查生效时间：本次就诊/收费日期
+              <strong>{{ ee.evaluated_service_date }}</strong>
+              在该医保限定声明生效期
+              <strong>{{ ee.rule_effective_from }} ~ {{ ee.rule_effective_to or '长期' }}</strong>
+              之外，结果<strong>未按生效期过滤</strong>（默认全部生效）。请人工核查该医保限定在就诊时是否已生效后再最终定性。
+            </div>
+            {% endif %}
+            {% if ee.criterion_assessments %}
+            <div class="onco-checklist">
+              {% for item in ee.criterion_assessments %}
+              {% set _s = item.state.value %}
+              {% set _jump = item | onco_evidence_anchor %}
+              <div class="onco-crit onco-crit-{{ _s | lower }}">
+                <span class="onco-mark">{{ _s | state_mark }}</span>
+                <span class="onco-crit-label">{{ item.criterion_type | criterion_label }}</span>
+                <span class="onco-crit-state">{{ _s | state_zh }}</span>
+                <span class="onco-crit-reason">
+                  {{ item.reason }}
+                  {% if _jump %}<span class="hit-item onco-jump" tabindex="0" role="button"
+                       data-anchor='{{ _jump | tojson }}'
+                       title="定位到文书原文并高亮该记录">🔗 定位原文「{{ _jump.label }}」</span>{% endif %}
+                </span>
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+            {% if ee.documentation_suggestions %}
+            <div class="documentation-suggestions">
+              <div class="documentation-suggestions-title">💡 病历完善建议（前瞻性，不代表条件已被证实）</div>
+              {% for suggestion in ee.documentation_suggestions %}
+              <article class="documentation-suggestion">
+                <strong>{{ suggestion.title }}</strong>
+                <p>{{ suggestion.suggested_content }}</p>
+                <small>{{ suggestion.safety_note }}</small>
+              </article>
+              {% endfor %}
+            </div>
+            {% endif %}
+            {% if ee.data_quality_flags %}
+            <div class="onco-flags">{% for flag in ee.data_quality_flags %}<span>⚠ {{ flag }}</span>{% endfor %}</div>
+            {% endif %}
+            {# 专业平台: 尽量把可核查的元数据都摊开 #}
+            <dl class="onco-meta">
+              {% if ee.indication_branch_id %}<dt>医保限定分支</dt><dd><code>{{ ee.indication_branch_id }}</code></dd>{% endif %}
+              {% if ee.rule_version %}<dt>规则版本</dt><dd>{{ ee.rule_version }}</dd>{% endif %}
+              {% if ee.rule_effective_from %}<dt>限定声明生效期</dt><dd>{{ ee.rule_effective_from }} ~ {{ ee.rule_effective_to or '长期' }}</dd>{% endif %}
+              {% if ee.evaluated_service_date %}<dt>本次就诊/收费日期</dt><dd>{{ ee.evaluated_service_date }}</dd>{% endif %}
+              <dt>生效期过滤</dt><dd>{% if ee.effective_date_enforced %}已启用（仅审窗口内就诊）{% else %}已关闭（不分时间全部生效，见上方核查提示）{% endif %}</dd>
+              {% if ee.source_versions %}<dt>依据来源版本</dt><dd>{{ ee.source_versions | join('；') }}</dd>{% endif %}
+            </dl>
+            <details class="onco-proof">
+              <summary>结构化证明树（开发者视图）</summary>
+              <pre>{{ ee.proof_tree.model_dump(mode='json') | tojson }}</pre>
+            </details>
+          </div>
+        </details>
+        {% endif %}
 
         {# 当前 user 是否已审 — selectattr 走 Jinja2 selectattr → first | default(none) 避免 set 在 for 内的 scope 问题 #}
         {% set my_reviews = run.reviews | selectattr('user_id', 'equalto', current_user.id) | list %}

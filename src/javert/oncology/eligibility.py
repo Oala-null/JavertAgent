@@ -108,13 +108,18 @@ def select_effective_rules(
     *,
     drug_concept_id: str,
     service_date: date,
+    enforce_effective_date: bool = True,
 ) -> RuleSelection:
-    """按药品与服务日期选择唯一生效、已审核版本，重叠版本显式阻断."""
+    """按药品与服务日期选择唯一生效、已审核版本，重叠版本显式阻断.
+
+    enforce_effective_date=False 时不按声明生效期过滤 (不分时间全部生效)，仅保留
+    审核状态闸；就诊日是否落在声明窗口内交由上层标注核查提示。审核状态闸始终生效。
+    """
     candidates = [
         entry
         for entry in asset.entries
         if entry.drug_concept_id == drug_concept_id
-        and _effective(entry.metadata, service_date)
+        and (not enforce_effective_date or _effective(entry.metadata, service_date))
     ]
     blocked = [
         entry.rule_id
@@ -357,6 +362,8 @@ def evaluate_rule(
             criterion_assessments=[blocked],
             proof_tree=proof,
             data_quality_flags=["UNAPPROVED_RULE_VERSION"],
+            rule_effective_from=rule.metadata.effective_from,
+            rule_effective_to=rule.metadata.effective_to,
         )
 
     proof = evaluate_condition_tree(
@@ -374,4 +381,6 @@ def evaluate_rule(
         source_versions=source_versions,
         criterion_assessments=_flatten_assessments(proof),
         proof_tree=proof,
+        rule_effective_from=rule.metadata.effective_from,
+        rule_effective_to=rule.metadata.effective_to,
     )

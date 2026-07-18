@@ -596,34 +596,100 @@ details.history-runs[open] > summary {
   word-break: break-word;
 }
 
-/* strengthen-oncology-drug-eligibility: 双轴资格结果，与专家审核动作分区 */
-.eligibility-panel {
-  margin: 10px 0;
-  padding: 10px 12px;
+/* 肿瘤靶向药用药方案合理性 — reasoning 之后的 follow-up, 默认折叠 */
+.onco-followup {
+  margin-top: 8px;
   border: 1px solid #bfdbfe;
   border-left: 3px solid var(--primary);
   border-radius: var(--radius);
-  background: #eff6ff;
+  background: #f5f9ff;
 }
-.eligibility-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.eligibility-axis {
-  font-size: 11px;
+.onco-followup > summary {
+  cursor: pointer;
+  padding: 8px 12px;
+  font-weight: 600;
   color: var(--primary);
-  border: 1px solid #bfdbfe;
-  background: #fff;
-  border-radius: 999px;
-  padding: 2px 7px;
-}
-.eligibility-criteria { margin-top: 8px; display: grid; gap: 4px; }
-.eligibility-criterion {
-  display: grid;
-  grid-template-columns: minmax(180px, auto) auto 1fr;
+  display: flex;
+  align-items: center;
   gap: 8px;
-  font-size: 12px;
-  align-items: baseline;
+  flex-wrap: wrap;
+  list-style: none;
 }
-.eligibility-criterion small { color: var(--text-muted); }
-.eligibility-flags { margin-top: 8px; color: var(--verdict-i); font-size: 12px; }
+.onco-followup > summary::-webkit-details-marker { display: none; }
+.onco-followup > summary::before { content: "▸"; font-size: 11px; color: var(--text-muted); }
+.onco-followup[open] > summary::before { content: "▾"; }
+.onco-pill {
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+.onco-pill-satisfied { background: #dcfce7; color: #166534; }
+.onco-pill-not_satisfied { background: #fee2e2; color: #991b1b; }
+.onco-pill-conflict { background: #fef3c7; color: #92400e; }
+.onco-pill-documentation_gap { background: #e0e7ff; color: #3730a3; }
+.onco-hint { font-size: 11px; font-weight: 400; color: var(--text-muted); margin-left: auto; }
+.onco-body { padding: 0 12px 12px; }
+.onco-checklist { display: grid; gap: 6px; margin-top: 4px; }
+.onco-crit {
+  display: grid;
+  grid-template-columns: 18px minmax(120px, auto) auto 1fr;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 13px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  background: #fff;
+  border: 1px solid var(--border);
+}
+.onco-mark { font-weight: 700; text-align: center; }
+.onco-crit-satisfied .onco-mark { color: #16a34a; }
+.onco-crit-not_satisfied .onco-mark { color: #dc2626; }
+.onco-crit-conflict .onco-mark { color: #d97706; }
+.onco-crit-unknown .onco-mark { color: #64748b; }
+.onco-crit-label { font-weight: 600; color: var(--text); }
+.onco-crit-state { font-size: 12px; color: var(--text-muted); }
+.onco-crit-reason { color: var(--text-muted); line-height: 1.5; }
+/* 免疫组化等 criterion 命中文书 → 定位原文双链 (复用 .hit-item 点击委托, 覆盖块级样式为内联 chip) */
+.onco-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border: 1px solid var(--primary);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--primary);
+  background: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.onco-jump:hover, .onco-jump:focus { background: var(--bg-light); outline: none; }
+.onco-flags { margin-top: 8px; color: var(--verdict-i); font-size: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+/* 生效期核查提示 (未按生效期过滤时 fail-loud) */
+.onco-date-warn {
+  margin: 8px 0;
+  padding: 8px 10px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-left: 3px solid #f97316;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #9a3412;
+}
+/* 元数据摊开 (专业平台: 分支/版本/生效期/就诊日/来源) */
+.onco-meta {
+  margin: 10px 0 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 12px;
+  font-size: 12px;
+}
+.onco-meta dt { color: var(--text-muted); white-space: nowrap; }
+.onco-meta dd { margin: 0; color: var(--text); word-break: break-word; }
 .documentation-suggestions {
   margin-top: 10px;
   padding: 9px 10px;
@@ -634,12 +700,18 @@ details.history-runs[open] > summary {
 .documentation-suggestions-title { font-weight: 600; color: #92400e; }
 .documentation-suggestion p { margin: 5px 0; line-height: 1.6; }
 .documentation-suggestion small { color: var(--text-muted); }
-.eligibility-proof { margin-top: 8px; font-size: 12px; }
-.eligibility-proof pre {
+.onco-proof { margin-top: 10px; font-size: 12px; }
+.onco-proof > summary { cursor: pointer; color: var(--text-muted); }
+.onco-proof pre {
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 280px;
   overflow: auto;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  margin-top: 6px;
 }
 .evidence-block {
   margin-top: 10px;

@@ -137,6 +137,7 @@ def build_executor(loader: DataLoader, config: JavertConfig | None = None) -> To
             eligibility_path=cfg.resolve("configs/oncology_eligibility_rules.json"),
             pathology_path=cfg.resolve("configs/pathology_biomarker_kb.json"),
             regimen_path=cfg.resolve("configs/oncology_regimen_kb.json"),
+            enforce_effective_date=cfg.oncology_enforce_effective_date,
         ),
         description=drug_audit_lookup.DESCRIPTION,
         requires_patient_id=getattr(drug_audit_lookup, "REQUIRES_PATIENT_ID", False),
