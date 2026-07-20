@@ -322,6 +322,56 @@ def test_patient_detail_hit_items_block(alice):
     assert not any(a.get("tab") == "notes" for a in anchors)
 
 
+def test_patient_detail_uses_leaflet_label_for_off_label_rule(alice):
+    """超说明书规则显示说明书适应证；医保限定规则继续沿用原有“限定”口径。"""
+    from javert.web.hit_resolver import Anchor, HitItem
+
+    off_label = RunWithReviews(
+        run_id="aud_leaflet_basis", rule_id="RD_SYNTH_OFF", patient_id="P-SYNTH",
+        verdict="VIOLATION", confidence=0.9, reasoning="r",
+        created_at=datetime.now(timezone.utc), reviews=[],
+    )
+    insurance = RunWithReviews(
+        run_id="aud_insurance_basis", rule_id="RD_SYNTH_INS", patient_id="P-SYNTH",
+        verdict="VIOLATION", confidence=0.9, reasoning="r",
+        created_at=datetime.now(timezone.utc), reviews=[],
+    )
+    common_meta = {
+        "violation_type": "超范围支付",
+        "behavior_name": "超范围支付",
+        "subtitle": "",
+        "question": "合成测试问题",
+    }
+    out = render(
+        "patient_detail.html", title="t", current_user=alice, patients=[],
+        active_patient="P-SYNTH", filter="v_and_i", filter_label="x",
+        runs=[off_label, insurance],
+        rule_meta={
+            off_label.rule_id: {**common_meta, "drug_rule_type": "超说明书"},
+            insurance.rule_id: {**common_meta, "drug_rule_type": "限适应症"},
+        },
+        hits_by_run={
+            off_label.run_id: [
+                HitItem(
+                    source="drug", name="合成药甲",
+                    restriction="说明书适应证原文。",
+                    anchor=Anchor(tab="fees", query="合成药甲"),
+                ),
+            ],
+            insurance.run_id: [
+                HitItem(
+                    source="drug", name="合成药乙",
+                    restriction="限特定诊断患者。",
+                    anchor=Anchor(tab="fees", query="合成药乙"),
+                ),
+            ],
+        },
+    )
+
+    assert "说明书适应证: 说明书适应证原文。" in out
+    assert "限定: 限特定诊断患者。" in out
+
+
 def test_patient_detail_run_groups_chips_and_ordering(alice):
     """细类分组渲染: 顶部 chip (别名+计数) + 可折叠组 (按锚点 id) + 组内 V 前 I 后 + 只看不明 toggle."""
     def mkrun(rid, verdict):

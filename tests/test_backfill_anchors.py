@@ -210,6 +210,7 @@ def test_route_resolve_hits_cache_hit_and_fallback():
 
     # 缓存命中 — 直接用 anchors_map, 不触 loader/KB
     cached_hits = [HitItem(source="drug", name="缓存药", code_nat="CC",
+                           restriction="完整缓存依据。",
                            anchor=Anchor(tab="fees", query="x"))]
     amap = {"aud_cache1": hits_to_json(cached_hits)}
     out = _resolve_hits_for_runs("J90508", [run], meta, amap)

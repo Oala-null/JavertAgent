@@ -102,7 +102,7 @@
               {% if h.matched_fee_name and h.matched_fee_name != h.name %}<span class="hit-fee-name">· {{ h.matched_fee_name }}</span>{% endif %}
             </div>
             {% if h.restriction %}
-            <div class="hit-restriction">限定: {{ h.restriction }}{% if h.review_note %} <span class="hit-review">⚠ {{ h.review_note }}</span>{% endif %}</div>
+            <div class="hit-restriction">{{ '说明书适应证' if meta and meta.drug_rule_type == '超说明书' else '限定' }}: {{ h.restriction }}{% if h.review_note %} <span class="hit-review">⚠ {{ h.review_note }}</span>{% endif %}</div>
             {% endif %}
           </div>
           {% endfor %}

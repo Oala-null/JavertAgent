@@ -221,15 +221,23 @@ def _lookup_kb_drug(
     """按通用名 (精确 → kb_stem 兜底) 找 KB 条目, 返回 (matched_generic, entries, codes).
 
     兼容新版 drugs[通用名]={entries,codes} 与旧版 (值即 entries list).
+    历史 evidence 的 locator 偶尔带尾部商品名 (如 ``盐酸尼卡地平注射液(佩尔)``);
+    精确名未命中时再剥一层尾括号尝试, 但 KB 本身含括号的规范名仍由精确分支优先保护.
     """
-    val = kb_drugs.get(generic_name)
-    if val is not None:
-        return generic_name, kb_entries(val), kb_codes(val)
-    probe = kb_stem(generic_name)
-    if len(probe) >= 2:
-        for g, v in kb_drugs.items():
-            if probe == kb_stem(g) or probe in g:
-                return g, kb_entries(v), kb_codes(v)
+    candidates = [generic_name]
+    without_brand = re.sub(r"[（(][^（）()]{1,30}[)）]\s*$", "", generic_name).strip()
+    if without_brand and without_brand != generic_name:
+        candidates.append(without_brand)
+    for candidate in candidates:
+        val = kb_drugs.get(candidate)
+        if val is not None:
+            return candidate, kb_entries(val), kb_codes(val)
+    for candidate in candidates:
+        probe = kb_stem(candidate)
+        if len(probe) >= 2:
+            for g, v in kb_drugs.items():
+                if probe == kb_stem(g) or probe in g:
+                    return g, kb_entries(v), kb_codes(v)
     return generic_name, [], []
 
 
@@ -238,28 +246,107 @@ def _enrich_restriction(
     drug_rule_type: str | None,
     kb_drugs: dict[str, Any],
     matched_fee_name: str,
+    evidence_basis: str = "",
 ) -> tuple[str, str]:
     """(restriction, review_note). drug_rule_type 空 → ("", "").
 
-    restriction = KB drugs[通用名] 下该 rule_type 的 basis.
+    restriction 优先采用该次历史审计 evidence 明确引用的依据原文; evidence 无依据时,
+    再取 KB drugs[通用名] 下该 rule_type 的 basis. 这样旧结果不会被现行 KB 静默改写.
     review_note: 通用名全名不是 matched fee 名 (cleaned) 子串 → "按通用名匹配, 剂型/复方需复核".
     """
     if not drug_rule_type:
         return "", ""
+    evidence_basis = (evidence_basis or "").strip()
     generic_name, entries, _codes = _lookup_kb_drug(generic_name, kb_drugs)
-    if not entries:
-        return "", ""
-    basis = next(
-        (e.get("basis", "") for e in entries if e.get("rule_type") == drug_rule_type),
-        "",
-    )
-    if not basis:
-        # rule_type 不匹配时退回第一条 basis (仍给专家看依据)
-        basis = entries[0].get("basis", "")
+    basis = evidence_basis
+    if not basis and entries:
+        basis = next(
+            (e.get("basis", "") for e in entries if e.get("rule_type") == drug_rule_type),
+            "",
+        )
+        if not basis:
+            # rule_type 不匹配时退回第一条 basis (仍给专家看依据)
+            basis = entries[0].get("basis", "")
     review = ""
     if matched_fee_name and generic_name not in fee_clean(matched_fee_name):
         review = "按通用名匹配, 剂型/复方需复核"
     return basis, review
+
+
+# =========================================================
+# 历史 drug evidence 兼容 — 显式药品名 / 依据原文 / note-like 纠偏
+# =========================================================
+_DRUG_NAME_IN_TEXT = re.compile(
+    r"(?:药品|通用名)\s*[:：]\s*[「『“‘\"']?"
+    r"([^；;\r\n「」『』“”‘’\"']{2,80}?)"
+    r"[」』”’\"']?\s*(?=[；;]|\r?\n|$)"
+)
+_DRUG_NAME_IN_LOCATOR = re.compile(
+    r"^\s*(?:药品|通用名)\s*[:：]\s*[「『“‘\"']?"
+    r"(.{2,80}?)"
+    r"[」』”’\"']?\s*$"
+)
+_BASIS_END = r"(?=\s*(?:检出逻辑|依据层级)\s*[:：]|\r?\n|$)"
+_EXPLICIT_BASIS = re.compile(
+    r"(?:限定/说明书依据|说明书依据|说明书适应[证症]|医保限定支付条件|医保限定条件|限定支付条件)"
+    r"\s*[:：]\s*([^\r\n]*?)" + _BASIS_END
+)
+_BARE_BASIS = re.compile(
+    r"依据(?!层级)\s*[:：]\s*([^\r\n]*?)" + _BASIS_END
+)
+_NOTE_LIKE_DRUG_LOCATORS = (
+    "诊断",
+    "病史",
+    "病程",
+    "入院记录",
+    "出院记录",
+    "出院小结",
+    "现病史",
+    "既往史",
+    "个人史",
+    "家族史",
+    "体格检查",
+    "手术记录",
+    "检查记录",
+    "检验记录",
+)
+
+
+def _extract_drug_evidence(locator: str, text: str) -> tuple[str, str]:
+    """从历史 evidence 提取 (显式药品名, 显式依据原文).
+
+    只认带 ``药品/通用名`` 与 ``依据/说明书依据/医保限定支付条件`` 前缀的字段,
+    不从自由叙述猜测; 依据在 ``检出逻辑`` / ``依据层级`` / 换行前截断.
+    """
+    locator = (locator or "").strip()
+    text = text or ""
+    name = ""
+    m = _DRUG_NAME_IN_TEXT.search(text)
+    if m:
+        name = m.group(1).strip()
+    if not name:
+        m = _DRUG_NAME_IN_LOCATOR.match(locator)
+        if m:
+            name = m.group(1).strip()
+
+    basis = ""
+    m = _EXPLICIT_BASIS.search(text)
+    if m:
+        basis = m.group(1).strip().rstrip("；;").strip()
+    elif name:
+        # 裸 ``依据:`` 只在同条 evidence 已显式标出药品名时接受, 避免把诊断依据误当药品依据.
+        m = _BARE_BASIS.search(text)
+        if m:
+            basis = m.group(1).strip().rstrip("；;").strip()
+    return name, basis
+
+
+def _is_note_like_drug_evidence(locator: str, explicit_drug_name: str) -> bool:
+    """旧结果把 drug_audit_lookup 返回的诊断也标成 source=drug; 按 locator 纠偏."""
+    if explicit_drug_name:
+        return False
+    value = (locator or "").strip()
+    return any(marker in value for marker in _NOTE_LIKE_DRUG_LOCATORS)
 
 
 # =========================================================
@@ -466,6 +553,77 @@ def _collect_search_keywords(tool_calls: list[dict]) -> list[str]:
     return out
 
 
+def _actual_fee_line_name(hit: HitItem) -> str:
+    """命中项对应的实际收费行名; 空表示没有可用于跨 source 合并的收费行业务键."""
+    return fee_clean(hit.matched_fee_name).strip() if hit.matched_fee_name else ""
+
+
+def _same_actual_fee_line(left: HitItem, right: HitItem) -> bool:
+    """drug / fee 是否指向同一实际收费行.
+
+    行名必须完全一致; 两边同时有国家码/院内码时还必须相等. 因此不同规格/不同收费行
+    即使通用名相同也会保留, 不做 stem 级宽松合并.
+    """
+    left_name = _actual_fee_line_name(left)
+    right_name = _actual_fee_line_name(right)
+    if not left_name or left_name != right_name:
+        return False
+    if left.code_nat and right.code_nat and left.code_nat != right.code_nat:
+        return False
+    if left.code_local and right.code_local and left.code_local != right.code_local:
+        return False
+    return True
+
+
+def _merge_drug_fee_pair(drug: HitItem, fee: HitItem) -> HitItem:
+    """同收费行 drug+fee 合一，编码始终服从 drug 的防串药判定。
+
+    drug 码不匹配时会刻意留空并要求复核；不得再用宽松 fee 命中的编码补回。
+    """
+    anchor = drug.anchor
+    if anchor.unresolved and not fee.anchor.unresolved:
+        anchor = fee.anchor
+    return drug.model_copy(update={
+        "matched_fee_name": drug.matched_fee_name or fee.matched_fee_name,
+        "restriction": drug.restriction or fee.restriction,
+        "review_note": drug.review_note or fee.review_note,
+        "anchor": anchor,
+    })
+
+
+def _merge_drug_fee_hits(hits: list[HitItem]) -> list[HitItem]:
+    """按实际收费行业务键合并重复的 drug+fee, 同一通用名的不同规格仍逐行保留."""
+    out: list[HitItem] = []
+    for hit in hits:
+        if hit.source not in ("drug", "fee") or not _actual_fee_line_name(hit):
+            out.append(hit)
+            continue
+        opposite = "fee" if hit.source == "drug" else "drug"
+        match_index = next(
+            (
+                index
+                for index, existing in enumerate(out)
+                if existing.source == opposite and _same_actual_fee_line(existing, hit)
+            ),
+            None,
+        )
+        if match_index is None:
+            out.append(hit)
+            continue
+        existing = out[match_index]
+        drug = hit if hit.source == "drug" else existing
+        fee = existing if hit.source == "drug" else hit
+        out[match_index] = _merge_drug_fee_pair(drug, fee)
+    return out
+
+
+def has_duplicate_drug_fee_hits(hits: list[HitItem]) -> bool:
+    """缓存里是否仍有指向同一实际收费行的 drug + fee 重复项。"""
+    drugs = [h for h in hits if h.source == "drug"]
+    fees = [h for h in hits if h.source == "fee"]
+    return any(_same_actual_fee_line(drug, fee) for drug in drugs for fee in fees)
+
+
 def resolve_hits_from_json(
     evidence_json: str | None,
     tool_calls_json: str | None,
@@ -501,6 +659,14 @@ def resolve_hits_from_json(
         kind = kind_tab[0]
         raw_locator = str(ev.get("locator") or "").strip()
         text = str(ev.get("text") or "")
+        explicit_drug_name = ""
+        evidence_basis = ""
+        if kind == "drug":
+            explicit_drug_name, evidence_basis = _extract_drug_evidence(
+                raw_locator, text
+            )
+            if _is_note_like_drug_evidence(raw_locator, explicit_drug_name):
+                kind = "note"
         name = raw_locator or _quoted_or_ngram(text)  # locator 空时退回 text 引文做名字
         if not name:
             continue
@@ -546,7 +712,10 @@ def resolve_hits_from_json(
         # drug 码优先: 取该证据通用名的 KB 国家码集合, 行码 ∈ 集合才命中 (相似药零串味)
         kb_code_set = None
         if kind == "drug":
-            _g, _ents, _codes = _lookup_kb_drug(name, kb_drugs)
+            lookup_name = explicit_drug_name or name
+            _g, _ents, _codes = _lookup_kb_drug(lookup_name, kb_drugs)
+            # KB 命中时统一显示规范通用名; 未命中仍保留历史 evidence 的显式药品名.
+            name = _g if _ents else lookup_name
             kb_code_set = set(_codes)
         rows = _match_fee_rows(
             name, patient_fee_df, is_drug=(kind == "drug"), kb_code_set=kb_code_set
@@ -554,7 +723,10 @@ def resolve_hits_from_json(
         if not rows:
             # 无 fee 匹配: 仍出一条 (drug 带限定); 锚点用命中名做模糊 query (D1, 不再 unresolved)
             restriction, review = (
-                _enrich_restriction(name, drug_rule_type, kb_drugs, "")
+                _enrich_restriction(
+                    name, drug_rule_type, kb_drugs, "",
+                    evidence_basis=evidence_basis,
+                )
                 if kind == "drug"
                 else ("", "")
             )
@@ -570,7 +742,10 @@ def resolve_hits_from_json(
             continue
         for row in rows:
             restriction, review = (
-                _enrich_restriction(name, drug_rule_type, kb_drugs, row["fee_name"])
+                _enrich_restriction(
+                    name, drug_rule_type, kb_drugs, row["fee_name"],
+                    evidence_basis=evidence_basis,
+                )
                 if kind == "drug"
                 else ("", "")
             )
@@ -592,7 +767,7 @@ def resolve_hits_from_json(
             if key not in seen:
                 seen.add(key)
                 hits.append(item)
-    return hits
+    return _merge_drug_fee_hits(hits)
 
 
 # =========================================================

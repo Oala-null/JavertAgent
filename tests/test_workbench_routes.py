@@ -232,3 +232,74 @@ def test_sidebar_patients_ttl_cache():
         assert calls == ["v_and_i", "all", "v_and_i", "all"]
     finally:
         rw._sidebar_cache.clear()
+
+
+def test_resolve_hits_refreshes_legacy_drug_cache(monkeypatch):
+    """旧药品缓存缺少依据时应回读历史 evidence，不要求重跑模型或手工删缓存。"""
+    import json
+
+    from javert.web.hit_resolver import Anchor, HitItem, hits_to_json
+
+    fee_name = "某药注射液(商品名)"
+    fee_df = pd.DataFrame(
+        [[fee_name, "X-SYNTH-001", "L-SYNTH-001"]],
+        columns=["medins_list_name", "med_list_codg", "medins_list_codg"],
+    )
+    monkeypatch.setattr(
+        workbench_routes,
+        "_get_loader",
+        lambda: SimpleNamespace(get_fees=lambda _patient_id: fee_df),
+    )
+    monkeypatch.setattr(workbench_routes, "load_kb_drugs", lambda: {})
+
+    run = SimpleNamespace(
+        run_id="aud_legacy_leaflet",
+        rule_id="RD_SYNTH",
+        patient_id="P-SYNTH",
+        evidence_json=json.dumps(
+            [
+                {
+                    "source": "drug_audit_lookup",
+                    "locator": fee_name,
+                    "text": (
+                        "药品：某药注射液；依据：说明书适应证原文。"
+                        "检出逻辑：诊断不符合说明书适应证。"
+                    ),
+                },
+                {"source": "fee", "locator": fee_name, "text": "费用明细命中。"},
+            ],
+            ensure_ascii=False,
+        ),
+        tool_calls_json="[]",
+    )
+    old_cache = hits_to_json(
+        [
+            HitItem(
+                source="drug",
+                name=fee_name,
+                code_nat="X-SYNTH-001",
+                matched_fee_name=fee_name,
+                restriction="旧缓存已有但需要刷新的依据。",
+                anchor=Anchor(tab="fees", query=fee_name),
+            ),
+            HitItem(
+                source="fee",
+                name=fee_name,
+                code_nat="X-SYNTH-001",
+                matched_fee_name=fee_name,
+                anchor=Anchor(tab="fees", query=fee_name),
+            ),
+        ]
+    )
+
+    out = workbench_routes._resolve_hits_for_runs(
+        "P-SYNTH",
+        [run],
+        {"RD_SYNTH": {"drug_rule_type": "超说明书"}},
+        {run.run_id: old_cache},
+    )
+
+    visible = [h for h in out[run.run_id] if h.source in ("drug", "fee")]
+    assert len(visible) == 1
+    assert visible[0].source == "drug"
+    assert visible[0].restriction == "说明书适应证原文。"

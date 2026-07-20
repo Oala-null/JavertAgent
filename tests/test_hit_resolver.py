@@ -294,7 +294,71 @@ def test_non_drug_rule_no_restriction():
 
 
 # =========================================================
-# 场景 8: drug 码优先 (fix-drug-code-match) — 相似药名锚到正确编码
+# 场景 8: 旧版药品证据兼容 — 恢复说明书依据、纠正来源并消除重复收费行
+# =========================================================
+def test_legacy_leaflet_basis_and_fee_hit_are_merged():
+    """旧结果以 fee→drug 顺序引用同一收费行时，只显示一次并保留当次说明书原文。"""
+    fees = _fee_df([
+        ["某药注射液(商品名)", "X-SYNTH-001", "L-SYNTH-001"],
+    ])
+    current_kb = {
+        "某药注射液": {
+            "entries": [
+                {"rule_type": "超说明书", "basis": "现行知识库中的新版本依据。"},
+            ],
+            "codes": ["X-SYNTH-001"],
+        },
+    }
+    ev = _ev(
+        {
+            "source": "fee",
+            "locator": "某药注射液(商品名)",
+            "text": "费用明细命中。",
+        },
+        {
+            "source": "drug_audit_lookup",
+            "locator": "某药注射液(商品名)",
+            "text": (
+                "药品：某药注射液；依据：历史审计采用的说明书适应证。"
+                "检出逻辑：诊断不符合说明书适应证。"
+            ),
+        },
+    )
+
+    hits = resolve_hits_from_json(ev, _tc(), "超说明书", fees, current_kb)
+
+    visible = [h for h in hits if h.source in ("drug", "fee")]
+    assert len(visible) == 1
+    hit = visible[0]
+    assert hit.source == "drug"
+    assert hit.name == "某药注射液"
+    assert hit.code_nat == "X-SYNTH-001"
+    assert hit.code_local == "L-SYNTH-001"
+    assert hit.matched_fee_name == "某药注射液(商品名)"
+    assert hit.restriction == "历史审计采用的说明书适应证。"
+    assert "检出逻辑" not in hit.restriction
+
+
+def test_note_like_locator_mislabeled_as_drug_is_reclassified():
+    """旧 evidence 把病案首页诊断标成 drug_audit_lookup 时，不得显示成第二个药品。"""
+    ev = _ev(
+        {
+            "source": "drug_audit_lookup",
+            "locator": "病案首页诊断",
+            "text": "合成诊断信息。",
+        },
+    )
+
+    hits = resolve_hits_from_json(ev, _tc(), "超说明书", None, {})
+
+    assert len(hits) == 1
+    assert hits[0].source == "note"
+    assert hits[0].name == "病案首页诊断"
+    assert hits[0].anchor.tab == "notes"
+
+
+# =========================================================
+# 场景 9: drug 码优先 (fix-drug-code-match) — 相似药名锚到正确编码
 # =========================================================
 # 新版 KB: drugs[通用名] = {entries, codes}; 丁苯那嗪片/氘丁苯那嗪片 名互为子串, 码不同
 KB_CODED = {
@@ -338,6 +402,31 @@ def test_drug_code_mismatch_falls_back_blank_code_needs_review():
     assert "亨廷顿" in h.restriction  # 限定仍带出
 
 
+def test_dedup_does_not_restore_mismatched_fee_code():
+    """drug 防串药路径刻意留空的编码，不得在合并宽松 fee 命中时被补回来。"""
+    only_similar = _fee_df([["(基)氘丁苯那嗪片", "XN07DEU999", "L002"]])
+    ev = _ev(
+        {
+            "source": "search_fees",
+            "locator": "丁苯那嗪片",
+            "text": "费用明细命中。",
+        },
+        {
+            "source": "drug_audit_lookup",
+            "locator": "丁苯那嗪片",
+            "text": "通用名「丁苯那嗪片」限定适应症不符。",
+        },
+    )
+
+    hits = resolve_hits_from_json(ev, _tc(), "限适应症", only_similar, KB_CODED)
+
+    assert len(hits) == 1
+    assert hits[0].source == "drug"
+    assert hits[0].code_nat == ""
+    assert hits[0].code_local == ""
+    assert "需复核" in hits[0].review_note
+
+
 def test_drug_code_path_byte_identical():
     """码路下二次调用序列化 byte-identical (4.3)."""
     from javert.web.hit_resolver import hits_to_json
@@ -348,7 +437,7 @@ def test_drug_code_path_byte_identical():
 
 
 # =========================================================
-# 场景 9: 通用占位 locator → 提取真实被查项目名
+# 场景 10: 通用占位 locator → 提取真实被查项目名
 # (fix: LLM 搜索未命中时 locator 写 "费用明细检索" 等占位, 命中按钮应显示具体药品/项目)
 # =========================================================
 def test_generic_locator_name_from_quoted_text():

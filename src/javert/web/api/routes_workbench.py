@@ -30,7 +30,12 @@ from javert.data.lab_loader import LabLoader
 from javert.store.sqlserver_store import get_sqlserver_store
 from javert.web.auth import current_user, request_meta, session_user_id
 from javert.web.doc_order import bucket_of
-from javert.web.hit_resolver import hits_from_json, load_kb_drugs, resolve_hits
+from javert.web.hit_resolver import (
+    has_duplicate_drug_fee_hits,
+    hits_from_json,
+    load_kb_drugs,
+    resolve_hits,
+)
 from javert.web.patient_overview import (
     build_overview,
     get_fees_sum_map,
@@ -106,9 +111,22 @@ def _resolve_hits_for_runs(
     kb_drugs: dict = {}
     kb_loaded = False
     for run in runs:
+        m = meta_map.get(run.rule_id) or {}
+        drug_type = m.get("drug_rule_type")
         # 1) 缓存命中 (确定性回填的 anchors_json)
         cached = hits_from_json(anchors_map.get(run.run_id)) if anchors_map else None
-        if cached is not None:
+        # 旧版药品缓存可能只有项目/编码，没有把当次审计已落库的限定或说明书依据
+        # 写入 restriction。此类半成品缓存不能遮住 evidence_json，现场重算即可让
+        # 历史结果生效，无需重跑 LLM；后续批量 backfill 会把新结果固化。
+        stale_drug_cache = bool(
+            drug_type
+            and cached is not None
+            and (
+                any(h.source == "drug" and not h.restriction for h in cached)
+                or has_duplicate_drug_fee_hits(cached)
+            )
+        )
+        if cached is not None and not stale_drug_cache:
             out[run.run_id] = cached
             continue
         # 2) 现算回退 (lazy 加载 fee/KB, 仅在确有 miss 时)
@@ -121,8 +139,6 @@ def _resolve_hits_for_runs(
                 logger.warning("_resolve_hits_for_runs 取 fee 失败 patient=%s: %s", patient_id, e)
                 fee_df = None
             fee_loaded = True
-        m = meta_map.get(run.rule_id) or {}
-        drug_type = m.get("drug_rule_type")
         if drug_type and not kb_loaded:
             kb_drugs = load_kb_drugs()
             kb_loaded = True
