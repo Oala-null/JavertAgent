@@ -1,4 +1,4 @@
-# 2C 平台 ↔ Javert 审计服务 对接文档 (契约 v0.2)
+# 2C 平台 ↔ Javert 审计服务 对接文档 (契约 v0.3)
 
 一句话: 你发「患者名单」, 我后台跑 LLM 审计, 你轮询拉每个患者的违规裁决清单。
 
@@ -30,10 +30,16 @@
 
 ```json
 {
-  "accepted": [ { "SYXH": "J30860", "source": "local" }, { "SYXH": "211449756", "source": "hub" } ],
+  "accepted": [
+    { "SYXH": "J30860", "source": "local", "attempt_id": "att_a1b2c3d4e5f6" },
+    { "SYXH": "211449756", "source": "hub", "attempt_id": "att_g7h8i9j0k1l2" }
+  ],
   "rejected": [ { "SYXH": "J99999", "reason": "本地与数据中台均查无此患者" } ]
 }
 ```
+
+`attempt_id` 标识本次实际入队的审计。相同 SYXH 在 `running` 时重复提交不会重跑，
+会返回同一个 `attempt_id`；上一轮 `done` 后再次提交会生成新的 `attempt_id`。
 
 **⚠ 202 ≠ 全部受理**: 必须检查 `rejected` 数组, 被驳回的患者不要轮询 (results 永远 unknown)。
 
@@ -52,6 +58,11 @@
   "SYXH": "J30860",
   "YLZZJGDM": "H31010600042",
   "status": "done",
+  "outcome": "succeeded",
+  "attempt_id": "att_a1b2c3d4e5f6",
+  "error_code": "",
+  "retryable": false,
+  "progress": { "total": 14, "completed": 14, "failed": 0 },
   "summary": { "total": 14, "violation": 2, "inconclusive": 1, "clean": 11 },
   "results": [
     {
@@ -63,6 +74,8 @@
       "verdict_label": "违规",
       "confidence": 0.85,
       "reasoning": "全中文自然语言裁决理由 (无内部术语)…",
+      "diagnostic_code": "",
+      "retryable": false,
       "eligibility_evaluation": null,
       "hit_codes": ["331501001"],
       "hit_names": ["麻醉后复苏监护(PACU)"],
@@ -86,13 +99,20 @@
 
 | 字段 | 说明 |
 |------|------|
-| status | `unknown`(没提交过/被驳回) / `running`(审计中, results 为已完成部分) / `done`(全部完成) |
-| error | (可选, 仅异常时出现) 审计中断的简述, 如中台取数失败; 正常流程无此字段 |
+| status | `unknown`(没提交过/被驳回) / `running`(审计中, results 为已完成部分) / `done`(本轮已终止；是否成功还要看 outcome) |
+| outcome | `unknown / running / succeeded / partial / failed`。调用方判断本轮成败的主字段 |
+| attempt_id | 本次实际入队标识。服务重启后的历史回放为 `null` |
+| error_code | 稳定机器码；正常为空。现有值含 `HUB_FETCH_FAILED / ROUTING_FAILED / AUDIT_FAILED / RULE_FAILURES` |
+| retryable | 本轮或任一规则是否适合修复上游问题后重提；规则级诊断为 true 时顶层也为 true |
+| progress | 规则进度 `{total, completed, failed}`；患者级前置失败可能均为 0 |
+| error | (可选, 仅异常时出现) 脱敏的审计中断简述；不得只看 HTTP 200 或 results 是否为空 |
 | summary | 三档裁决计数 |
 | results[].verdict | **`VIOLATION`(违规) / `INCONCLUSIVE`(待人工复核) / `CLEAN`(合规)** |
 | results[].behavior_name | **行为认定名称** (监管规则框架总表口径, 如"重复收费"/"超范围支付"), 前端展示用这个, 可不显示 rule_id |
 | results[].confidence | 0~1 置信度 |
 | results[].reasoning | 裁决理由, **全中文自然语言** (无工具名/规则代号/英文判定词, 可直接展示给审核员) |
+| results[].diagnostic_code | 规则级诊断码；正常为空，格式异常为 `LLM_OUTPUT_MALFORMED`，长度截断为 `LLM_OUTPUT_TRUNCATED` |
+| results[].retryable | 当前规则是否适合重试；模型格式/截断失败为 `true` |
 | results[].eligibility_evaluation | 可空。RD04 肿瘤医保资格 v2 的双轴结果、条件证明和文书建议；其他规则及历史旧行是 `null` |
 | results[].evidence | 证据数组: 来源工具 + 定位 + 原文摘录 (给人看的) |
 | results[].hit_codes | 命中项目编码扁平数组 (国家医保码优先, 缺则院内码; 仅 V/I 非空), 直接挂明细用 |
@@ -191,6 +211,19 @@ RD04 在 62 的 `on` 模式会返回结构化资格结果；旧三态 `verdict` 
 
 `running` 状态下 results 增量可见 (跑完一条规则就多一条), 可用于进度展示。
 
+### 轮询终止判定（必须按此处理）
+
+```text
+status=unknown                         → 未受理/被驳回，停止轮询
+status=running                         → 继续轮询；results=[] 在刚提交时正常
+status=done + outcome=succeeded        → 成功结束；total=0 是 Router 无候选规则
+status=done + outcome=partial          → 至少一条规则成功且至少一条失败，展示已有 results 并提示可重试
+status=done + outcome=failed           → 患者级失败或所有规则失败，展示 error/error_code 并停止轮询
+```
+
+HTTP 200 只表示“成功读取任务状态”，不代表审计成功。特别是
+`status=done + results=[] + outcome=failed` 不能解释为患者合规或无疑点。
+
 ## 连通性验证 (2 条命令)
 
 ```bash
@@ -199,7 +232,7 @@ curl -H 'Content-Type: application/json' \
   -d '[{"SYXH":"J66252","YLZZJGDM":"H31010600042"}]' \
   http://192.168.31.62:8090/api/audit/submit
 
-# 2. 轮询 (每 30s 一次, status=done 即完成)
+# 2. 轮询 (每 30s 一次；status=done 后继续检查 outcome)
 curl http://192.168.31.62:8090/api/audit/results/J66252
 ```
 
@@ -223,5 +256,5 @@ curl http://192.168.31.62:8090/api/audit/results/J66252
 2. **规则集**: Javert 侧按患者自动路由选规则 (Router 预筛, 约 7~15 条/患者), 你方不用传规则。
 3. **契约只加不改**: 字段只增不删不改名, 解析请忽略未知字段。
 4. **访问边界**: 两接口仅限内网 (192.168.31.x) 调用, 出参含患者诊疗数据, 不得暴露公网。日后如需最低门槛, 加固定 token 请求头 (双方各一行改动), 联调时再定。
-5. **幂等**: 同一 SYXH 在跑中 (`running`) 重复提交不重跑, 照常回 accepted; `done` 后重复提交会重新跑一遍 (结果覆盖为最新一轮)。
+5. **幂等**: 同一 SYXH 在跑中 (`running`) 重复提交不重跑并复用 `attempt_id`; `done` 后重复提交会生成新 attempt 并重新跑一遍，查询默认指向最新一轮。
 6. **重启不丢结果**: Javert 服务重启后, 已完成患者的查询自动回放库内历史 (每规则最新一条, 按 `done` 返回); 只有重启瞬间**正在跑**的患者需要重新 submit。

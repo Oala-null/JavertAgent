@@ -15,6 +15,7 @@ import asyncio
 import json
 import logging
 import queue
+import secrets
 import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -366,6 +367,11 @@ def list_audit_runs(
 
 _VERDICT_LABEL = {"VIOLATION": "违规", "INCONCLUSIVE": "待人工复核", "CLEAN": "合规"}
 _2C_RULE_CONCURRENCY = 5
+_2C_STAGE_ERROR_CODE = {
+    "hub_fetch": "HUB_FETCH_FAILED",
+    "routing": "ROUTING_FAILED",
+    "audit": "AUDIT_FAILED",
+}
 
 # ponytail: 进程内任务表, 重启后历史提交回 unknown (裁决本体仍在 sqlite/工作台);
 # 需要跨重启状态时把任务表落 sqlite
@@ -378,6 +384,29 @@ _2c_worker: threading.Thread | None = None
 class SubmitItem(BaseModel):
     SYXH: str
     YLZZJGDM: str = ""
+
+
+def _new_2c_attempt_id() -> str:
+    """生成不含患者标识的 2C attempt id；仅用于关联本次进程内任务。"""
+    return f"att_{secrets.token_urlsafe(9)}"
+
+
+def _2c_result_diagnostic(reasoning: str) -> tuple[str, str, bool]:
+    """内部 Runner reason → 2C 可展示文本 + 稳定机器码。"""
+    lower = reasoning.lower()
+    if "truncated" in lower and ("verdict" in lower or "output" in lower):
+        return (
+            "模型输出达到长度上限，本规则未完成自动判定，需人工复核。",
+            "LLM_OUTPUT_TRUNCATED",
+            True,
+        )
+    if "malformed" in lower and "verdict" in lower:
+        return (
+            "模型输出格式异常，本规则未完成自动判定，需人工复核。",
+            "LLM_OUTPUT_MALFORMED",
+            True,
+        )
+    return humanize_reasoning(reasoning), "", False
 
 
 # ─── 142 数据中台兜底 (2C 提交真实患者, 本地 CSV 查无 → hub 取数入审) ───
@@ -436,6 +465,8 @@ def _2c_run_patient(syxh: str) -> None:
     with _2c_lock:
         source = _2c_tasks[syxh].get("source", "local")
     if source == "hub":
+        with _2c_lock:
+            _2c_tasks[syxh]["stage"] = "hub_fetch"
         hub_dir = cfg.resolve(_2C_HUB_CACHE) / syxh
         _hub_fetch_patient(syxh, hub_dir)
         cfg = _hub_cfg_for(cfg, hub_dir)
@@ -446,6 +477,8 @@ def _2c_run_patient(syxh: str) -> None:
     else:
         loader = _get_loader()
         zd_path = default_shi_zd_path()
+    with _2c_lock:
+        _2c_tasks[syxh]["stage"] = "routing"
     ready = [r for r in load_all(cfg.rules_path).values() if r.status == "ready"]
 
     rule_router = RuleRouter.from_defaults(enabled_priorities=("P0", "P1", "P2", "P3"))
@@ -460,6 +493,8 @@ def _2c_run_patient(syxh: str) -> None:
     if not selected:
         return  # router 判定无可疑规则 → done, 0 条 (病案干净)
 
+    with _2c_lock:
+        _2c_tasks[syxh]["stage"] = "audit"
     executor = build_executor(loader, cfg)
     runner = Runner(executor=executor, config=cfg, emit=lambda _m: None, loader=loader)
     store = SqliteStore(cfg.audit_db_path)
@@ -501,11 +536,30 @@ def _2c_worker_loop() -> None:
             logger.exception("2c audit patient failed: %s", syxh)
             with _2c_lock:
                 if syxh in _2c_tasks:
-                    _2c_tasks[syxh]["error"] = f"审计中断: {exc.__class__.__name__}"
+                    task = _2c_tasks[syxh]
+                    task["error"] = f"审计中断: {exc.__class__.__name__}"
+                    task["error_code"] = _2C_STAGE_ERROR_CODE.get(
+                        task.get("stage", ""), "AUDIT_FAILED"
+                    )
+                    task["retryable"] = True
+                    task["outcome"] = "failed"
         finally:
             with _2c_lock:
                 if syxh in _2c_tasks:
-                    _2c_tasks[syxh]["status"] = "done"
+                    task = _2c_tasks[syxh]
+                    if task.get("outcome") != "failed":
+                        if task.get("failed"):
+                            task["outcome"] = (
+                                "partial" if task.get("run_ids") else "failed"
+                            )
+                            task["error_code"] = "RULE_FAILURES"
+                            task["retryable"] = True
+                        else:
+                            task["outcome"] = "succeeded"
+                            task["error_code"] = ""
+                            task["retryable"] = False
+                    task["stage"] = "done"
+                    task["status"] = "done"
 
 
 def _2c_ensure_worker() -> None:
@@ -520,7 +574,7 @@ def _2c_ensure_worker() -> None:
 @router.post("/submit", status_code=202)
 def submit_2c(items: list[SubmitItem]):
     """2C 提交: 逐患者校验数据存在 → 受理入队. 重复提交在跑中的患者幂等 (不重跑)."""
-    loader = _get_loader()
+    loader = None
     accepted: list[dict] = []
     rejected: list[dict] = []
     for item in items:
@@ -528,6 +582,19 @@ def submit_2c(items: list[SubmitItem]):
         if not syxh:
             rejected.append({"SYXH": item.SYXH, "reason": "SYXH 为空"})
             continue
+        # 幂等命中必须先于数据源探测：当前 attempt 已在执行时，数据源瞬时故障
+        # 不应把重复提交误判为 rejected。入队前仍会在锁内二次检查并发竞态。
+        with _2c_lock:
+            existing = _2c_tasks.get(syxh)
+            if existing is not None and existing["status"] == "running":
+                accepted.append({
+                    "SYXH": syxh,
+                    "source": existing.get("source", "local"),
+                    "attempt_id": existing.get("attempt_id"),
+                })
+                continue
+        if loader is None:
+            loader = _get_loader()
         try:
             has_data = len(loader.get_notes(syxh)) > 0 or len(loader.get_fees(syxh)) > 0
         except Exception:  # noqa: BLE001
@@ -548,19 +615,29 @@ def submit_2c(items: list[SubmitItem]):
         with _2c_lock:
             existing = _2c_tasks.get(syxh)
             if existing is not None and existing["status"] == "running":
-                accepted.append({"SYXH": syxh, "source": existing.get("source", "local")})
+                accepted.append({
+                    "SYXH": syxh,
+                    "source": existing.get("source", "local"),
+                    "attempt_id": existing.get("attempt_id"),
+                })
                 continue  # 已在跑, 幂等受理
+            attempt_id = _new_2c_attempt_id()
             _2c_tasks[syxh] = {
                 "YLZZJGDM": item.YLZZJGDM,
                 "status": "running",
+                "outcome": "running",
+                "attempt_id": attempt_id,
                 "source": source,
+                "stage": "accepted",
                 "total": None,
                 "run_ids": [],
                 "failed": [],
+                "error_code": "",
+                "retryable": False,
                 "submitted_at": datetime.now(timezone.utc).isoformat(),
             }
         _2c_queue.put(syxh)
-        accepted.append({"SYXH": syxh, "source": source})
+        accepted.append({"SYXH": syxh, "source": source, "attempt_id": attempt_id})
     if accepted:
         _2c_ensure_worker()
     return {"accepted": accepted, "rejected": rejected}
@@ -596,6 +673,19 @@ def results_2c(syxh: str):
         run_ids = list(task["run_ids"]) if task else []
         data_dir = task.get("data_dir") if task else None
         error = task.get("error", "") if task else ""
+        attempt_id = task.get("attempt_id") if task else None
+        failed_count = len(task.get("failed", [])) if task else 0
+        error_code = task.get("error_code", "") if task else ""
+        retryable = bool(task.get("retryable", False)) if task else False
+        if task:
+            outcome = task.get("outcome") or (
+                "running" if status == "running"
+                else "failed" if error
+                else "partial" if failed_count
+                else "succeeded"
+            )
+        else:
+            outcome = "unknown"
 
     if task is None:
         # 服务重启后任务表清空, 但裁决本体在 sqlite — 回退查历史 (每规则最新一条),
@@ -603,6 +693,7 @@ def results_2c(syxh: str):
         run_ids = _latest_runs_for_patient(syxh)
         if run_ids:
             status = "done"
+            outcome = "succeeded"
             total = len(run_ids)
             hub_dir = get_config().resolve(_2C_HUB_CACHE) / syxh
             if hub_dir.exists():
@@ -630,6 +721,9 @@ def results_2c(syxh: str):
                 if r is None:
                     continue
                 meta = metas.get(r.rule_id)
+                display_reasoning, diagnostic_code, result_retryable = (
+                    _2c_result_diagnostic(r.reasoning)
+                )
                 # 命中项目 (确定性, 复用工作台 hit_resolver): V/I 才算, 给 2C 侧
                 # join 自己的费用明细 (code_nat=国家医保码 / matched_fee_name=明细原始项目名)
                 hits: list[dict] = []
@@ -676,7 +770,9 @@ def results_2c(syxh: str):
                     "verdict": r.verdict,
                     "verdict_label": _VERDICT_LABEL.get(r.verdict, r.verdict),
                     "confidence": r.confidence,
-                    "reasoning": humanize_reasoning(r.reasoning),
+                    "reasoning": display_reasoning,
+                    "diagnostic_code": diagnostic_code,
+                    "retryable": result_retryable,
                     "eligibility_evaluation": (
                         r.eligibility_evaluation.model_dump(mode="json")
                         if r.eligibility_evaluation is not None
@@ -696,11 +792,21 @@ def results_2c(syxh: str):
         finally:
             store.close()
     results.sort(key=lambda x: x["rule_id"])
+    response_retryable = retryable or any(item["retryable"] for item in results)
 
     out: dict[str, Any] = {
         "SYXH": syxh,
         "YLZZJGDM": ylzzjgdm,
         "status": status,
+        "outcome": outcome,
+        "attempt_id": attempt_id,
+        "error_code": error_code,
+        "retryable": response_retryable,
+        "progress": {
+            "total": total if total is not None else len(results),
+            "completed": len(run_ids),
+            "failed": failed_count,
+        },
         "summary": {
             "total": total if total is not None else len(results),
             "violation": sum(1 for x in results if x["verdict"] == "VIOLATION"),

@@ -98,18 +98,31 @@ def test_submit_accept_and_reject(client):
     ])
     assert resp.status_code == 202
     body = resp.json()
-    assert body["accepted"] == [{"SYXH": "J66252", "source": "local"}]
+    assert len(body["accepted"]) == 1
+    first_accepted = body["accepted"][0]
+    assert first_accepted["SYXH"] == "J66252"
+    assert first_accepted["source"] == "local"
+    assert first_accepted["attempt_id"].startswith("att_")
+    first_attempt = first_accepted["attempt_id"]
     assert {r["SYXH"]: r["reason"] for r in body["rejected"]} == {
         "J99999": "本地与数据中台均查无此患者",
         "": "SYXH 为空",
     }
     body = _wait_done(client, "J66252")
     assert body["YLZZJGDM"] == "H31010600042"
+    assert body["attempt_id"] == first_attempt
+    assert body["outcome"] == "succeeded"
+    assert body["progress"] == {"total": 0, "completed": 0, "failed": 0}
 
     # 重复提交已 done 的患者 → 重新受理 (重跑)
     resp2 = client.post("/api/audit/submit", json=[{"SYXH": "J66252"}])
-    assert resp2.json()["accepted"] == [{"SYXH": "J66252", "source": "local"}]
-    _wait_done(client, "J66252")  # 等 worker 消费完再 teardown, 防 monkeypatch 撤销后跑真审计
+    second_accepted = resp2.json()["accepted"][0]
+    assert second_accepted["SYXH"] == "J66252"
+    assert second_accepted["source"] == "local"
+    assert second_accepted["attempt_id"].startswith("att_")
+    assert second_accepted["attempt_id"] != first_attempt
+    body2 = _wait_done(client, "J66252")  # 等 worker 消费完再 teardown, 防 monkeypatch 撤销后跑真审计
+    assert body2["attempt_id"] == second_accepted["attempt_id"]
 
 
 def test_submit_hub_fallback(client, monkeypatch):
@@ -118,7 +131,9 @@ def test_submit_hub_fallback(client, monkeypatch):
 
     monkeypatch.setattr(routes_audit, "_hub_probe", lambda syxh: True)
     body = client.post("/api/audit/submit", json=[{"SYXH": "211449756"}]).json()
-    assert body["accepted"] == [{"SYXH": "211449756", "source": "hub"}]
+    assert body["accepted"][0]["SYXH"] == "211449756"
+    assert body["accepted"][0]["source"] == "hub"
+    assert body["accepted"][0]["attempt_id"].startswith("att_")
     assert routes_audit._2c_tasks["211449756"]["source"] == "hub"
     _wait_done(client, "211449756")
 
@@ -154,6 +169,11 @@ def test_hub_cfg_paths(tmp_path, monkeypatch):
 def test_results_unknown(client):
     body = client.get("/api/audit/results/NEVER").json()
     assert body["status"] == "unknown"
+    assert body["outcome"] == "unknown"
+    assert body["attempt_id"] is None
+    assert body["error_code"] == ""
+    assert body["retryable"] is False
+    assert body["progress"] == {"total": 0, "completed": 0, "failed": 0}
     assert body["results"] == []
     assert body["summary"] == {"total": 0, "violation": 0, "inconclusive": 0, "clean": 0}
 
@@ -219,5 +239,185 @@ def test_results_done_with_runs(client):
     routes_audit._2c_tasks.clear()
     body2 = client.get("/api/audit/results/J66252").json()
     assert body2["status"] == "done"
+    assert body2["outcome"] == "succeeded"
+    assert body2["attempt_id"] is None  # 重启后的 legacy/history replay 无 attempt
     assert body2["summary"]["total"] == 1
     assert body2["results"][0]["run_id"] == "aud_TESTtest0001"
+
+
+def test_running_duplicate_submit_reuses_attempt(client, monkeypatch):
+    """running 幂等提交复用当前 attempt，不能重复入队。"""
+    from javert.web.api import routes_audit
+
+    routes_audit._2c_tasks["J66252"] = {
+        "YLZZJGDM": "H31010600042",
+        "status": "running",
+        "outcome": "running",
+        "attempt_id": "att_existing0001",
+        "source": "local",
+        "stage": "audit",
+        "total": 2,
+        "run_ids": [],
+        "failed": [],
+        "submitted_at": "2026-07-22T00:00:00+00:00",
+    }
+    queued: list[str] = []
+    monkeypatch.setattr(routes_audit._2c_queue, "put", queued.append)
+
+    body = client.post("/api/audit/submit", json=[{"SYXH": "J66252"}]).json()
+
+    assert body["accepted"] == [{
+        "SYXH": "J66252", "source": "local", "attempt_id": "att_existing0001",
+    }]
+    assert queued == []
+
+
+def test_running_duplicate_submit_does_not_reprobe_sources(client, monkeypatch):
+    """running 幂等命中应先于数据源探测，避免瞬时连接故障把重复提交驳回。"""
+    from javert.web.api import routes_audit
+
+    routes_audit._2c_tasks["J66252"] = {
+        "YLZZJGDM": "H31010600042",
+        "status": "running",
+        "outcome": "running",
+        "attempt_id": "att_existing0002",
+        "source": "hub",
+        "stage": "hub_fetch",
+        "total": None,
+        "run_ids": [],
+        "failed": [],
+        "submitted_at": "2026-07-22T00:00:00+00:00",
+    }
+
+    def _must_not_probe():
+        raise AssertionError("running duplicate must not load data source")
+
+    monkeypatch.setattr(routes_audit, "_get_loader", _must_not_probe)
+    body = client.post("/api/audit/submit", json=[{"SYXH": "J66252"}]).json()
+
+    assert body["accepted"] == [{
+        "SYXH": "J66252", "source": "hub", "attempt_id": "att_existing0002",
+    }]
+    assert body["rejected"] == []
+
+
+def test_all_rule_failures_have_failed_outcome(client, monkeypatch):
+    """所有入选规则均失败时没有成功子结果，不能标为 partial。"""
+    from javert.web.api import routes_audit
+
+    def _fail_every_rule(syxh: str) -> None:
+        with routes_audit._2c_lock:
+            task = routes_audit._2c_tasks[syxh]
+            task["stage"] = "audit"
+            task["total"] = 2
+            task["failed"].extend(["R020", "R232"])
+
+    monkeypatch.setattr(routes_audit, "_2c_run_patient", _fail_every_rule)
+    client.post("/api/audit/submit", json=[{"SYXH": "J66252"}])
+    body = _wait_done(client, "J66252")
+
+    assert body["status"] == "done"
+    assert body["outcome"] == "failed"
+    assert body["error_code"] == "RULE_FAILURES"
+    assert body["retryable"] is True
+    assert body["results"] == []
+    assert body["progress"] == {"total": 2, "completed": 0, "failed": 2}
+
+
+def test_patient_level_failure_has_terminal_outcome(client, monkeypatch):
+    """患者级 Hub 异常保持 status 兼容，但必须显式 outcome=failed。"""
+    from javert.web.api import routes_audit
+
+    def _fail_in_hub(syxh: str) -> None:
+        with routes_audit._2c_lock:
+            routes_audit._2c_tasks[syxh]["stage"] = "hub_fetch"
+        raise RuntimeError("synthetic hub failure")
+
+    monkeypatch.setattr(routes_audit, "_2c_run_patient", _fail_in_hub)
+    accepted = client.post(
+        "/api/audit/submit", json=[{"SYXH": "J66252"}]
+    ).json()["accepted"][0]
+    body = _wait_done(client, "J66252")
+
+    assert body["attempt_id"] == accepted["attempt_id"]
+    assert body["status"] == "done"
+    assert body["outcome"] == "failed"
+    assert body["error_code"] == "HUB_FETCH_FAILED"
+    assert body["retryable"] is True
+    assert body["results"] == []
+    assert body["progress"] == {"total": 0, "completed": 0, "failed": 0}
+    assert body["error"] == "审计中断: RuntimeError"
+
+
+def test_results_partial_and_malformed_diagnostic(client):
+    """单规则失败返回 partial；malformed 对外为中文且带稳定诊断码。"""
+    from javert.audit.result import AuditResult
+    from javert.config import get_config
+    from javert.store.audit_store import SqliteStore
+    from javert.web.api import routes_audit
+
+    result = AuditResult(
+        run_id="aud_MALFORMED001",
+        rule_id="R020",
+        patient_id="J66252",
+        verdict="INCONCLUSIVE",
+        confidence=0.0,
+        reasoning="malformed verdict JSON (repair failed)",
+        evidence=[],
+        duration_ms=100,
+        model="test-model",
+        started_at=datetime(2026, 7, 22, 8, 0, 0, tzinfo=timezone.utc),
+    )
+    store = SqliteStore(get_config().audit_db_path)
+    store.init_schema()
+    store.write(result)
+    store.close()
+    routes_audit._2c_tasks["J66252"] = {
+        "YLZZJGDM": "H31010600042",
+        "status": "done",
+        "outcome": "partial",
+        "attempt_id": "att_partial0001",
+        "source": "local",
+        "stage": "done",
+        "total": 2,
+        "run_ids": [result.run_id],
+        "failed": ["R232"],
+        "error_code": "RULE_FAILURES",
+        "retryable": True,
+        "submitted_at": "2026-07-22T08:00:00+00:00",
+    }
+
+    body = client.get("/api/audit/results/J66252").json()
+
+    assert body["outcome"] == "partial"
+    assert body["progress"] == {"total": 2, "completed": 1, "failed": 1}
+    assert body["error_code"] == "RULE_FAILURES"
+    assert body["retryable"] is True
+    item = body["results"][0]
+    assert item["diagnostic_code"] == "LLM_OUTPUT_MALFORMED"
+    assert item["retryable"] is True
+    assert item["reasoning"] == "模型输出格式异常，本规则未完成自动判定，需人工复核。"
+    assert "malformed" not in item["reasoning"]
+
+    # 即使 task 本身执行成功，存在可重试的规则诊断也要上卷到顶层。
+    routes_audit._2c_tasks["J66252"].update({
+        "outcome": "succeeded",
+        "total": 1,
+        "failed": [],
+        "error_code": "",
+        "retryable": False,
+    })
+    body2 = client.get("/api/audit/results/J66252").json()
+    assert body2["outcome"] == "succeeded"
+    assert body2["retryable"] is True
+
+
+def test_truncated_diagnostic_is_chinese_and_retryable():
+    from javert.web.api.routes_audit import _2c_result_diagnostic
+
+    reasoning, code, retryable = _2c_result_diagnostic(
+        "LLM output truncated (repair failed)"
+    )
+    assert reasoning == "模型输出达到长度上限，本规则未完成自动判定，需人工复核。"
+    assert code == "LLM_OUTPUT_TRUNCATED"
+    assert retryable is True

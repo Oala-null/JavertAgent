@@ -67,7 +67,7 @@ class Qwen35Provider:
         temperature: float | None = None,
         tools: list[dict] | None = None,
     ) -> dict[str, Any]:
-        """同步 chat completion. 返回 {content, reasoning_content, usage, raw_response}."""
+        """同步 chat completion，返回正文、usage、finish_reason 和原始响应。"""
         client = self._get_http_client()
         url = f"{self.base_url}/chat/completions"
         body: dict[str, Any] = {
@@ -118,6 +118,7 @@ class Qwen35Provider:
             "content": content,
             "reasoning_content": reasoning_content,
             "usage": usage,
+            "finish_reason": choice.get("finish_reason"),
             "raw_response": data,
         }
 

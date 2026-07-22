@@ -23,8 +23,8 @@ SENT = "1900-01-01 00:00:00"
 
 # 病案首页三表 (TB_BA_SYJBK/SYZDK/SYSSK) 为 ground truth 的院区.
 # szx(0003): IH_DIAGNOSIS_DETAIL 的 CYZDBZ 不是主诊语义 (与首页主诊几乎零一致, 2026-07-06 实measured),
-# 主诊断锚 = SYJBK.ZYZD (与 IH 主诊 83% 同码), 诊断列表 = SYZDK, 手术 = SYSSK⋈OPRATION_DETAIL (v2.2).
-# sy(0001): 首页库回填不全 (J66252 仅 1 行且主诊错), 维持 IH/OPRATION 现状.
+# 主诊断锚 = SYJBK.ZYZD (与 IH 主诊 83% 同码), 诊断列表 = SYZDK, 手术 = SYSSK⋈OPERATION_DETAIL (v2.2).
+# sy(0001): 首页库回填不全 (J66252 仅 1 行且主诊错), 维持 IH/OPERATION 现状.
 BA_HOSPS = ("0003",)
 
 
@@ -305,19 +305,19 @@ def _ss_frame(ba_id, name, code, mainflag, date, lv, anst, dr, anst_dr) -> pd.Da
 
 
 def fetch_ss(cn, pids: list[str] | None, yq2org: dict[str, str]) -> pd.DataFrame:
-    """手术 → shi_ss (9 列契约). BA_HOSPS 走病案首页 SYSSK⋈OPRATION_DETAIL (SFZYSS 主手术标志),
-    其他院区维持 OPRATION_DETAIL 现状.
+    """手术 → shi_ss (9 列契约). BA_HOSPS 走病案首页 SYSSK⋈OPERATION_DETAIL (SFZYSS 主手术标志),
+    其他院区维持 OPERATION_DETAIL 现状.
 
-    v2 (46表标准化): SSKSSJ 日期回退改标准表 OPRATION_DETAIL (旧 SYSSK_EXT join 实测 0 行生效,
+    v2 (46表标准化): SSKSSJ 日期回退改标准表 OPERATION_DETAIL (旧 SYSSK_EXT join 实测 0 行生效,
     且术者/麻醉/时间标准表已承载) — 医院无需提供 SYSSK_EXT.
 
     harden-onsite-redlines D5: per-patient 源选择 — 只有 SYSSK 真有行的患者剔除
-    OPRATION 行, 缺首页手术行的 szx 患者保留 IH 侧手术."""
+    OPERATION 行, 缺首页手术行的 szx 患者保留 IH 侧手术."""
     ba_in = ",".join(f"'{h}'" for h in BA_HOSPS)
 
     ss = q(cn, f"""
         SELECT YLJGYQDM, JZLSH, SSCZMC, SSCZBM, ZCBZ, SSKSSJ, SSJB, MZFS, SXYHRYXM, MZYHRYXM
-        FROM TB_OPRATION_DETAIL
+        FROM TB_OPERATION_DETAIL
         WHERE {in_clause(pids, 'JZLSH')}
         ORDER BY JZLSH, SSMXLSH""")
 
@@ -326,7 +326,7 @@ def fetch_ss(cn, pids: list[str] | None, yq2org: dict[str, str]) -> pd.DataFrame
                s.SSYS, s.MZYS, s.SFZYSS, o.SSKSSJ
         FROM TB_BA_SYSSK s
         LEFT JOIN (SELECT YLJGYQDM, JZLSH, SSXH, MIN(SSKSSJ) AS SSKSSJ
-                   FROM TB_OPRATION_DETAIL GROUP BY YLJGYQDM, JZLSH, SSXH) o
+                   FROM TB_OPERATION_DETAIL GROUP BY YLJGYQDM, JZLSH, SSXH) o
           ON s.YLJGYQDM=o.YLJGYQDM AND s.SYXH=o.JZLSH AND s.SSXH=o.SSXH
         WHERE s.YLJGYQDM IN ({ba_in}) AND {in_clause(pids, 's.SYXH')}
         ORDER BY s.SYXH, s.SSXH""")

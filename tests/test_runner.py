@@ -47,25 +47,40 @@ class _StubLoader(DataLoader):
 class FakeProvider:
     """脚本化的 LLM provider — 按预设序列返回 content."""
 
-    def __init__(self, scripted_contents: list[str], raise_on_call: int | None = None):
+    def __init__(
+        self,
+        scripted_contents: list[str],
+        raise_on_call: int | None = None,
+        finish_reasons: list[str | None] | None = None,
+    ):
         self.contents = list(scripted_contents)
         self.calls = 0
         self.raise_on_call = raise_on_call
+        self.finish_reasons = list(finish_reasons or [])
         self.model_name = "fake-qwen"
         self.seen_user_msgs: list[str] = []  # 每次调用时最后一条 user 消息内容
+        self.seen_messages: list[list[dict[str, str]]] = []
+        self.seen_kwargs: list[dict[str, Any]] = []
 
     def chat_with_retry(self, messages, **kwargs):
         self.calls += 1
         if messages:
             self.seen_user_msgs.append(messages[-1].get("content", ""))
+        self.seen_messages.append([dict(message) for message in messages])
+        self.seen_kwargs.append(dict(kwargs))
         if self.raise_on_call is not None and self.calls == self.raise_on_call:
             raise LlmUnavailableError("simulated outage")
+        finish_reason = self.finish_reasons.pop(0) if self.finish_reasons else None
         if not self.contents:
-            return {"content": "", "reasoning_content": "", "usage": None, "raw_response": {}}
+            return {
+                "content": "", "reasoning_content": "", "usage": None,
+                "finish_reason": finish_reason, "raw_response": {},
+            }
         return {
             "content": self.contents.pop(0),
             "reasoning_content": "",
             "usage": None,
+            "finish_reason": finish_reason,
             "raw_response": {},
         }
 
@@ -317,6 +332,73 @@ def test_repair_also_fails_inconclusive(cfg, executor):
     result = runner.audit(_make_rule(), "J66252")
     assert result.verdict == "INCONCLUSIVE"
     assert "malformed" in result.reasoning.lower()
+
+
+def test_length_truncated_tool_call_uses_bounded_repair_without_echo(cfg, executor):
+    """length 截断的长正文不回灌；短 repair 可返回工具并继续主循环。"""
+    truncated = '<tool_call>{"name":"search_notes","arguments":{"keyword":"' + "x" * 5000
+    provider = FakeProvider(
+        [
+            truncated,
+            '<tool_call>{"name":"search_notes","arguments":{"keyword":"甲状腺"}}</tool_call>',
+            '```json\n{"verdict":"CLEAN","confidence":0.9,"evidence":[],"reasoning":"已核实"}\n```',
+        ],
+        finish_reasons=["length", "stop", "stop"],
+    )
+    result = Runner(executor=executor, provider=provider, config=cfg).audit(
+        _make_rule(), "J66252"
+    )
+
+    assert result.verdict == "CLEAN"
+    assert len(result.tool_calls) == 1
+    assert provider.seen_kwargs[1]["max_tokens"] <= 512
+    assert all(
+        truncated not in message["content"]
+        for message in provider.seen_messages[1]
+    )
+    assert "只输出一个" in provider.seen_user_msgs[1]
+
+
+def test_length_truncated_verdict_after_tool_uses_short_json_repair(cfg, executor):
+    """已有成功工具时，length repair 只要求短 verdict JSON。"""
+    truncated = '```json\n{"verdict":"CLEAN","reasoning":"' + "x" * 5000
+    provider = FakeProvider(
+        [
+            '<tool_call>{"name":"search_notes","arguments":{"keyword":"甲状腺"}}</tool_call>',
+            truncated,
+            '```json\n{"verdict":"CLEAN","confidence":0.9,"evidence":[],"reasoning":"已核实"}\n```',
+        ],
+        finish_reasons=["stop", "length", "stop"],
+    )
+    result = Runner(executor=executor, provider=provider, config=cfg).audit(
+        _make_rule(), "J66252"
+    )
+
+    assert result.verdict == "CLEAN"
+    assert provider.seen_kwargs[2]["max_tokens"] <= 512
+    assert all(
+        truncated not in message["content"]
+        for message in provider.seen_messages[2]
+    )
+    assert "只输出" in provider.seen_user_msgs[2]
+    assert "JSON" in provider.seen_user_msgs[2]
+
+
+def test_length_repair_failure_is_truncated_inconclusive(cfg, executor):
+    """有界恢复仍被截断时安全落 I，并留下可区分的内部 reason。"""
+    provider = FakeProvider(
+        ["<tool_call>{", "<tool_call>{"],
+        finish_reasons=["length", "length"],
+    )
+    result = Runner(executor=executor, provider=provider, config=cfg).audit(
+        _make_rule(), "J66252"
+    )
+
+    assert result.verdict == "INCONCLUSIVE"
+    assert result.confidence == 0.0
+    assert "truncated" in result.reasoning.lower()
+    assert result.tool_calls == []
+    assert provider.calls == 2
 
 
 def test_llm_unavailable_propagates(cfg, executor):

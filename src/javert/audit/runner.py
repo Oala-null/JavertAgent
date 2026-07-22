@@ -536,6 +536,7 @@ class Runner:
                 raise
 
             content = resp["content"] or ""
+            finish_reason = resp.get("finish_reason")
             self.emit(f"[LLM #{turn}] {content[:1500]}{'...' if len(content) > 1500 else ''}")
 
             tool_calls = self.executor.parse_tool_calls(content)
@@ -570,9 +571,25 @@ class Runner:
                 break
 
             # 没 tool_call 也没合法 verdict — 触发一次 repair.
-            # 若含畸形 tool_call 标签, 回传具体 JSON 解析错误 (针对性反馈); 否则通用提示.
+            # length 截断不回灌数万字残片, 改用短提示 + 小 token budget 收敛;
+            # 其他畸形 tool_call 仍回传具体 JSON 解析错误.
+            truncated = finish_reason == "length"
             tc_errors = self.executor.parse_errors(content)
-            if tc_errors:
+            if truncated:
+                self.emit("[Runner] LLM 输出达到长度上限, 发起有界 repair")
+                if n_success == 0:
+                    repair_prompt = (
+                        "上一轮输出因达到长度上限被截断。禁止解释或复述；"
+                        "只输出一个简短、完整、合法的 <tool_call>{...}</tool_call>，"
+                        "先查询裁决所需的最关键证据。"
+                    )
+                else:
+                    repair_prompt = (
+                        "上一轮输出因达到长度上限被截断。已有工具证据；"
+                        "禁止解释或继续调用工具，只输出一个简短、完整的 fenced JSON，"
+                        "字段仅含 verdict、confidence、evidence、reasoning。"
+                    )
+            elif tc_errors:
                 self.emit(f"[Runner] tool_call JSON 畸形 ({tc_errors[0]}), 发起针对性 repair")
                 repair_prompt = (
                     f"你的 tool_call JSON 非法: {tc_errors[0]}. "
@@ -584,13 +601,20 @@ class Runner:
                     "你的输出无法解析. 请: 若需更多证据则发 <tool_call>; "
                     "若已可裁决则只输出 ```json {...} ``` 块, 字段含 verdict/confidence/evidence/reasoning."
                 )
-            messages.append({"role": "assistant", "content": content})
+            if not truncated:
+                messages.append({"role": "assistant", "content": content})
             messages.append({"role": "user", "content": repair_prompt})
             try:
-                resp_repair = self.provider.chat_with_retry(messages)
+                repair_kwargs = (
+                    {"max_tokens": min(512, self.config.llm_max_tokens)}
+                    if truncated
+                    else {}
+                )
+                resp_repair = self.provider.chat_with_retry(messages, **repair_kwargs)
             except LlmUnavailableError:
                 raise
             content_repair = resp_repair["content"] or ""
+            repair_finish_reason = resp_repair.get("finish_reason")
             self.emit(f"[LLM #{turn}-repair] {content_repair[:1500]}")
             # repair 响应含 tool_call → 执行并回主循环续跑, 不再丢弃直接 INCONCLUSIVE
             repair_calls = self.executor.parse_tool_calls(content_repair)
@@ -608,7 +632,11 @@ class Runner:
             if verdict_data is not None and n_success > 0:
                 break
             # 二次失败 → INCONCLUSIVE
-            final_reason = "malformed verdict JSON (repair failed)"
+            final_reason = (
+                "LLM output truncated (repair failed)"
+                if truncated or repair_finish_reason == "length"
+                else "malformed verdict JSON (repair failed)"
+            )
             verdict_data = None
             break
 
@@ -635,6 +663,7 @@ class Runner:
                 try:
                     resp_deadline = self.provider.chat_with_retry(messages)
                     content_deadline = resp_deadline["content"] or ""
+                    deadline_finish_reason = resp_deadline.get("finish_reason")
                     self.emit(
                         f"[LLM #deadline] {content_deadline[:1500]}"
                         f"{'...' if len(content_deadline) > 1500 else ''}"
@@ -643,6 +672,8 @@ class Runner:
                     if parsed is not None:
                         verdict_data = parsed
                         final_reason = "tool budget exhausted (deadline verdict accepted)"
+                    elif deadline_finish_reason == "length":
+                        final_reason = "tool budget exhausted (deadline verdict truncated)"
                     else:
                         final_reason = "tool budget exhausted (deadline verdict malformed)"
                 except LlmUnavailableError:

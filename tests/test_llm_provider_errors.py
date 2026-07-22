@@ -13,16 +13,23 @@ from javert.tools.llm_provider import (
 
 
 class _FakeResponse:
-    def __init__(self, status_code: int, text: str = ""):
+    def __init__(self, status_code: int, text: str = "", finish_reason: str = "stop"):
         self.status_code = status_code
         self.text = text
+        self.finish_reason = finish_reason
 
     def raise_for_status(self):
         if self.status_code >= 400:
             raise RuntimeError(f"HTTP {self.status_code}")
 
     def json(self):
-        return {"choices": [{"message": {"content": "ok"}}], "usage": None}
+        return {
+            "choices": [{
+                "message": {"content": "ok"},
+                "finish_reason": self.finish_reason,
+            }],
+            "usage": None,
+        }
 
 
 class _FakeClient:
@@ -73,3 +80,10 @@ def test_503_still_retried_then_succeeds(monkeypatch):
     out = p.chat_with_retry([{"role": "user", "content": "hi"}], retries=3)
     assert out["content"] == "ok"
     assert client.n_posts == 2
+
+
+def test_chat_surfaces_finish_reason(monkeypatch):
+    client = _FakeClient([_FakeResponse(200, finish_reason="length")])
+    p = _provider_with(monkeypatch, client)
+    out = p.chat([{"role": "user", "content": "hi"}])
+    assert out["finish_reason"] == "length"

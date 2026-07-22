@@ -36,8 +36,9 @@ def _stub_q(tables: dict[str, pd.DataFrame]):
             return tables.get("jbk", _df(["YLJGYQDM", "SYXH", "ZYZD"], []))
         if "FROM TB_BA_SYZDK" in s:
             return tables.get("zdk", _df(["YLJGYQDM", "SYXH", "ZDXH", "ZDDM", "ZDMC"], []))
-        # BA 手术查询内嵌 OPRATION_DETAIL 时间回退子查询，必须先精确分发 BA。
+        # BA 手术查询内嵌 OPERATION_DETAIL 时间回退子查询，必须先精确分发 BA。
         if "FROM TB_BA_SYSSK s" in s:
+            assert "TB_OPRATION_DETAIL" not in s
             assert (
                 "SELECT s.YLJGYQDM, s.SYXH, s.SSXH, s.SSRQ, s.SSDM, s.SSMC, "
                 "s.SSJB, s.MZFS, s.SSYS, s.MZYS, s.SFZYSS, o.SSKSSJ "
@@ -46,10 +47,11 @@ def _stub_q(tables: dict[str, pd.DataFrame]):
             return tables.get("syssk", _df(
                 ["YLJGYQDM", "SYXH", "SSXH", "SSRQ", "SSDM", "SSMC", "SSJB",
                  "MZFS", "SSYS", "MZYS", "SFZYSS", "SSKSSJ"], []))
-        if "FROM TB_OPRATION_DETAIL WHERE" in s:
+        if "FROM TB_OPERATION_DETAIL WHERE" in s:
+            assert "TB_OPRATION_DETAIL" not in s
             assert (
                 "SELECT YLJGYQDM, JZLSH, SSCZMC, SSCZBM, ZCBZ, SSKSSJ, SSJB, "
-                "MZFS, SXYHRYXM, MZYHRYXM FROM TB_OPRATION_DETAIL WHERE"
+                "MZFS, SXYHRYXM, MZYHRYXM FROM TB_OPERATION_DETAIL WHERE"
             ) in s
             return tables.get("op", _df(
                 ["YLJGYQDM", "JZLSH", "SSCZMC", "SSCZBM", "ZCBZ", "SSKSSJ",
@@ -196,7 +198,7 @@ def test_zd_no_ba_rows_at_all_keeps_ih(monkeypatch):
 # fetch_ss — per-patient 源选择
 # =========================================================
 def test_ss_per_patient_source_selection(monkeypatch):
-    """A 有 SYSSK 行 → 首页手术源 (SFZYSS 主手术); B 没有 → 保留 OPRATION 行."""
+    """A 有 SYSSK 行 → 首页手术源 (SFZYSS 主手术); B 没有 → 保留 OPERATION 行."""
     tables = {
         "op": _df(["YLJGYQDM", "JZLSH", "SSCZMC", "SSCZBM", "ZCBZ", "SSKSSJ",
                    "SSJB", "MZFS", "SXYHRYXM", "MZYHRYXM"], [
@@ -221,7 +223,7 @@ def test_ss_per_patient_source_selection(monkeypatch):
     assert int(a["main_oprn_flag"].iloc[0]) == 1
     assert list(a["oprn_oprt_date"]) == ["2026-01-01"]
     assert list(a["oprn_lv_name"]) == ["三级"]
-    # B: 缺首页手术行 → OPRATION 保留 (不再清零)
+    # B: 缺首页手术行 → OPERATION 保留 (不再清零)
     assert list(b["oprn_oprt_name"]) == ["阑尾切除术"]
     assert list(b["oprn_oprt_date"]) == ["2026-01-03"]
 
