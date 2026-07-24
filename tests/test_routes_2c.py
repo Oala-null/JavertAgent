@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import time
@@ -16,19 +17,38 @@ import pytest
 
 
 class _FakeLoader:
-    """J66252 有数据, 其余患者查无."""
+    """既有样例与语义化 v2 样例有数据, 其余患者查无."""
+
+    _PATIENTS = {"J66252", "CASE-V2-001"}
 
     def get_notes(self, patient_id: str) -> pd.DataFrame:
-        if patient_id == "J66252":
+        if patient_id in self._PATIENTS:
             return pd.DataFrame({"record_name": ["入院记录"]})
         return pd.DataFrame()
 
     def get_fees(self, patient_id: str) -> pd.DataFrame:
-        if patient_id == "J66252":
+        if patient_id in self._PATIENTS:
             return pd.DataFrame({
-                "medins_list_name": ["麻醉后复苏监护(PACU)", "静脉输液"],
-                "med_list_codg": ["331501001", "120400001"],
-                "medins_list_codg": ["F00123", "F00456"],
+                "medins_list_name": [
+                    "麻醉后复苏监护(PACU)",
+                    "麻醉后复苏监护(PACU)",
+                    "静脉输液",
+                    "注射用维泊妥珠单抗",
+                ],
+                "med_list_codg": [
+                    "331501001",
+                    "331501001",
+                    "120400001",
+                    "SYNTHETIC-DRUG-CODE",
+                ],
+                "medins_list_codg": ["F00123", "F00123", "F00456", "FDRUG01"],
+                "fee_ocur_time": [
+                    "2026-07-01 08:30:00",
+                    "2026-07-02 09:45:00",
+                    "2026-07-03 10:00:00",
+                    "2026-07-04 11:15:00",
+                ],
+                "cnt": [1, 1, 1, 1],
             })
         return pd.DataFrame()
 
@@ -86,8 +106,25 @@ def test_public_no_auth_required():
 
     assert not _path_protected("/api/audit/submit")
     assert not _path_protected("/api/audit/results/J66252")
+    assert not _path_protected("/api/audit/v2/submit")
+    assert not _path_protected("/api/audit/v2/results/J66252")
     assert _path_protected("/api/audit/run")
     assert _path_protected("/api/audit/runs")
+    assert _path_protected("/api/audit/v2/run")
+
+
+def test_behavior_mapping_virtual_is_standard_and_swap_stays_independent():
+    from javert.web.rule_meta import behavior_code, behavior_name, reset_cache
+
+    reset_cache()
+    assert behavior_code("虚构医药服务项目") == "T380206"
+    assert behavior_name("虚构医药服务项目") == "提供不必要的医药服务"
+    assert behavior_code("虚构医药服务") == "T380206"
+    assert behavior_name("虚构医药服务项目或以骗保为目的串换项目") == (
+        "提供不必要的医药服务"
+    )
+    assert behavior_code("串换项目") == ""
+    assert behavior_name("串换项目") == "串换药品、医用耗材、诊疗项目和服务设施"
 
 
 def test_submit_accept_and_reject(client):
@@ -123,6 +160,39 @@ def test_submit_accept_and_reject(client):
     assert second_accepted["attempt_id"] != first_attempt
     body2 = _wait_done(client, "J66252")  # 等 worker 消费完再 teardown, 防 monkeypatch 撤销后跑真审计
     assert body2["attempt_id"] == second_accepted["attempt_id"]
+
+
+def test_v2_submit_reuses_running_v1_attempt(client, monkeypatch):
+    """v1/v2 共用任务状态，切换版本不能把同一患者重复入队。"""
+    from javert.web.api import routes_audit
+
+    routes_audit._2c_tasks["CASE-V2-001"] = {
+        "YLZZJGDM": "H-SYNTHETIC",
+        "status": "running",
+        "outcome": "running",
+        "attempt_id": "att_shared_v2",
+        "source": "local",
+        "stage": "audit",
+        "total": 2,
+        "run_ids": [],
+        "failed": [],
+        "submitted_at": "2026-07-24T00:00:00+00:00",
+    }
+    queued: list[str] = []
+    monkeypatch.setattr(routes_audit._2c_queue, "put", queued.append)
+
+    response = client.post(
+        "/api/audit/v2/submit",
+        json=[{"SYXH": "CASE-V2-001", "YLZZJGDM": "H-SYNTHETIC"}],
+    )
+
+    assert response.status_code == 202
+    assert response.json()["accepted"] == [{
+        "SYXH": "CASE-V2-001",
+        "source": "local",
+        "attempt_id": "att_shared_v2",
+    }]
+    assert queued == []
 
 
 def test_submit_hub_fallback(client, monkeypatch):
@@ -176,6 +246,15 @@ def test_results_unknown(client):
     assert body["progress"] == {"total": 0, "completed": 0, "failed": 0}
     assert body["results"] == []
     assert body["summary"] == {"total": 0, "violation": 0, "inconclusive": 0, "clean": 0}
+
+
+def test_v2_results_unknown_has_versioned_empty_cards(client):
+    body = client.get("/api/audit/v2/results/CASE-UNKNOWN").json()
+    assert body["api_version"] == "2.0"
+    assert body["status"] == "unknown"
+    assert body["outcome"] == "unknown"
+    assert body["cards"] == []
+    assert "results" not in body
 
 
 def test_results_done_with_runs(client):
@@ -243,6 +322,169 @@ def test_results_done_with_runs(client):
     assert body2["attempt_id"] is None  # 重启后的 legacy/history replay 无 attempt
     assert body2["summary"]["total"] == 1
     assert body2["results"][0]["run_id"] == "aud_TESTtest0001"
+
+
+def test_v2_multiple_hits_keep_code_name_time_aligned(client):
+    """一个卡片多个项目；同项目多日期按 occurrence_time 展开且三数组同索引。"""
+    from javert.audit.result import AuditResult, Evidence
+    from javert.config import get_config
+    from javert.store.audit_store import SqliteStore
+    from javert.web.api import routes_audit
+
+    result = AuditResult(
+        run_id="aud_V2_MULTI_001",
+        rule_id="R191",
+        patient_id="CASE-V2-001",
+        verdict="VIOLATION",
+        confidence=0.88,
+        reasoning="费用明细支持多个命中项目。",
+        evidence=[
+            Evidence(
+                source="search_fees",
+                locator="麻醉后复苏监护(PACU)",
+                text="费用明细出现麻醉后复苏监护(PACU)。",
+            ),
+            Evidence(
+                source="search_fees",
+                locator="静脉输液",
+                text="费用明细出现静脉输液。",
+            ),
+        ],
+        duration_ms=1000,
+        model="test-model",
+        started_at=datetime(2026, 7, 24, tzinfo=timezone.utc),
+    )
+    store = SqliteStore(get_config().audit_db_path)
+    store.init_schema()
+    store.write(result)
+    store.close()
+    routes_audit._2c_tasks["CASE-V2-001"] = {
+        "YLZZJGDM": "H-SYNTHETIC",
+        "status": "done",
+        "outcome": "succeeded",
+        "attempt_id": "att_v2_multi",
+        "source": "local",
+        "stage": "done",
+        "total": 1,
+        "run_ids": [result.run_id],
+        "failed": [],
+        "error_code": "",
+        "retryable": False,
+        "submitted_at": "2026-07-24T00:00:00+00:00",
+    }
+
+    response = client.get("/api/audit/v2/results/CASE-V2-001")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["api_version"] == "2.0"
+    assert "results" not in body
+    (card,) = body["cards"]
+    assert card["category"] == {"code": "T380301", "title": "重复收费"}
+    assert len(card["matched_items"]) == 3
+    assert card["hit_codes"] == [
+        item["code"] for item in card["matched_items"]
+    ]
+    assert card["hit_names"] == [
+        item["name"] for item in card["matched_items"]
+    ]
+    assert card["hit_times"] == [
+        item["occurrence_time"] for item in card["matched_items"]
+    ]
+    assert card["hit_times"] == [
+        "2026-07-01 08:30:00",
+        "2026-07-02 09:45:00",
+        "2026-07-03 10:00:00",
+    ]
+
+
+def test_v2_clean_drug_keeps_hit_and_full_oncology_conditions(client):
+    """CLEAN RD04 仍返回被审核肿瘤药和结构化限定条件，并清理占位文案。"""
+    from javert.audit.result import AuditResult, Evidence
+    from javert.config import get_config
+    from javert.oncology.contracts import (
+        AuditDisposition,
+        CriterionAssessment,
+        CriterionState,
+        EligibilityEvaluation,
+        EligibilityStatus,
+        ProofNode,
+    )
+    from javert.store.audit_store import SqliteStore
+    from javert.web.api import routes_audit
+
+    assessment = CriterionAssessment(
+        criterion_id="synthetic-diagnosis",
+        criterion_type="diagnosis",
+        state=CriterionState.SATISFIED,
+        reason="已记录目标诊断，暂未描述其他无关内容。",
+    )
+    evaluation = EligibilityEvaluation(
+        audit_disposition=AuditDisposition.NO_VIOLATION_FOUND,
+        eligibility_status=EligibilityStatus.SATISFIED,
+        rule_id="synthetic-oncology-rule",
+        rule_version="1.0.0",
+        indication_branch_id="synthetic-branch",
+        criterion_assessments=[assessment],
+        proof_tree=ProofNode(
+            node_id="synthetic-root",
+            operator="leaf",
+            state=CriterionState.SATISFIED,
+            criterion_id=assessment.criterion_id,
+            criterion_type=assessment.criterion_type,
+            assessment=assessment,
+        ),
+    )
+    result = AuditResult(
+        run_id="aud_V2CLEAN00001",
+        rule_id="RD04",
+        patient_id="CASE-V2-001",
+        verdict="CLEAN",
+        confidence=1.0,
+        reasoning="暂未描述",
+        evidence=[
+            Evidence(
+                source="drug_indication",
+                locator="注射用维泊妥珠单抗",
+                text="命中患者净正收费药品。",
+            )
+        ],
+        duration_ms=500,
+        model="deterministic-test",
+        started_at=datetime(2026, 7, 24, tzinfo=timezone.utc),
+        eligibility_evaluation=evaluation,
+    )
+    store = SqliteStore(get_config().audit_db_path)
+    store.init_schema()
+    store.write(result)
+    store.close()
+    routes_audit._2c_tasks["CASE-V2-001"] = {
+        "YLZZJGDM": "H-SYNTHETIC",
+        "status": "done",
+        "outcome": "succeeded",
+        "attempt_id": "att_v2_clean",
+        "source": "local",
+        "stage": "done",
+        "total": 1,
+        "run_ids": [result.run_id],
+        "failed": [],
+        "error_code": "",
+        "retryable": False,
+        "submitted_at": "2026-07-24T00:00:00+00:00",
+    }
+
+    body = client.get("/api/audit/v2/results/CASE-V2-001").json()
+
+    assert body["summary"]["clean"] == 1
+    (card,) = body["cards"]
+    assert card["verdict"] == "CLEAN"
+    assert card["matched_items"][0]["name"] == "注射用维泊妥珠单抗"
+    assert card["matched_items"][0]["occurrence_time"] == "2026-07-04 11:15:00"
+    assert card["eligibility_evaluation"]["criterion_assessments"][0][
+        "criterion_id"
+    ] == "synthetic-diagnosis"
+    assert card["eligibility_evaluation"]["proof_tree"]["node_id"] == "synthetic-root"
+    assert "暂未描述" not in json.dumps(body, ensure_ascii=False)
 
 
 def test_running_duplicate_submit_reuses_attempt(client, monkeypatch):

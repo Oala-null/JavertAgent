@@ -22,6 +22,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -362,7 +363,9 @@ def list_audit_runs(
 # 2C 平台系统间对接 (契约: docs/2c对接_javert审计服务.md)
 #   POST /api/audit/submit          — 患者名单 → 202 受理回执, 后台跑审计
 #   GET  /api/audit/results/{SYXH}  — 轮询拉裁决 (running 时增量可见)
-# 免鉴权: middleware PUBLIC_PREFIXES 只放行这两个精确路径, 仅限内网.
+#   POST /api/audit/v2/submit       — v2 同入参/同任务, 独立卡片契约
+#   GET  /api/audit/v2/results/{SYXH}
+# 免鉴权: middleware PUBLIC_PREFIXES 只放行上述精确路径, 仅限内网.
 # =========================================================
 
 _VERDICT_LABEL = {"VIOLATION": "违规", "INCONCLUSIVE": "待人工复核", "CLEAN": "合规"}
@@ -571,9 +574,8 @@ def _2c_ensure_worker() -> None:
         _2c_worker.start()
 
 
-@router.post("/submit", status_code=202)
-def submit_2c(items: list[SubmitItem]):
-    """2C 提交: 逐患者校验数据存在 → 受理入队. 重复提交在跑中的患者幂等 (不重跑)."""
+def _submit_2c(items: list[SubmitItem]) -> dict[str, list[dict]]:
+    """2C v1/v2 共用提交：同一任务表、队列与 attempt 幂等语义。"""
     loader = None
     accepted: list[dict] = []
     rejected: list[dict] = []
@@ -641,6 +643,18 @@ def submit_2c(items: list[SubmitItem]):
     if accepted:
         _2c_ensure_worker()
     return {"accepted": accepted, "rejected": rejected}
+
+
+@router.post("/submit", status_code=202)
+def submit_2c(items: list[SubmitItem]):
+    """2C v1 提交：保留既有路径和响应。"""
+    return _submit_2c(items)
+
+
+@router.post("/v2/submit", status_code=202)
+def submit_2c_v2(items: list[SubmitItem]):
+    """2C v2 提交：入参与执行语义复用 v1，仅结果契约升级。"""
+    return _submit_2c(items)
 
 
 def _latest_runs_for_patient(syxh: str) -> list[str]:
@@ -818,6 +832,214 @@ def results_2c(syxh: str):
     if error:
         out["error"] = error
     return out
+
+
+_V2_PLACEHOLDER_TEXT = "暂未描述"
+
+
+def _clean_v2_payload(value: Any) -> Any:
+    """只清理 v2 展示副本，不改数据库、AuditResult 或 v1 响应。"""
+    if isinstance(value, str):
+        if _V2_PLACEHOLDER_TEXT not in value:
+            return value
+        return value.replace(_V2_PLACEHOLDER_TEXT, "").strip(" \t\r\n，,；;。")
+    if isinstance(value, list):
+        return [_clean_v2_payload(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _clean_v2_payload(item) for key, item in value.items()}
+    return value
+
+
+def _clean_fee_scalar(value: Any) -> str:
+    text = "" if value is None else str(value).strip()
+    return "" if text.lower() in {"", "nan", "none", "null", "nat"} else text
+
+
+def _v2_fee_occurrence_times(hit: Any, fee_df: Any) -> list[str]:
+    """已解析 fee/drug hit → 患者实际收费行的 fee_ocur_time（去重保序）。"""
+    if (
+        hit.source not in ("fee", "drug")
+        or fee_df is None
+        or len(fee_df) == 0
+        or "medins_list_name" not in fee_df.columns
+    ):
+        return [""]
+    matched_name = _clean_fee_scalar(hit.matched_fee_name)
+    if not matched_name:
+        return [""]
+    rows = fee_df[
+        fee_df["medins_list_name"].fillna("").astype(str).str.strip() == matched_name
+    ]
+    if hit.code_nat and "med_list_codg" in rows.columns:
+        rows = rows[
+            rows["med_list_codg"].fillna("").astype(str).str.strip() == hit.code_nat
+        ]
+    elif hit.code_local and "medins_list_codg" in rows.columns:
+        rows = rows[
+            rows["medins_list_codg"].fillna("").astype(str).str.strip()
+            == hit.code_local
+        ]
+    if "cnt" in rows.columns:
+        positive = rows[pd.to_numeric(rows["cnt"], errors="coerce").fillna(0) > 0]
+        if len(positive):
+            rows = positive
+    if "fee_ocur_time" not in rows.columns:
+        return [""]
+    times: list[str] = []
+    for value in rows["fee_ocur_time"].tolist():
+        text = _clean_fee_scalar(value)
+        if text and text not in times:
+            times.append(text)
+    return times or [""]
+
+
+def _v2_hit_payloads(hit_items: list[Any], fee_df: Any) -> tuple[list[dict], list[dict]]:
+    """返回完整 hits 与 fee/drug matched_items；后者按 code/name/time 去重。"""
+    hits: list[dict] = []
+    matched_items: list[dict] = []
+    seen: set[tuple[str, str, str]] = set()
+    for hit in hit_items:
+        occurrence_times = _v2_fee_occurrence_times(hit, fee_df)
+        hits.append({
+            "source": hit.source,
+            "name": hit.name,
+            "code_nat": hit.code_nat,
+            "code_local": hit.code_local,
+            "matched_fee_name": hit.matched_fee_name,
+            "restriction": hit.restriction,
+            "review_note": hit.review_note,
+            "occurrence_times": occurrence_times if hit.source in ("fee", "drug") else [],
+            "anchor": hit.anchor.model_dump(),
+        })
+        if hit.source not in ("fee", "drug"):
+            continue
+        code = hit.code_nat or hit.code_local
+        # Web 卡片主名称使用规范命中名；患者费用原文单独保留 matched_fee_name。
+        name = hit.name or hit.matched_fee_name
+        for occurrence_time in occurrence_times:
+            key = (code, name, occurrence_time)
+            if key in seen:
+                continue
+            seen.add(key)
+            matched_items.append({
+                "code": code,
+                "name": name,
+                "occurrence_time": occurrence_time,
+                "source": hit.source,
+                "code_nat": hit.code_nat,
+                "code_local": hit.code_local,
+                "matched_fee_name": hit.matched_fee_name,
+                "restriction": hit.restriction,
+                "review_note": hit.review_note,
+            })
+    return hits, matched_items
+
+
+def _v2_fee_df(syxh: str):
+    with _2c_lock:
+        task = _2c_tasks.get(syxh)
+        data_dir = task.get("data_dir") if task else None
+    if not data_dir:
+        hub_dir = get_config().resolve(_2C_HUB_CACHE) / syxh
+        if hub_dir.exists():
+            data_dir = str(hub_dir)
+    try:
+        if data_dir:
+            from pathlib import Path as _P
+
+            return CsvLoader(
+                _P(data_dir) / "case_notes.csv", _P(data_dir) / "shi_fee.csv"
+            ).get_fees(syxh)
+        return _get_loader().get_fees(syxh)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("2c v2 取 fee 失败 patient=%s: %s", syxh, exc)
+        return None
+
+
+@router.get("/v2/results/{syxh}")
+def results_2c_v2(syxh: str):
+    """2C v2：完整卡片 + CLEAN 命中 + code/name/time 关联对象。"""
+    base = results_2c(syxh)
+    v1_results = base.pop("results", [])
+    if not v1_results:
+        return _clean_v2_payload({
+            "api_version": "2.0",
+            **base,
+            "cards": [],
+        })
+    fee_df = _v2_fee_df(syxh)
+    metas = load_rule_meta()
+    cards: list[dict] = []
+    store = SqliteStore(get_config().audit_db_path)
+    try:
+        store.init_schema()
+        kb_drugs = load_kb_drugs()
+        for item in v1_results:
+            run = store.find_by_run_id(item["run_id"])
+            if run is None:
+                continue
+            meta = metas.get(run.rule_id)
+            hit_items = resolve_hits_from_json(
+                json.dumps(
+                    [e.model_dump() for e in run.evidence],
+                    ensure_ascii=False,
+                ),
+                json.dumps(
+                    [tc.model_dump() for tc in run.tool_calls],
+                    ensure_ascii=False,
+                    default=str,
+                ),
+                meta["drug_rule_type"] if meta else None,
+                fee_df,
+                kb_drugs,
+            )
+            hits, matched_items = _v2_hit_payloads(hit_items, fee_df)
+            category_code = meta["behavior_code"] if meta else ""
+            category_title = meta["behavior_name"] if meta else ""
+            cards.append({
+                "card_id": run.run_id,
+                "run_id": run.run_id,
+                "rule_id": run.rule_id,
+                "title": category_title,
+                "description": meta["question"] if meta else "",
+                "category": {
+                    "code": category_code,
+                    "title": category_title,
+                },
+                "rule": {
+                    "id": run.rule_id,
+                    "name": meta["violation_type"] if meta else "",
+                    "question": meta["question"] if meta else "",
+                    "domain": meta["domain"] if meta else "",
+                    "priority": meta["priority"] if meta else "",
+                    "template": meta["template"] if meta else None,
+                    "drug_rule_type": meta["drug_rule_type"] if meta else None,
+                },
+                "verdict": item["verdict"],
+                "verdict_label": item["verdict_label"],
+                "confidence": item["confidence"],
+                "reasoning": item["reasoning"],
+                "diagnostic_code": item["diagnostic_code"],
+                "retryable": item["retryable"],
+                "matched_items": matched_items,
+                "hit_codes": [matched["code"] for matched in matched_items],
+                "hit_names": [matched["name"] for matched in matched_items],
+                "hit_times": [
+                    matched["occurrence_time"] for matched in matched_items
+                ],
+                "hits": hits,
+                "evidence": item["evidence"],
+                "eligibility_evaluation": item["eligibility_evaluation"],
+                "finished_at": item["finished_at"],
+            })
+    finally:
+        store.close()
+    cards.sort(key=lambda card: card["rule_id"])
+    return _clean_v2_payload({
+        "api_version": "2.0",
+        **base,
+        "cards": cards,
+    })
 
 
 @router.get("/runs/{run_id}", response_model=AuditRunDetail)

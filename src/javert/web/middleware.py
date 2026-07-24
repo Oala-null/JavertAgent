@@ -50,6 +50,9 @@ PUBLIC_PREFIXES = (
     # /api/audit 其余路径仍受保护
     "/api/audit/submit",
     "/api/audit/results",
+    # 2C v2: 独立卡片契约，继续采用精确前缀，不放开其他 /api/audit/v2 路径
+    "/api/audit/v2/submit",
+    "/api/audit/v2/results",
     "/",  # 老 index.html 入口仍开放
 )
 
