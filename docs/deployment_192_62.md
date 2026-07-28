@@ -434,6 +434,29 @@ uv run python scripts/drift_report.py --target mssql --out output/drift_142.csv
 - 回滚：从上述备份恢复 `src/javert/web/api/routes_audit.py` 和
   `src/javert/web/middleware.py`，再按 §3 kill-9 MainPID 触发 systemd 重拉；无需数据库回滚。
 
+### 10.10 2C v2/v3 结果轮询超时热修（2026-07-28）
+
+- 根因：大结果患者每次 GET 都从头读取 run、解析 evidence/tool calls 并扫描费用行；现网
+  64张卡的 v2 单次约35–47秒，超过2C的30秒读取超时。审计本体已完成，慢点在结果投影，
+  不是 LLM 或网络连接。
+- 修复：按 `api_version + projection_scope + run_id` 深拷贝缓存 cards；正常任务 scope 为
+  `attempt_id`，重启历史回放使用 run ID 快照摘要。同 scope 构建单飞、LRU 上限2048张，
+  v2 跳过不会返回的 v1 hits 重算，v3 独立缓存收费行展开。匿名日志只追加
+  `cache_hits/cache_misses/build_ms`。
+- 本地门禁：2C直接测试 **31 passed**，Web/2C组合 **70 passed**，完整套件
+  **1058 passed / 1 skipped**；`openspec validate fix-2c-results-poll-timeout --strict` 通过。
+- 部署前备份：`/home/admin2/backup/javert-2c-poll-20260728-A5DafB`（目录0700，含完整
+  `src`、mode 0600 `.env`、旧进程实际环境和源码 SHA）；仅覆盖
+  `src/javert/web/api/routes_audit.py`。部署 SHA-256 为
+  `4a83ed3b97f313c4a714302377dc730f139cf07334cbedaadbccee92740effd3`。
+- 重拉后 MainPID `745255`，systemd `active/running`、登录页 HTTP 200、全部 `JAVERT_*`
+  与旧进程一致，SQL `zadig` 和同步线程健康，部署后错误标记0。
+- 生产脱敏计时：v2 历史首次重建 `28.445s`、重复缓存命中 `0.099s`；v3 首次收费行展开
+  `25.538s`、重复命中 `0.112s`。同版本首次/重复响应字节数完全一致；日志分别验证
+  `cache_misses=64→cache_hits=64`，终态为64张卡，v2 398个 matched item、v3 427条收费行。
+- 回滚：从上述备份恢复 `src/javert/web/api/routes_audit.py`，按 §3 kill-9 MainPID 触发
+  systemd 重拉；无数据库变更，无需数据库回滚。
+
 ## 11. 实测性能 (2026-05-21 50 病人 batch)
 
 ```

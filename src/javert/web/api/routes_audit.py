@@ -12,12 +12,17 @@ GET /api/audit/runs/{run_id}
 from __future__ import annotations
 
 import asyncio
+import copy
+import hashlib
 import json
 import logging
 import queue
 import secrets
 import sqlite3
 import threading
+import time
+import weakref
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -384,6 +389,80 @@ _2c_lock = threading.Lock()
 _2c_queue: "queue.Queue[str]" = queue.Queue()
 _2c_worker: threading.Thread | None = None
 
+# v2/v3 卡片投影包含费用命中解析；同一 attempt/run 内结果不可变，使用有界 LRU
+# 避免每次轮询从头扫描。只缓存进程内深拷贝，重启即清空。
+_2C_CARD_CACHE_MAX = 2048
+_2c_card_cache: "OrderedDict[tuple[str, str, str], dict[str, Any]]" = OrderedDict()
+_2c_card_cache_lock = threading.Lock()
+_2c_projection_locks: "weakref.WeakValueDictionary[str, Any]" = (
+    weakref.WeakValueDictionary()
+)
+_2c_projection_locks_guard = threading.Lock()
+
+
+def _2c_card_cache_get(
+    api_version: str, projection_scope: str | None, run_id: str
+) -> dict[str, Any] | None:
+    if not projection_scope:
+        return None
+    key = (api_version, projection_scope, run_id)
+    with _2c_card_cache_lock:
+        card = _2c_card_cache.get(key)
+        if card is None:
+            return None
+        _2c_card_cache.move_to_end(key)
+        return copy.deepcopy(card)
+
+
+def _2c_card_cache_put(
+    api_version: str,
+    projection_scope: str | None,
+    run_id: str,
+    card: dict[str, Any],
+) -> None:
+    if not projection_scope:
+        return
+    key = (api_version, projection_scope, run_id)
+    with _2c_card_cache_lock:
+        _2c_card_cache[key] = copy.deepcopy(card)
+        _2c_card_cache.move_to_end(key)
+        while len(_2c_card_cache) > _2C_CARD_CACHE_MAX:
+            _2c_card_cache.popitem(last=False)
+
+
+def _clear_2c_card_cache() -> None:
+    """测试/重启边界使用；不得输出缓存键或业务内容。"""
+    with _2c_card_cache_lock:
+        _2c_card_cache.clear()
+    with _2c_projection_locks_guard:
+        _2c_projection_locks.clear()
+
+
+def _2c_projection_scope(
+    attempt_id: str | None, items: list[dict[str, Any]]
+) -> str | None:
+    """当前 attempt 直接隔离；重启后的历史回放按 run 快照摘要隔离。"""
+    if attempt_id:
+        return attempt_id
+    run_ids = sorted(str(item.get("run_id") or "") for item in items)
+    run_ids = [run_id for run_id in run_ids if run_id]
+    if not run_ids:
+        return None
+    digest = hashlib.sha256("\0".join(run_ids).encode("utf-8")).hexdigest()[:24]
+    return f"history_{digest}"
+
+
+def _2c_projection_build_lock(projection_scope: str | None) -> Any:
+    """同一 attempt/历史快照共用弱引用单飞锁，不随患者数无限增长。"""
+    if not projection_scope:
+        return threading.Lock()
+    with _2c_projection_locks_guard:
+        build_lock = _2c_projection_locks.get(projection_scope)
+        if build_lock is None:
+            build_lock = threading.Lock()
+            _2c_projection_locks[projection_scope] = build_lock
+        return build_lock
+
 
 class SubmitItem(BaseModel):
     SYXH: str
@@ -683,9 +762,8 @@ def _latest_runs_for_patient(syxh: str) -> list[str]:
         return []
 
 
-@router.get("/results/{syxh}")
-def results_2c(syxh: str):
-    """2C 查结果: unknown / running(增量) / done + summary + results[]."""
+def _results_2c_payload(syxh: str, *, include_hits: bool) -> dict[str, Any]:
+    """构建 v1 基础结果；v2/v3 会自行投影完整 hits，跳过被丢弃的 v1 hits。"""
     with _2c_lock:
         task = _2c_tasks.get(syxh)
         status = task["status"] if task else "unknown"
@@ -724,16 +802,20 @@ def results_2c(syxh: str):
     if run_ids:
         metas = load_rule_meta()
         cfg = get_config()
-        try:
-            if data_dir:  # hub 患者: fee 行在取数目录, 不在全局 CSV
-                from pathlib import Path as _P
-                fee_df = CsvLoader(
-                    _P(data_dir) / "case_notes.csv", _P(data_dir) / "shi_fee.csv"
-                ).get_fees(syxh)
-            else:
-                fee_df = _get_loader().get_fees(syxh)
-        except Exception:  # noqa: BLE001
-            fee_df = None
+        fee_df = None
+        kb_drugs = None
+        if include_hits:
+            try:
+                if data_dir:  # hub 患者: fee 行在取数目录, 不在全局 CSV
+                    from pathlib import Path as _P
+                    fee_df = CsvLoader(
+                        _P(data_dir) / "case_notes.csv", _P(data_dir) / "shi_fee.csv"
+                    ).get_fees(syxh)
+                else:
+                    fee_df = _get_loader().get_fees(syxh)
+            except Exception:  # noqa: BLE001
+                fee_df = None
+            kb_drugs = load_kb_drugs()
         store = SqliteStore(cfg.audit_db_path)
         try:
             store.init_schema()
@@ -750,7 +832,7 @@ def results_2c(syxh: str):
                 hits: list[dict] = []
                 hit_codes: list[str] = []
                 hit_names: list[str] = []
-                if r.verdict in ("VIOLATION", "INCONCLUSIVE"):
+                if include_hits and r.verdict in ("VIOLATION", "INCONCLUSIVE"):
                     hit_items = resolve_hits_from_json(
                         json.dumps([e.model_dump() for e in r.evidence], ensure_ascii=False),
                         json.dumps(
@@ -759,7 +841,7 @@ def results_2c(syxh: str):
                         ),
                         meta["drug_rule_type"] if meta else None,
                         fee_df,
-                        load_kb_drugs(),
+                        kb_drugs,
                     )
                     hits = [
                         {
@@ -839,6 +921,12 @@ def results_2c(syxh: str):
     if error:
         out["error"] = error
     return out
+
+
+@router.get("/results/{syxh}")
+def results_2c(syxh: str):
+    """2C v1 查结果: unknown / running(增量) / done + summary + results[]."""
+    return _results_2c_payload(syxh, include_hits=True)
 
 
 _V2_PLACEHOLDER_TEXT = "暂未描述"
@@ -968,7 +1056,13 @@ def _v2_applicability(verdict: str, raw_reasoning: str) -> tuple[str, str]:
 
 
 def _log_v2_outbound(
-    base: dict[str, Any], cards: list[dict], *, v1_results_count: int
+    base: dict[str, Any],
+    cards: list[dict],
+    *,
+    v1_results_count: int,
+    cache_hits: int = 0,
+    cache_misses: int = 0,
+    build_ms: float = 0.0,
 ) -> None:
     """记录 2C v2 出口数量；禁止写患者号、run/attempt id 或业务原文。"""
     progress = base.get("progress") if isinstance(base.get("progress"), dict) else {}
@@ -976,7 +1070,8 @@ def _log_v2_outbound(
     outbound_logger.info(
         "2c_v2_outbound status=%s outcome=%s total=%s completed=%s failed=%s "
         "v1_results=%d cards=%d violation=%s inconclusive=%s clean=%s "
-        "not_applicable=%s matched_items=%d",
+        "not_applicable=%s matched_items=%d cache_hits=%d cache_misses=%d "
+        "build_ms=%.1f",
         base.get("status"),
         base.get("outcome"),
         progress.get("total"),
@@ -989,6 +1084,9 @@ def _log_v2_outbound(
         summary.get("clean"),
         summary.get("not_applicable", 0),
         sum(len(card.get("matched_items", [])) for card in cards),
+        cache_hits,
+        cache_misses,
+        build_ms,
     )
 
 
@@ -1016,7 +1114,7 @@ def _v2_fee_df(syxh: str):
 @router.get("/v2/results/{syxh}")
 def results_2c_v2(syxh: str):
     """2C v2：完整卡片 + CLEAN 命中 + code/name/time 关联对象。"""
-    base = results_2c(syxh)
+    base = _results_2c_payload(syxh, include_hits=False)
     v1_results = base.pop("results", [])
     if not v1_results:
         _log_v2_outbound(base, [], v1_results_count=0)
@@ -1025,89 +1123,126 @@ def results_2c_v2(syxh: str):
             **base,
             "cards": [],
         })
-    fee_df = _v2_fee_df(syxh)
-    metas = load_rule_meta()
+    attempt_id = base.get("attempt_id")
+    projection_scope = _2c_projection_scope(attempt_id, v1_results)
     cards: list[dict] = []
-    store = SqliteStore(get_config().audit_db_path)
-    try:
-        store.init_schema()
-        kb_drugs = load_kb_drugs()
-        for item in v1_results:
-            run = store.find_by_run_id(item["run_id"])
-            if run is None:
-                continue
-            meta = metas.get(run.rule_id)
-            hit_items = resolve_hits_from_json(
-                json.dumps(
-                    [e.model_dump() for e in run.evidence],
-                    ensure_ascii=False,
-                ),
-                json.dumps(
-                    [tc.model_dump() for tc in run.tool_calls],
-                    ensure_ascii=False,
-                    default=str,
-                ),
-                meta["drug_rule_type"] if meta else None,
-                fee_df,
-                kb_drugs,
-            )
-            hits, matched_items = _v2_hit_payloads(hit_items, fee_df)
-            category_code = meta["behavior_code"] if meta else ""
-            category_title = meta["behavior_name"] if meta else ""
-            applicability, applicability_label = _v2_applicability(
-                item["verdict"], run.reasoning
-            )
-            cards.append({
-                "card_id": run.run_id,
-                "run_id": run.run_id,
-                "rule_id": run.rule_id,
-                "title": category_title,
-                "description": meta["question"] if meta else "",
-                "category": {
-                    "code": category_code,
+    cache_hits = 0
+    cache_misses = 0
+    started = time.perf_counter()
+    build_lock = _2c_projection_build_lock(projection_scope)
+    with build_lock:
+        fee_df = None
+        fee_df_loaded = False
+        metas = None
+        kb_drugs = None
+        store = None
+        try:
+            for item in v1_results:
+                run_id = item["run_id"]
+                cached = _2c_card_cache_get("2.0", projection_scope, run_id)
+                if cached is not None:
+                    cache_hits += 1
+                    cards.append(cached)
+                    continue
+
+                cache_misses += 1
+                if not fee_df_loaded:
+                    fee_df = _v2_fee_df(syxh)
+                    fee_df_loaded = True
+                if metas is None:
+                    metas = load_rule_meta()
+                if kb_drugs is None:
+                    kb_drugs = load_kb_drugs()
+                if store is None:
+                    store = SqliteStore(get_config().audit_db_path)
+                    store.init_schema()
+
+                run = store.find_by_run_id(run_id)
+                if run is None:
+                    continue
+                meta = metas.get(run.rule_id)
+                hit_items = resolve_hits_from_json(
+                    json.dumps(
+                        [e.model_dump() for e in run.evidence],
+                        ensure_ascii=False,
+                    ),
+                    json.dumps(
+                        [tc.model_dump() for tc in run.tool_calls],
+                        ensure_ascii=False,
+                        default=str,
+                    ),
+                    meta["drug_rule_type"] if meta else None,
+                    fee_df,
+                    kb_drugs,
+                )
+                hits, matched_items = _v2_hit_payloads(hit_items, fee_df)
+                category_code = meta["behavior_code"] if meta else ""
+                category_title = meta["behavior_name"] if meta else ""
+                applicability, applicability_label = _v2_applicability(
+                    item["verdict"], run.reasoning
+                )
+                card = {
+                    "card_id": run.run_id,
+                    "run_id": run.run_id,
+                    "rule_id": run.rule_id,
                     "title": category_title,
-                },
-                "rule": {
-                    "id": run.rule_id,
-                    "name": meta["violation_type"] if meta else "",
-                    "question": meta["question"] if meta else "",
-                    "domain": meta["domain"] if meta else "",
-                    "priority": meta["priority"] if meta else "",
-                    "template": meta["template"] if meta else None,
-                    "drug_rule_type": meta["drug_rule_type"] if meta else None,
-                },
-                "verdict": item["verdict"],
-                "verdict_label": (
-                    "不适用"
-                    if applicability == "NOT_APPLICABLE"
-                    else item["verdict_label"]
-                ),
-                "applicability": applicability,
-                "applicability_label": applicability_label,
-                "confidence": item["confidence"],
-                "reasoning": item["reasoning"],
-                "diagnostic_code": item["diagnostic_code"],
-                "retryable": item["retryable"],
-                "matched_items": matched_items,
-                "hit_codes": [matched["code"] for matched in matched_items],
-                "hit_names": [matched["name"] for matched in matched_items],
-                "hit_times": [
-                    matched["occurrence_time"] for matched in matched_items
-                ],
-                "hits": hits,
-                "evidence": item["evidence"],
-                "eligibility_evaluation": item["eligibility_evaluation"],
-                "finished_at": item["finished_at"],
-            })
-    finally:
-        store.close()
+                    "description": meta["question"] if meta else "",
+                    "category": {
+                        "code": category_code,
+                        "title": category_title,
+                    },
+                    "rule": {
+                        "id": run.rule_id,
+                        "name": meta["violation_type"] if meta else "",
+                        "question": meta["question"] if meta else "",
+                        "domain": meta["domain"] if meta else "",
+                        "priority": meta["priority"] if meta else "",
+                        "template": meta["template"] if meta else None,
+                        "drug_rule_type": meta["drug_rule_type"] if meta else None,
+                    },
+                    "verdict": item["verdict"],
+                    "verdict_label": (
+                        "不适用"
+                        if applicability == "NOT_APPLICABLE"
+                        else item["verdict_label"]
+                    ),
+                    "applicability": applicability,
+                    "applicability_label": applicability_label,
+                    "confidence": item["confidence"],
+                    "reasoning": item["reasoning"],
+                    "diagnostic_code": item["diagnostic_code"],
+                    "retryable": item["retryable"],
+                    "matched_items": matched_items,
+                    "hit_codes": [matched["code"] for matched in matched_items],
+                    "hit_names": [matched["name"] for matched in matched_items],
+                    "hit_times": [
+                        matched["occurrence_time"] for matched in matched_items
+                    ],
+                    "hits": hits,
+                    "evidence": item["evidence"],
+                    "eligibility_evaluation": item["eligibility_evaluation"],
+                    "finished_at": item["finished_at"],
+                }
+                _2c_card_cache_put("2.0", projection_scope, run_id, card)
+                cards.append(card)
+        finally:
+            if store is not None:
+                store.close()
+    build_ms = (time.perf_counter() - started) * 1000
     cards.sort(key=lambda card: card["rule_id"])
     summary = base.get("summary")
     if isinstance(summary, dict):
         summary["not_applicable"] = sum(
             card["applicability"] == "NOT_APPLICABLE" for card in cards
         )
-    _log_v2_outbound(base, cards, v1_results_count=len(v1_results))
+    _log_v2_outbound(
+        base,
+        cards,
+        v1_results_count=len(v1_results),
+        cache_hits=cache_hits,
+        cache_misses=cache_misses,
+        build_ms=build_ms,
+    )
     return _clean_v2_payload({
         "api_version": "2.0",
         **base,
@@ -1208,12 +1343,19 @@ def _v3_matched_items(
     return expanded
 
 
-def _log_v3_outbound(base: dict[str, Any], cards: list[dict[str, Any]]) -> None:
+def _log_v3_outbound(
+    base: dict[str, Any],
+    cards: list[dict[str, Any]],
+    *,
+    cache_hits: int = 0,
+    cache_misses: int = 0,
+    build_ms: float = 0.0,
+) -> None:
     """记录 v3 出口结构数量；不得写患者、attempt、run 或业务原文。"""
     progress = base.get("progress") if isinstance(base.get("progress"), dict) else {}
     outbound_logger.info(
         "2c_v3_outbound status=%s outcome=%s total=%s completed=%s failed=%s "
-        "cards=%d charge_lines=%d",
+        "cards=%d charge_lines=%d cache_hits=%d cache_misses=%d build_ms=%.1f",
         base.get("status"),
         base.get("outcome"),
         progress.get("total"),
@@ -1221,6 +1363,9 @@ def _log_v3_outbound(base: dict[str, Any], cards: list[dict[str, Any]]) -> None:
         progress.get("failed"),
         len(cards),
         sum(len(card.get("matched_items", [])) for card in cards),
+        cache_hits,
+        cache_misses,
+        build_ms,
     )
 
 
@@ -1229,15 +1374,49 @@ def results_2c_v3(syxh: str):
     """2C v3：在完整 v2 卡片上追加逐收费行量价、科室和医生字段。"""
     payload = results_2c_v2(syxh)
     cards = payload.get("cards") if isinstance(payload.get("cards"), list) else []
-    fee_df = _v2_fee_df(syxh) if any(card.get("matched_items") for card in cards) else None
-    for card in cards:
-        matched_items = _v3_matched_items(card.get("matched_items", []), fee_df)
-        card["matched_items"] = matched_items
-        card["hit_codes"] = [item["code"] for item in matched_items]
-        card["hit_names"] = [item["name"] for item in matched_items]
-        card["hit_times"] = [item["occurrence_time"] for item in matched_items]
+    attempt_id = payload.get("attempt_id")
+    projection_scope = _2c_projection_scope(attempt_id, cards)
+    projected: list[dict[str, Any]] = []
+    cache_hits = 0
+    cache_misses = 0
+    started = time.perf_counter()
+    build_lock = _2c_projection_build_lock(projection_scope)
+    with build_lock:
+        fee_df = None
+        fee_df_loaded = False
+        for card in cards:
+            run_id = card.get("run_id", "")
+            cached = _2c_card_cache_get("3.0", projection_scope, run_id)
+            if cached is not None:
+                cache_hits += 1
+                projected.append(cached)
+                continue
+
+            cache_misses += 1
+            if card.get("matched_items") and not fee_df_loaded:
+                fee_df = _v2_fee_df(syxh)
+                fee_df_loaded = True
+            v3_card = copy.deepcopy(card)
+            matched_items = _v3_matched_items(
+                v3_card.get("matched_items", []), fee_df
+            )
+            v3_card["matched_items"] = matched_items
+            v3_card["hit_codes"] = [item["code"] for item in matched_items]
+            v3_card["hit_names"] = [item["name"] for item in matched_items]
+            v3_card["hit_times"] = [item["occurrence_time"] for item in matched_items]
+            _2c_card_cache_put("3.0", projection_scope, run_id, v3_card)
+            projected.append(v3_card)
+    cards = projected
+    payload["cards"] = cards
     payload["api_version"] = "3.0"
-    _log_v3_outbound(payload, cards)
+    build_ms = (time.perf_counter() - started) * 1000
+    _log_v3_outbound(
+        payload,
+        cards,
+        cache_hits=cache_hits,
+        cache_misses=cache_misses,
+        build_ms=build_ms,
+    )
     return payload
 
 

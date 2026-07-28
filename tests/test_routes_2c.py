@@ -9,7 +9,9 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -82,6 +84,7 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr(routes_audit, "_2c_run_patient", lambda syxh: None)
     monkeypatch.setattr(routes_audit, "_hub_probe", lambda syxh: False)  # 默认中台也查无
     routes_audit._2c_tasks.clear()
+    getattr(routes_audit, "_clear_2c_card_cache", lambda: None)()
 
     from fastapi.testclient import TestClient
     from javert.web.api.main import create_app
@@ -91,6 +94,7 @@ def client(monkeypatch, tmp_path):
         yield c
 
     routes_audit._2c_tasks.clear()
+    getattr(routes_audit, "_clear_2c_card_cache", lambda: None)()
     reset_config_cache()
 
 
@@ -690,7 +694,10 @@ def test_v2_returns_all_39_completed_cards(client, caplog):
         if "2c_v2_outbound" in record.getMessage()
     ]
     assert "total=39 completed=39 failed=0 v1_results=39 cards=39" in message
+    assert "cache_hits=0 cache_misses=39 build_ms=" in message
     assert "CASE-V2-001" not in message
+    assert "att_v2_full_39" not in message
+    assert "aud_V2FULL" not in message
 
     v3 = client.get("/api/audit/v3/results/CASE-V2-001").json()
     assert v3["api_version"] == "3.0"
@@ -1010,3 +1017,236 @@ def test_truncated_diagnostic_is_chinese_and_retryable():
     assert reasoning == "模型输出达到长度上限，本规则未完成自动判定，需人工复核。"
     assert code == "LLM_OUTPUT_TRUNCATED"
     assert retryable is True
+
+
+def _seed_projection_result(
+    run_id: str,
+    *,
+    rule_id: str = "R191",
+    evidence: list | None = None,
+    verdict: str = "CLEAN",
+) -> None:
+    """为投影缓存测试写入一条不触发 v1 hit 解析的 CLEAN run。"""
+    from javert.audit.result import AuditResult
+    from javert.config import get_config
+    from javert.store.audit_store import SqliteStore
+
+    result = AuditResult(
+        run_id=run_id,
+        rule_id=rule_id,
+        patient_id="CASE-V2-001",
+        verdict=verdict,
+        confidence=1.0,
+        reasoning="确定性核查完成。",
+        evidence=evidence or [],
+        duration_ms=1,
+        model="deterministic-test",
+        started_at=datetime(2026, 7, 28, tzinfo=timezone.utc),
+    )
+    store = SqliteStore(get_config().audit_db_path)
+    store.init_schema()
+    store.write(result)
+    store.close()
+
+
+def _set_projection_task(attempt_id: str, run_ids: list[str]) -> None:
+    from javert.web.api import routes_audit
+
+    routes_audit._2c_tasks["CASE-V2-001"] = {
+        "YLZZJGDM": "H-SYNTHETIC",
+        "status": "running",
+        "outcome": "running",
+        "attempt_id": attempt_id,
+        "source": "local",
+        "stage": "audit",
+        "total": 2,
+        "run_ids": list(run_ids),
+        "failed": [],
+        "error_code": "",
+        "retryable": False,
+        "submitted_at": "2026-07-28T00:00:00+00:00",
+    }
+
+
+def test_v2_projection_cache_reuses_old_cards_and_builds_only_increment(client, monkeypatch):
+    """同 attempt 重复轮询不重算旧 run，进度增加时只构建新增 run。"""
+    from javert.web.api import routes_audit
+
+    _seed_projection_result("aud_CACHE_V2_001", rule_id="R191")
+    _seed_projection_result("aud_CACHE_V2_002", rule_id="R020")
+    _set_projection_task("att_cache_v2", ["aud_CACHE_V2_001"])
+
+    actual = routes_audit.resolve_hits_from_json
+    calls = 0
+
+    def _counted(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return actual(*args, **kwargs)
+
+    monkeypatch.setattr(routes_audit, "resolve_hits_from_json", _counted)
+
+    first = client.get("/api/audit/v2/results/CASE-V2-001").json()
+    repeated = client.get("/api/audit/v2/results/CASE-V2-001").json()
+    assert first == repeated
+    assert len(first["cards"]) == 1
+    assert calls == 1
+
+    with routes_audit._2c_lock:
+        routes_audit._2c_tasks["CASE-V2-001"]["run_ids"].append(
+            "aud_CACHE_V2_002"
+        )
+    incremented = client.get("/api/audit/v2/results/CASE-V2-001").json()
+    assert len(incremented["cards"]) == 2
+    assert calls == 2
+    client.get("/api/audit/v2/results/CASE-V2-001")
+    assert calls == 2
+
+
+def test_v2_projection_does_not_build_discarded_v1_hits(client, monkeypatch):
+    """v2 不应先计算一遍不会返回的 v1 hits，再重复构建完整 card。"""
+    from javert.audit.result import Evidence
+    from javert.web.api import routes_audit
+
+    _seed_projection_result(
+        "aud_NODUPHITS001",
+        verdict="VIOLATION",
+        evidence=[Evidence(
+            source="search_fees",
+            locator="麻醉后复苏监护(PACU)",
+            text="费用明细出现麻醉后复苏监护(PACU)。",
+        )],
+    )
+    _set_projection_task("att_no_duplicate_v1_hits", ["aud_NODUPHITS001"])
+    actual = routes_audit.resolve_hits_from_json
+    calls = 0
+
+    def _counted(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return actual(*args, **kwargs)
+
+    monkeypatch.setattr(routes_audit, "resolve_hits_from_json", _counted)
+    body = client.get("/api/audit/v2/results/CASE-V2-001").json()
+
+    assert len(body["cards"]) == 1
+    assert calls == 1
+
+
+def test_history_replay_without_attempt_reuses_projection_cache(client, monkeypatch):
+    """服务重启后 attempt 丢失，SQLite 历史快照仍须复用卡片投影。"""
+    from javert.web.api import routes_audit
+
+    _seed_projection_result("aud_HISTCACHE001")
+    routes_audit._2c_tasks.clear()
+    actual = routes_audit.resolve_hits_from_json
+    calls = 0
+
+    def _counted(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return actual(*args, **kwargs)
+
+    monkeypatch.setattr(routes_audit, "resolve_hits_from_json", _counted)
+    first = client.get("/api/audit/v2/results/CASE-V2-001").json()
+    repeated = client.get("/api/audit/v2/results/CASE-V2-001").json()
+
+    assert first == repeated
+    assert first["attempt_id"] is None
+    assert len(first["cards"]) == 1
+    assert calls == 1
+
+
+def test_v3_projection_cache_is_version_and_attempt_isolated(client, monkeypatch):
+    """v3 重复查询复用收费行投影，且不污染 v2 或新 attempt。"""
+    from javert.audit.result import Evidence
+    from javert.web.api import routes_audit
+
+    _seed_projection_result(
+        "aud_CACHE_V3_001",
+        evidence=[Evidence(
+            source="search_fees",
+            locator="麻醉后复苏监护(PACU)",
+            text="费用明细出现麻醉后复苏监护(PACU)。",
+        )],
+    )
+    _set_projection_task("att_cache_v3_first", ["aud_CACHE_V3_001"])
+
+    actual = routes_audit._v3_matched_items
+    calls = 0
+
+    def _counted(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return actual(*args, **kwargs)
+
+    monkeypatch.setattr(routes_audit, "_v3_matched_items", _counted)
+
+    first = client.get("/api/audit/v3/results/CASE-V2-001").json()
+    repeated = client.get("/api/audit/v3/results/CASE-V2-001").json()
+    assert first == repeated
+    assert calls == 1
+
+    v2 = client.get("/api/audit/v2/results/CASE-V2-001").json()
+    assert all(
+        "quantity" not in item
+        for card in v2["cards"]
+        for item in card["matched_items"]
+    )
+
+    with routes_audit._2c_lock:
+        routes_audit._2c_tasks["CASE-V2-001"]["attempt_id"] = (
+            "att_cache_v3_second"
+        )
+    client.get("/api/audit/v3/results/CASE-V2-001")
+    assert calls == 2
+
+
+def test_same_attempt_concurrent_v2_projection_is_single_flight(client, monkeypatch):
+    """并发缓存缺失时，昂贵 hit 投影只执行一次。"""
+    from javert.web.api import routes_audit
+
+    _seed_projection_result("aud_CCONCUR00001")
+    _set_projection_task("att_cache_concurrent", ["aud_CCONCUR00001"])
+
+    actual = routes_audit.resolve_hits_from_json
+    calls = 0
+    calls_lock = threading.Lock()
+
+    def _slow_counted(*args, **kwargs):
+        nonlocal calls
+        with calls_lock:
+            calls += 1
+        time.sleep(0.1)
+        return actual(*args, **kwargs)
+
+    monkeypatch.setattr(routes_audit, "resolve_hits_from_json", _slow_counted)
+    start = threading.Barrier(3)
+
+    def _get():
+        start.wait()
+        return routes_audit.results_2c_v2("CASE-V2-001")
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(_get) for _ in range(2)]
+        start.wait()
+        payloads = [future.result(timeout=3) for future in futures]
+
+    assert payloads[0] == payloads[1]
+    assert calls == 1
+
+
+def test_projection_card_cache_is_bounded_lru(client, monkeypatch):
+    """超出上限淘汰最久未使用卡片，不改变重新构建能力。"""
+    from javert.web.api import routes_audit
+
+    routes_audit._clear_2c_card_cache()
+    monkeypatch.setattr(routes_audit, "_2C_CARD_CACHE_MAX", 2)
+    routes_audit._2c_card_cache_put("2.0", "att_lru", "run_1", {"n": 1})
+    routes_audit._2c_card_cache_put("2.0", "att_lru", "run_2", {"n": 2})
+    assert routes_audit._2c_card_cache_get("2.0", "att_lru", "run_1") == {"n": 1}
+    routes_audit._2c_card_cache_put("2.0", "att_lru", "run_3", {"n": 3})
+
+    assert routes_audit._2c_card_cache_get("2.0", "att_lru", "run_2") is None
+    assert routes_audit._2c_card_cache_get("2.0", "att_lru", "run_1") == {"n": 1}
+    assert routes_audit._2c_card_cache_get("2.0", "att_lru", "run_3") == {"n": 3}

@@ -112,6 +112,10 @@ HTTP 202：
 | `done` | `partial` | 展示已有 cards，并根据 `retryable` 决定是否重提 |
 | `done` | `failed` | 展示错误并停止轮询；不得解释为“患者合规” |
 
+v2 结果按当前 `attempt_id + run_id` 增量复用已生成 cards。HTTP 请求自身超时时，调用方应
+重试同一个 GET；只有成功收到终态 JSON 后才能依据其中的 `retryable` 决定是否重新 POST。
+网络超时本身不等于 `retryable=true`。
+
 `summary.total` 是本轮规则总数；Router 无候选时可以是 0。v2 会返回三种 verdict 的卡片，
 包括 `CLEAN`。`summary.not_applicable` 是 `CLEAN` 中由确定性初步核查确认规则不适用的
 卡片数，不从 `summary.clean` 中扣除。
