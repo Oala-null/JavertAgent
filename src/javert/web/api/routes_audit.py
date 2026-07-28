@@ -44,6 +44,7 @@ from .routes_workbench import _get_loader
 from .schemas import AuditRunDetail, AuditRunSummary
 
 logger = logging.getLogger("javert.web.routes_audit")
+outbound_logger = logging.getLogger("uvicorn.error")
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
 
@@ -657,6 +658,12 @@ def submit_2c_v2(items: list[SubmitItem]):
     return _submit_2c(items)
 
 
+@router.post("/v3/submit", status_code=202)
+def submit_2c_v3(items: list[SubmitItem]):
+    """2C v3 提交：继续复用同一任务、队列和 attempt 幂等语义。"""
+    return _submit_2c(items)
+
+
 def _latest_runs_for_patient(syxh: str) -> list[str]:
     """sqlite 兜底: 该患者每条规则的最新 run_id (重启后任务表丢失时供 results 回放)."""
     cfg = get_config()
@@ -855,6 +862,19 @@ def _clean_fee_scalar(value: Any) -> str:
     return "" if text.lower() in {"", "nan", "none", "null", "nat"} else text
 
 
+def _format_v2_occurrence_time(value: Any) -> str:
+    """费用发生时间统一为 2C 契约格式；不可解析值不原样泄露。"""
+    text = _clean_fee_scalar(value)
+    if not text:
+        return ""
+    try:
+        parsed = pd.to_datetime(text, errors="raise")
+    except (TypeError, ValueError, OverflowError):
+        logger.warning("2c v2 忽略不可解析的 fee_ocur_time 值")
+        return ""
+    return parsed.strftime("%Y-%m-%d %H:%M:%S")
+
+
 def _v2_fee_occurrence_times(hit: Any, fee_df: Any) -> list[str]:
     """已解析 fee/drug hit → 患者实际收费行的 fee_ocur_time（去重保序）。"""
     if (
@@ -887,7 +907,7 @@ def _v2_fee_occurrence_times(hit: Any, fee_df: Any) -> list[str]:
         return [""]
     times: list[str] = []
     for value in rows["fee_ocur_time"].tolist():
-        text = _clean_fee_scalar(value)
+        text = _format_v2_occurrence_time(value)
         if text and text not in times:
             times.append(text)
     return times or [""]
@@ -913,6 +933,11 @@ def _v2_hit_payloads(hit_items: list[Any], fee_df: Any) -> tuple[list[dict], lis
         })
         if hit.source not in ("fee", "drug"):
             continue
+        # hit_resolver 为工作台追溯会保留“检索过但没有命中费用行”的锚点。
+        # v2 matched_items 只表达患者实际收费项目，不能把 PTCA 等未命中检索词
+        # 投影成 code/time 均为空的假命中。
+        if not _clean_fee_scalar(hit.matched_fee_name):
+            continue
         code = hit.code_nat or hit.code_local
         # Web 卡片主名称使用规范命中名；患者费用原文单独保留 matched_fee_name。
         name = hit.name or hit.matched_fee_name
@@ -933,6 +958,38 @@ def _v2_hit_payloads(hit_items: list[Any], fee_df: Any) -> tuple[list[dict], lis
                 "review_note": hit.review_note,
             })
     return hits, matched_items
+
+
+def _v2_applicability(verdict: str, raw_reasoning: str) -> tuple[str, str]:
+    """在不扩展持久化三态的前提下，区分 CLEAN 与规则不适用。"""
+    if verdict == "CLEAN" and "规则不适用" in (raw_reasoning or ""):
+        return "NOT_APPLICABLE", "不适用"
+    return "APPLICABLE", "适用"
+
+
+def _log_v2_outbound(
+    base: dict[str, Any], cards: list[dict], *, v1_results_count: int
+) -> None:
+    """记录 2C v2 出口数量；禁止写患者号、run/attempt id 或业务原文。"""
+    progress = base.get("progress") if isinstance(base.get("progress"), dict) else {}
+    summary = base.get("summary") if isinstance(base.get("summary"), dict) else {}
+    outbound_logger.info(
+        "2c_v2_outbound status=%s outcome=%s total=%s completed=%s failed=%s "
+        "v1_results=%d cards=%d violation=%s inconclusive=%s clean=%s "
+        "not_applicable=%s matched_items=%d",
+        base.get("status"),
+        base.get("outcome"),
+        progress.get("total"),
+        progress.get("completed"),
+        progress.get("failed"),
+        v1_results_count,
+        len(cards),
+        summary.get("violation"),
+        summary.get("inconclusive"),
+        summary.get("clean"),
+        summary.get("not_applicable", 0),
+        sum(len(card.get("matched_items", [])) for card in cards),
+    )
 
 
 def _v2_fee_df(syxh: str):
@@ -962,6 +1019,7 @@ def results_2c_v2(syxh: str):
     base = results_2c(syxh)
     v1_results = base.pop("results", [])
     if not v1_results:
+        _log_v2_outbound(base, [], v1_results_count=0)
         return _clean_v2_payload({
             "api_version": "2.0",
             **base,
@@ -996,6 +1054,9 @@ def results_2c_v2(syxh: str):
             hits, matched_items = _v2_hit_payloads(hit_items, fee_df)
             category_code = meta["behavior_code"] if meta else ""
             category_title = meta["behavior_name"] if meta else ""
+            applicability, applicability_label = _v2_applicability(
+                item["verdict"], run.reasoning
+            )
             cards.append({
                 "card_id": run.run_id,
                 "run_id": run.run_id,
@@ -1016,7 +1077,13 @@ def results_2c_v2(syxh: str):
                     "drug_rule_type": meta["drug_rule_type"] if meta else None,
                 },
                 "verdict": item["verdict"],
-                "verdict_label": item["verdict_label"],
+                "verdict_label": (
+                    "不适用"
+                    if applicability == "NOT_APPLICABLE"
+                    else item["verdict_label"]
+                ),
+                "applicability": applicability,
+                "applicability_label": applicability_label,
                 "confidence": item["confidence"],
                 "reasoning": item["reasoning"],
                 "diagnostic_code": item["diagnostic_code"],
@@ -1035,11 +1102,143 @@ def results_2c_v2(syxh: str):
     finally:
         store.close()
     cards.sort(key=lambda card: card["rule_id"])
+    summary = base.get("summary")
+    if isinstance(summary, dict):
+        summary["not_applicable"] = sum(
+            card["applicability"] == "NOT_APPLICABLE" for card in cards
+        )
+    _log_v2_outbound(base, cards, v1_results_count=len(v1_results))
     return _clean_v2_payload({
         "api_version": "2.0",
         **base,
         "cards": cards,
     })
+
+
+_V3_CHARGE_TEXT_COLUMNS = {
+    "ordering_department_code": "acord_dept_codg",
+    "ordering_department_name": "acord_dept_name",
+    "ordering_doctor_id": "orders_dr_code",
+    "ordering_doctor_name": "orders_dr_name",
+}
+
+
+def _v3_number(value: Any) -> int | float | None:
+    """费用数字转为有限 JSON number；空值/异常值稳定返回 null。"""
+    text = _clean_fee_scalar(value)
+    if not text:
+        return None
+    try:
+        number = float(text)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not pd.notna(number) or number in (float("inf"), float("-inf")):
+        return None
+    return int(number) if number.is_integer() else number
+
+
+def _v3_matching_fee_rows(item: dict[str, Any], fee_df: Any):
+    """v2 matched item → 同一费用快照中的实际收费行，保持原行顺序和基数。"""
+    if (
+        fee_df is None
+        or len(fee_df) == 0
+        or "medins_list_name" not in fee_df.columns
+    ):
+        return None
+    matched_name = _clean_fee_scalar(item.get("matched_fee_name"))
+    if not matched_name:
+        return None
+    rows = fee_df[
+        fee_df["medins_list_name"].fillna("").astype(str).str.strip()
+        == matched_name
+    ]
+    code_nat = _clean_fee_scalar(item.get("code_nat"))
+    code_local = _clean_fee_scalar(item.get("code_local"))
+    if code_nat and "med_list_codg" in rows.columns:
+        rows = rows[
+            rows["med_list_codg"].fillna("").astype(str).str.strip() == code_nat
+        ]
+    elif code_local and "medins_list_codg" in rows.columns:
+        rows = rows[
+            rows["medins_list_codg"].fillna("").astype(str).str.strip()
+            == code_local
+        ]
+    if "fee_ocur_time" in rows.columns:
+        expected_time = _clean_fee_scalar(item.get("occurrence_time"))
+        normalized_times = rows["fee_ocur_time"].map(_format_v2_occurrence_time)
+        rows = rows[normalized_times == expected_time]
+    elif _clean_fee_scalar(item.get("occurrence_time")):
+        return None
+    if "cnt" in rows.columns:
+        positive = rows[pd.to_numeric(rows["cnt"], errors="coerce").fillna(0) > 0]
+        if len(positive):
+            rows = positive
+    return rows
+
+
+def _v3_empty_charge_fields(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **item,
+        "quantity": None,
+        "unit_price": None,
+        **{field: "" for field in _V3_CHARGE_TEXT_COLUMNS},
+    }
+
+
+def _v3_matched_items(
+    matched_items: list[dict[str, Any]], fee_df: Any
+) -> list[dict[str, Any]]:
+    """将 v2 项目/时间命中展开为 v3 收费明细行；不按展示字段去重。"""
+    expanded: list[dict[str, Any]] = []
+    for item in matched_items:
+        rows = _v3_matching_fee_rows(item, fee_df)
+        if rows is None or len(rows) == 0:
+            expanded.append(_v3_empty_charge_fields(item))
+            continue
+        for _, row in rows.iterrows():
+            expanded.append({
+                **item,
+                "quantity": _v3_number(row.get("cnt")),
+                "unit_price": _v3_number(row.get("pric")),
+                **{
+                    field: _clean_fee_scalar(row.get(column))
+                    for field, column in _V3_CHARGE_TEXT_COLUMNS.items()
+                },
+            })
+    return expanded
+
+
+def _log_v3_outbound(base: dict[str, Any], cards: list[dict[str, Any]]) -> None:
+    """记录 v3 出口结构数量；不得写患者、attempt、run 或业务原文。"""
+    progress = base.get("progress") if isinstance(base.get("progress"), dict) else {}
+    outbound_logger.info(
+        "2c_v3_outbound status=%s outcome=%s total=%s completed=%s failed=%s "
+        "cards=%d charge_lines=%d",
+        base.get("status"),
+        base.get("outcome"),
+        progress.get("total"),
+        progress.get("completed"),
+        progress.get("failed"),
+        len(cards),
+        sum(len(card.get("matched_items", [])) for card in cards),
+    )
+
+
+@router.get("/v3/results/{syxh}")
+def results_2c_v3(syxh: str):
+    """2C v3：在完整 v2 卡片上追加逐收费行量价、科室和医生字段。"""
+    payload = results_2c_v2(syxh)
+    cards = payload.get("cards") if isinstance(payload.get("cards"), list) else []
+    fee_df = _v2_fee_df(syxh) if any(card.get("matched_items") for card in cards) else None
+    for card in cards:
+        matched_items = _v3_matched_items(card.get("matched_items", []), fee_df)
+        card["matched_items"] = matched_items
+        card["hit_codes"] = [item["code"] for item in matched_items]
+        card["hit_names"] = [item["name"] for item in matched_items]
+        card["hit_times"] = [item["occurrence_time"] for item in matched_items]
+    payload["api_version"] = "3.0"
+    _log_v3_outbound(payload, cards)
+    return payload
 
 
 @router.get("/runs/{run_id}", response_model=AuditRunDetail)

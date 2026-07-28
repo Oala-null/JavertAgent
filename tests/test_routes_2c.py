@@ -49,6 +49,11 @@ class _FakeLoader:
                     "2026-07-04 11:15:00",
                 ],
                 "cnt": [1, 1, 1, 1],
+                "pric": [300, 300, 25.5, 18800],
+                "acord_dept_codg": ["D001", "D001", "D002", "D003"],
+                "acord_dept_name": ["麻醉科", "麻醉科", "输液室", "肿瘤科"],
+                "orders_dr_code": ["DR001", "DR001", "DR002", "DR003"],
+                "orders_dr_name": ["医生甲", "医生甲", "医生乙", "医生丙"],
             })
         return pd.DataFrame()
 
@@ -108,9 +113,12 @@ def test_public_no_auth_required():
     assert not _path_protected("/api/audit/results/J66252")
     assert not _path_protected("/api/audit/v2/submit")
     assert not _path_protected("/api/audit/v2/results/J66252")
+    assert not _path_protected("/api/audit/v3/submit")
+    assert not _path_protected("/api/audit/v3/results/J66252")
     assert _path_protected("/api/audit/run")
     assert _path_protected("/api/audit/runs")
     assert _path_protected("/api/audit/v2/run")
+    assert _path_protected("/api/audit/v3/run")
 
 
 def test_behavior_mapping_virtual_is_standard_and_swap_stays_independent():
@@ -195,6 +203,39 @@ def test_v2_submit_reuses_running_v1_attempt(client, monkeypatch):
     assert queued == []
 
 
+def test_v3_submit_reuses_running_attempt(client, monkeypatch):
+    """v3 submit 与 v1/v2 共用 running attempt，不产生第二个任务。"""
+    from javert.web.api import routes_audit
+
+    routes_audit._2c_tasks["CASE-V2-001"] = {
+        "YLZZJGDM": "H-SYNTHETIC",
+        "status": "running",
+        "outcome": "running",
+        "attempt_id": "att_shared_v3",
+        "source": "local",
+        "stage": "audit",
+        "total": 2,
+        "run_ids": [],
+        "failed": [],
+        "submitted_at": "2026-07-27T00:00:00+00:00",
+    }
+    queued: list[str] = []
+    monkeypatch.setattr(routes_audit._2c_queue, "put", queued.append)
+
+    response = client.post(
+        "/api/audit/v3/submit",
+        json=[{"SYXH": "CASE-V2-001", "YLZZJGDM": "H-SYNTHETIC"}],
+    )
+
+    assert response.status_code == 202
+    assert response.json()["accepted"] == [{
+        "SYXH": "CASE-V2-001",
+        "source": "local",
+        "attempt_id": "att_shared_v3",
+    }]
+    assert queued == []
+
+
 def test_submit_hub_fallback(client, monkeypatch):
     """本地查无 → 中台有 → 受理 source=hub; 中台连接失败 → 诚实 reason."""
     from javert.web.api import routes_audit
@@ -253,6 +294,15 @@ def test_v2_results_unknown_has_versioned_empty_cards(client):
     assert body["api_version"] == "2.0"
     assert body["status"] == "unknown"
     assert body["outcome"] == "unknown"
+    assert body["cards"] == []
+    assert "results" not in body
+
+
+def test_v3_results_unknown_has_versioned_empty_cards(client):
+    body = client.get("/api/audit/v3/results/CASE-UNKNOWN").json()
+    assert body["api_version"] == "3.0"
+    assert body["status"] == "unknown"
+    assert body["progress"] == {"total": 0, "completed": 0, "failed": 0}
     assert body["cards"] == []
     assert "results" not in body
 
@@ -396,6 +446,303 @@ def test_v2_multiple_hits_keep_code_name_time_aligned(client):
         "2026-07-02 09:45:00",
         "2026-07-03 10:00:00",
     ]
+
+    v2_before = body
+    v3 = client.get("/api/audit/v3/results/CASE-V2-001").json()
+    assert v3["api_version"] == "3.0"
+    assert "results" not in v3
+    (v3_card,) = v3["cards"]
+    assert len(v3_card["matched_items"]) == 3
+    first = v3_card["matched_items"][0]
+    assert first["quantity"] == 1
+    assert first["unit_price"] == 300
+    assert first["ordering_department_code"] == "D001"
+    assert first["ordering_department_name"] == "麻醉科"
+    assert first["ordering_doctor_id"] == "DR001"
+    assert first["ordering_doctor_name"] == "医生甲"
+    assert v3_card["hit_codes"] == [x["code"] for x in v3_card["matched_items"]]
+    assert v3_card["hit_names"] == [x["name"] for x in v3_card["matched_items"]]
+    assert v3_card["hit_times"] == [
+        x["occurrence_time"] for x in v3_card["matched_items"]
+    ]
+    assert client.get("/api/audit/v2/results/CASE-V2-001").json() == v2_before
+
+
+def test_v3_expands_same_item_time_to_source_rows_without_dedup():
+    """同项目同时间逐收费行返回；即使展示字段相同也不得静默去重。"""
+    from javert.web.api.routes_audit import _v3_matched_items
+
+    fee_df = pd.DataFrame({
+        "medins_list_name": ["语义化收费项目"] * 3,
+        "med_list_codg": ["SYNTHETIC-CODE"] * 3,
+        "medins_list_codg": ["LOCAL-CODE"] * 3,
+        "fee_ocur_time": ["2026-07-27 08:00:00"] * 3,
+        "cnt": [1, 2.5, 2.5],
+        "pric": [10, 20.25, 20.25],
+        "acord_dept_codg": ["D001", "D002", "D002"],
+        "acord_dept_name": ["科室甲", "科室乙", "科室乙"],
+        "orders_dr_code": ["DR001", "DR002", "DR002"],
+        "orders_dr_name": ["医生甲", "医生乙", "医生乙"],
+    })
+    base = {
+        "code": "SYNTHETIC-CODE",
+        "name": "语义化收费项目",
+        "occurrence_time": "2026-07-27 08:00:00",
+        "source": "fee",
+        "code_nat": "SYNTHETIC-CODE",
+        "code_local": "LOCAL-CODE",
+        "matched_fee_name": "语义化收费项目",
+        "restriction": "",
+        "review_note": "",
+    }
+
+    expanded = _v3_matched_items([base], fee_df)
+
+    assert len(expanded) == 3
+    assert [x["quantity"] for x in expanded] == [1, 2.5, 2.5]
+    assert [x["unit_price"] for x in expanded] == [10, 20.25, 20.25]
+    assert [x["ordering_department_code"] for x in expanded] == [
+        "D001", "D002", "D002",
+    ]
+    assert expanded[1] == expanded[2]  # 相同展示行仍保留两个数组元素
+
+
+def test_v3_missing_charge_fields_keep_item_with_stable_types():
+    from javert.web.api.routes_audit import _v3_matched_items
+
+    fee_df = pd.DataFrame({
+        "medins_list_name": ["语义化收费项目"],
+        "med_list_codg": ["SYNTHETIC-CODE"],
+        "fee_ocur_time": ["2026-07-27 08:00:00"],
+        "cnt": ["not-a-number"],
+        "pric": [""],
+    })
+    base = {
+        "code": "SYNTHETIC-CODE",
+        "name": "语义化收费项目",
+        "occurrence_time": "2026-07-27 08:00:00",
+        "source": "fee",
+        "code_nat": "SYNTHETIC-CODE",
+        "code_local": "",
+        "matched_fee_name": "语义化收费项目",
+        "restriction": "",
+        "review_note": "",
+    }
+
+    (item,) = _v3_matched_items([base], fee_df)
+
+    assert item["quantity"] is None
+    assert item["unit_price"] is None
+    assert item["ordering_department_code"] == ""
+    assert item["ordering_department_name"] == ""
+    assert item["ordering_doctor_id"] == ""
+    assert item["ordering_doctor_name"] == ""
+
+
+def test_v2_time_is_normalized_and_unmatched_search_term_is_not_a_hit(client):
+    """斜杠日期统一格式；仅检索过但无实际费用行的 PTCA 不得冒充命中项。"""
+    from javert.web.api.routes_audit import _v2_hit_payloads
+    from javert.web.hit_resolver import Anchor, HitItem
+
+    fee_df = pd.DataFrame({
+        "medins_list_name": ["语义化收费项目"],
+        "med_list_codg": ["SYNTHETIC-CODE"],
+        "medins_list_codg": ["LOCAL-CODE"],
+        "fee_ocur_time": ["8/1/2025 00:00:00"],
+        "cnt": [1],
+    })
+    actual = HitItem(
+        source="fee",
+        name="语义化收费项目",
+        code_nat="SYNTHETIC-CODE",
+        code_local="LOCAL-CODE",
+        matched_fee_name="语义化收费项目",
+        anchor=Anchor(tab="fees", query="语义化收费项目"),
+    )
+    searched_only = HitItem(
+        source="fee",
+        name="PTCA",
+        anchor=Anchor(tab="fees", query="PTCA", match_level="name"),
+    )
+
+    hits, matched_items = _v2_hit_payloads([actual, searched_only], fee_df)
+
+    assert len(hits) == 2  # 原始追溯锚点仍保留
+    assert matched_items == [{
+        "code": "SYNTHETIC-CODE",
+        "name": "语义化收费项目",
+        "occurrence_time": "2025-08-01 00:00:00",
+        "source": "fee",
+        "code_nat": "SYNTHETIC-CODE",
+        "code_local": "LOCAL-CODE",
+        "matched_fee_name": "语义化收费项目",
+        "restriction": "",
+        "review_note": "",
+    }]
+
+
+def test_v2_precheck_not_applicable_is_not_labeled_compliant(client):
+    """底层仍是 CLEAN，但 C 端展示应明确为“不适用”而非普通“合规”。"""
+    from javert.audit.result import AuditResult
+    from javert.config import get_config
+    from javert.store.audit_store import SqliteStore
+    from javert.web.api import routes_audit
+
+    result = AuditResult(
+        run_id="aud_V2NOTAPP0001",
+        rule_id="R191",
+        patient_id="CASE-V2-001",
+        verdict="CLEAN",
+        confidence=1.0,
+        reasoning="预检: 未见 A 类 (主项) 费用命中, 规则不适用 → CLEAN",
+        duration_ms=1,
+        model="deterministic-precheck",
+        started_at=datetime(2026, 7, 24, tzinfo=timezone.utc),
+    )
+    store = SqliteStore(get_config().audit_db_path)
+    store.init_schema()
+    store.write(result)
+    store.close()
+    routes_audit._2c_tasks["CASE-V2-001"] = {
+        "YLZZJGDM": "H-SYNTHETIC",
+        "status": "done",
+        "outcome": "succeeded",
+        "attempt_id": "att_v2_not_applicable",
+        "source": "local",
+        "stage": "done",
+        "total": 1,
+        "run_ids": [result.run_id],
+        "failed": [],
+        "error_code": "",
+        "retryable": False,
+        "submitted_at": "2026-07-24T00:00:00+00:00",
+    }
+
+    (card,) = client.get("/api/audit/v2/results/CASE-V2-001").json()["cards"]
+
+    assert card["verdict"] == "CLEAN"
+    assert card["verdict_label"] == "不适用"
+    assert card["applicability"] == "NOT_APPLICABLE"
+    assert card["applicability_label"] == "不适用"
+
+    (v3_card,) = client.get(
+        "/api/audit/v3/results/CASE-V2-001"
+    ).json()["cards"]
+    assert v3_card["rule_id"] == "R191"
+    assert v3_card["matched_items"] == []
+    assert v3_card["hit_codes"] == []
+    assert v3_card["hit_names"] == []
+    assert v3_card["hit_times"] == []
+
+
+def test_v2_returns_all_39_completed_cards(client, caplog):
+    """完成列表有 39 条时，v2 不得静默截断或按 verdict 过滤。"""
+    from javert.audit.result import AuditResult
+    from javert.config import get_config
+    from javert.store.audit_store import SqliteStore
+    from javert.web.api import routes_audit
+
+    store = SqliteStore(get_config().audit_db_path)
+    store.init_schema()
+    results = [
+        AuditResult(
+            run_id=f"aud_V2FULL{index:06d}",
+            rule_id=f"R{index:03d}",
+            patient_id="CASE-V2-001",
+            verdict="CLEAN",
+            confidence=1.0,
+            reasoning="确定性核查完成。",
+            duration_ms=1,
+            model="deterministic-test",
+            started_at=datetime(2026, 7, 24, tzinfo=timezone.utc),
+        )
+        for index in range(1, 40)
+    ]
+    for result in results:
+        store.write(result)
+    store.close()
+    routes_audit._2c_tasks["CASE-V2-001"] = {
+        "YLZZJGDM": "H-SYNTHETIC",
+        "status": "done",
+        "outcome": "succeeded",
+        "attempt_id": "att_v2_full_39",
+        "source": "local",
+        "stage": "done",
+        "total": 39,
+        "run_ids": [result.run_id for result in results],
+        "failed": [],
+        "error_code": "",
+        "retryable": False,
+        "submitted_at": "2026-07-24T00:00:00+00:00",
+    }
+
+    import logging
+
+    caplog.set_level(logging.INFO, logger="uvicorn.error")
+    body = client.get("/api/audit/v2/results/CASE-V2-001").json()
+
+    assert body["progress"] == {"total": 39, "completed": 39, "failed": 0}
+    assert body["summary"]["total"] == 39
+    assert len(body["cards"]) == 39
+    (message,) = [
+        record.getMessage()
+        for record in caplog.records
+        if "2c_v2_outbound" in record.getMessage()
+    ]
+    assert "total=39 completed=39 failed=0 v1_results=39 cards=39" in message
+    assert "CASE-V2-001" not in message
+
+    v3 = client.get("/api/audit/v3/results/CASE-V2-001").json()
+    assert v3["api_version"] == "3.0"
+    assert v3["status"] == "done"
+    assert v3["outcome"] == "succeeded"
+    assert v3["progress"] == {"total": 39, "completed": 39, "failed": 0}
+    assert len(v3["cards"]) == 39
+
+
+def test_v3_running_response_is_incremental(client):
+    """running 时 cards 是已完成部分，progress 明确总数与完成数。"""
+    from javert.audit.result import AuditResult
+    from javert.config import get_config
+    from javert.store.audit_store import SqliteStore
+    from javert.web.api import routes_audit
+
+    result = AuditResult(
+        run_id="aud_V3RUNNING001",
+        rule_id="R191",
+        patient_id="CASE-V2-001",
+        verdict="CLEAN",
+        confidence=1.0,
+        reasoning="确定性核查完成。",
+        duration_ms=1,
+        model="deterministic-test",
+        started_at=datetime(2026, 7, 27, tzinfo=timezone.utc),
+    )
+    store = SqliteStore(get_config().audit_db_path)
+    store.init_schema()
+    store.write(result)
+    store.close()
+    routes_audit._2c_tasks["CASE-V2-001"] = {
+        "YLZZJGDM": "H-SYNTHETIC",
+        "status": "running",
+        "outcome": "running",
+        "attempt_id": "att_v3_running",
+        "source": "local",
+        "stage": "audit",
+        "total": 39,
+        "run_ids": [result.run_id],
+        "failed": [],
+        "error_code": "",
+        "retryable": False,
+        "submitted_at": "2026-07-27T00:00:00+00:00",
+    }
+
+    body = client.get("/api/audit/v3/results/CASE-V2-001").json()
+
+    assert body["status"] == "running"
+    assert body["outcome"] == "running"
+    assert body["progress"] == {"total": 39, "completed": 1, "failed": 0}
+    assert len(body["cards"]) == 1
 
 
 def test_v2_clean_drug_keeps_hit_and_full_oncology_conditions(client):

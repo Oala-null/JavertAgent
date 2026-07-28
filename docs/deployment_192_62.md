@@ -390,6 +390,50 @@ uv run python scripts/drift_report.py --target mssql --out output/drift_142.csv
 
 ---
 
+### 10.8 2C v2 联调热修复（2026-07-27）
+
+- 仅覆盖 `src/javert/web/api/routes_audit.py`，未部署工作树中的其他规则、配置或肿瘤
+  authoring 修改；远端文件 SHA-256 为
+  `4a856e5062086959ddf3a76eeb98ee89a973d47d606140be89ee6cef791c4a59`。
+- 覆盖前已把完整 `src`、目标源码、mode 0600 `.env` 和旧进程实际环境无回显固化到
+  `/home/admin2/backup/javert-2c-v2-20260727-dYx4sX`；回滚时恢复其中
+  `routes_audit.py` 后按 §3 重拉进程。
+- `ensure-mssql-schema` 幂等执行成功，4 张表就绪；重拉后 PID `480014`，systemd
+  `active/running`、登录页 HTTP 200、近期错误标记 0，新旧 `JAVERT_*` 环境逐项一致，
+  SQL Server 142 与 Hub 连接均正常。
+- J70782 v2 脱敏结构验收：`status=done`、`outcome=succeeded`、
+  `total=completed=cards=39`、`failed=0`；时间格式错误、name-only 假命中、三数组对齐错误、
+  applicability 缺失均为 0，16 张确定性不适用卡已标记 `NOT_APPLICABLE`。
+- 2026-07-27 C 端数量诊断：增加不含患者标识、run/attempt id 和业务原文的
+  `2c_v2_outbound` INFO 日志。一次现网请求记录
+  `total=39 completed=39 v1_results=39 cards=39 matched_items=14`；进一步统计为
+  13 张卡含 14 个 matched item、26 张卡无 matched item。日志版本回滚点为
+  `/home/admin2/backup/javert-2c-log-20260727-upwle8`。
+
+### 10.9 2C v3 收费明细行契约（2026-07-28）
+
+- 新增 `/api/audit/v3/submit` 与 `/api/audit/v3/results/{SYXH}`；v3 复用既有任务、
+  `attempt_id`、状态和完整 cards，在 `matched_items[]` 追加数量、单价、开单科室编码/名称、
+  开单医生工号/名称。同项目同时间存在多条收费源行时逐行返回；v1/v2 不改。
+- 本地门禁：2C 直接测试 **25 passed**，Web/2C 组合 **58 passed**，完整套件
+  **1052 passed / 1 skipped**，`openspec validate add-2c-v3-charge-line-fields --strict`
+  通过。
+- 部署前备份：`/home/admin2/backup/javert-2c-v3-20260727-Afftan`，目录0700；包含完整
+  `src`、mode 0600 `.env`、旧进程实际 SQL/Hub 环境和覆盖前源码 SHA。仅覆盖
+  `routes_audit.py` 与 `middleware.py`，并保留62原有 `/scriv`、`/api/scriv` 鉴权边界。
+- 部署文件 SHA-256：`routes_audit.py = 3291d4a5c95b353d47e6cc2cde78d488320fe7ed111a1bf4d8646492d6bd38c9`；
+  `middleware.py = 990af4283f721373b87ee612413f2f3ec67079415b55d202694085f348dfa493`。
+- `ensure-mssql-schema` 幂等执行成功，4张表就绪。重拉后 MainPID `721707`，systemd
+  `active/running`、登录页 HTTP 200、关键 `JAVERT_*` 环境与旧进程完全一致，SQL
+  `zadig` 与 Hub 均健康，部署后错误标记0。
+- 生产脱敏结构验收：v1 `results=39`；v2 `cards=39/matched_items=14`；v3
+  `cards=39/charge_lines=15`，说明1个同项目同时间命中正确拆为两条收费行。v3
+  `total=completed=39`、`failed=0`，39个唯一规则；新增字段缺失、数字/文本类型错误、
+  `hit_*` 对齐错误均为0，v2 新字段泄漏为0，三个版本规则集合一致。匿名日志记录
+  `2c_v3_outbound ... cards=39 charge_lines=15`。
+- 回滚：从上述备份恢复 `src/javert/web/api/routes_audit.py` 和
+  `src/javert/web/middleware.py`，再按 §3 kill-9 MainPID 触发 systemd 重拉；无需数据库回滚。
+
 ## 11. 实测性能 (2026-05-21 50 病人 batch)
 
 ```

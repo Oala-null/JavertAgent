@@ -1,5 +1,8 @@
 # 2C 平台 ↔ Javert 审计服务 v2 对接文档
 
+> v2 继续兼容。新接入需要收费明细数量、单价、开单科室编码/名称和开单医生工号/名称时，
+> 请使用 [2C v3 对接文档](2c对接_javert审计服务_v3.md)。
+
 v2 用于尽可能完整还原 Javert Web 的审计卡片。它保留 v1，不要求旧客户端迁移：
 
 - v1：`POST /api/audit/submit`、`GET /api/audit/results/{SYXH}`
@@ -92,7 +95,8 @@ HTTP 202：
     "total": 14,
     "violation": 2,
     "inconclusive": 1,
-    "clean": 11
+    "clean": 11,
+    "not_applicable": 4
   },
   "cards": []
 }
@@ -109,7 +113,8 @@ HTTP 202：
 | `done` | `failed` | 展示错误并停止轮询；不得解释为“患者合规” |
 
 `summary.total` 是本轮规则总数；Router 无候选时可以是 0。v2 会返回三种 verdict 的卡片，
-包括 `CLEAN`。
+包括 `CLEAN`。`summary.not_applicable` 是 `CLEAN` 中由确定性初步核查确认规则不适用的
+卡片数，不从 `summary.clean` 中扣除。
 
 ## 4. cards[] 卡片契约
 
@@ -137,6 +142,8 @@ HTTP 202：
   },
   "verdict": "CLEAN",
   "verdict_label": "合规",
+  "applicability": "APPLICABLE",
+  "applicability_label": "适用",
   "confidence": 1.0,
   "reasoning": "患者用药及现有证据符合当前医保限定条件。",
   "diagnostic_code": "",
@@ -199,6 +206,9 @@ HTTP 202：
 | `description` | Web 卡片蓝色说明区对应的规则问题 |
 | `rule` | 规则元数据；2C 展示通常只需 `question`，其余用于追溯 |
 | `verdict` | `VIOLATION / INCONCLUSIVE / CLEAN` |
+| `verdict_label` | 普通 CLEAN 为“合规”；规则不适用的 CLEAN 为“不适用” |
+| `applicability` | `APPLICABLE / NOT_APPLICABLE`；不改变既有三态 verdict |
+| `applicability_label` | `适用 / 不适用` |
 | `reasoning` | 可展示的中文推理；v2 清除“暂未描述”占位短语 |
 | `matched_items` | 费用/药品命中关联的唯一真相源 |
 | `hits` | Web 命中块所需的完整解析结果，含 fee/drug/note/lab/exam 及定位锚点 |
@@ -258,12 +268,12 @@ hit_times[i] == matched_items[i].occurrence_time
 }
 ```
 
-无法关联实际费用行时，v2 仍保留命中名称，缺失的 code/time 为 `""`。调用方不得因为
-code 或 time 为空而丢掉整个项目。
+只有能关联患者实际费用行的费用/药品项目才进入 `matched_items` 与三个兼容数组。
+仅记录“检索了 PTCA 但未命中”之类结论的证据仍保留在 `evidence`/`hits` 中，但不会再
+生成 code/time 均为空的 name-only 假命中。
 
-`occurrence_time` 使用上游 `fee_ocur_time` 的原始字符串值；当前中台通常为
-`YYYY-MM-DD HH:mm:ss`，历史 CSV 可能是 `d/m/YYYY HH:mm:ss`。2C 应按字符串展示，
-如需排序应使用能兼容两种格式的日期解析器，不要按字典序排序。
+`occurrence_time` 和 `hit_times[]` 固定为 `yyyy-MM-dd HH:mm:ss`。上游 datetime、
+ISO 字符串及斜杠日期字符串会在 Javert 侧统一格式；无法解析的非空值不会原样透传。
 
 ## 6. CLEAN 与 J70782 类场景
 
@@ -272,6 +282,20 @@ v1 为保持历史契约，仅给 VIOLATION/INCONCLUSIVE 解析命中项目。v2
 - CLEAN RD04 仍返回被审核药品，例如“注射用维泊妥珠单抗”；
 - CLEAN 卡片仍返回 reasoning、evidence 和可用的 `eligibility_evaluation`；
 - CLEAN 不等于“没有命中项目”，而是“命中候选经过规则核对后未发现违规”。
+
+确定性初步核查确认“A 类主项/术式费用未命中，规则不适用”时，底层仍返回
+`verdict=CLEAN` 以兼容既有三态，但 v2 同时返回：
+
+```json
+{
+  "verdict": "CLEAN",
+  "verdict_label": "不适用",
+  "applicability": "NOT_APPLICABLE",
+  "applicability_label": "不适用"
+}
+```
+
+C 端应优先用 `verdict_label` 展示，不要把这类卡片标成普通“合规”。
 
 ## 7. eligibility_evaluation 肿瘤限定条件
 

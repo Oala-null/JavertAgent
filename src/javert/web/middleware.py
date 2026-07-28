@@ -35,6 +35,9 @@ PROTECTED_PREFIXES = (
     "/api/patients",
     "/api/audit",
     "/api/sync",
+    # 生产 Scriv 管理入口仍需登录；部署增量不得覆盖远端既有保护
+    "/scriv",
+    "/api/scriv",
 )
 
 PUBLIC_PREFIXES = (
@@ -53,6 +56,9 @@ PUBLIC_PREFIXES = (
     # 2C v2: 独立卡片契约，继续采用精确前缀，不放开其他 /api/audit/v2 路径
     "/api/audit/v2/submit",
     "/api/audit/v2/results",
+    # 2C v3: 收费明细行契约；仍只放开 submit/results 两条系统间路径
+    "/api/audit/v3/submit",
+    "/api/audit/v3/results",
     "/",  # 老 index.html 入口仍开放
 )
 

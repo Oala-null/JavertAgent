@@ -7,6 +7,8 @@
 
 **data-hub (2026-07-03)**: 🟢 **数据中台三链打通** — 对接 `Scriv/Data_Hub` 46 张国标 TB_* 表: **回填** (`scripts/build_data_hub_filled.py`, sy 3309 + szx 全量 4701 患者 → 23 表 631 万记录, 含 通用文书/费用医保分解/手术医保双码 3 张扩展表) → **推送** (`scripts/push_data_hub_filled.py` → 142 `TP_data_hub` 库) → **反向取数** (`scripts/etl_from_data_hub.py`, 流B, zadig_agent 零改动). 双链路对照 J66252 裁决 16/18 一致无 V 级差异. 交接文档 `Scriv/data_hub_filled/_report.md`, 接入指引 `docs/数据接入清单.md` §四.
 
+**2C 对接 v3**：新接入使用 `/api/audit/v3/submit` 与 `/api/audit/v3/results/{SYXH}`；在完整规则卡片上按实际收费明细行返回数量、单价、开单科室编码/名称和开单医生工号/名称。`status=running` 时 cards 只是增量结果，必须轮询到 `done`。详见 `docs/2c对接_javert审计服务_v3.md`。
+
 **v0.12 (2026-06-04)**: 🟢 **现场演示自动驾驶 (redesign-onboarding-demo-flow)** — `/onboarding` 从工程师映射工具加一层自动驾驶, 面向投资方/合作医院现场演示. **稳**: 服务端进程内会话态单一真相源 (`onb_sid` 索引, 不落盘 JSON) — 删/重传(同名替换)/刷新都稳, 消灭"增删出问题"; **不炸**: `.loaded.env` 只写实际产出表 (缺表客户不再炸) + GUI「清空已载入」; **一词收尾**: `jv-go` 一词跑全量 + `jv-run-all` 逐患者进度行 (`[i/N] 患者号 ✓ xV yI zC`) + 载入面板自动复制剪贴板; **可解释**: 预检红灯可执行诊断 (命中最低表 + 成因) + 日期歧义一次性确认 (绝不静默反转); **丝滑**: 上传即自动认表 (`classifier.py` 最小启发式) + 绿/琥珀结果卡 (synth/asis/bridge 收进「调整▾」) + **我的文件→Javert 表流向图** (真实键标签·可拖节点·点线看明细). **483 测试 + 1 skip 绿**. 详见 `docs/sample_onboarding.md` §八.
 
 **v0.10.1 (2026-06-03)**: 🟢 **onboarding 增强 + 多智能体对抗审查** — 审查发现 16 真问题全修 (含 🔴 斜杠年在前日期月日互换 + 🔴 越权读 `.env` 泄 session secret). UX: 上传秒回 (411MB→12ms; 106MB case_notes 字节估算行数 0% 误差) + **ER 关系图**左栏 (患者hub + 连接键边) + 跨文件拖列自动改绑 + 重置/清空映射 + 删上传文件 + 「开始审计」→「**载入数据**」(诚实 ETL-only) + `jv-*` 终端命令 (`jv-status/jv-run/jv-run-all/jv-clear`, 本地 sqlite-only). **456 测试 + 1 skip 绿**.
