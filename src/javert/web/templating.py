@@ -56,11 +56,23 @@ def _verdict_label_zh(verdict: str | None) -> str:
 # 肿瘤资格 follow-up 面板: criterion_type / state 英文 → 中文 (前端友好清单).
 _CRITERION_TYPE_ZH = {
     "diagnosis": "诊断",
+    "histology": "组织学类型",
     "stage": "分期 / 转移",
+    "disease_status": "疾病状态",
+    "resectability": "可切除性",
     "biomarker": "病理标志物（免疫组化）",
+    "age": "年龄",
+    "sex": "性别",
+    "menopausal_status": "绝经状态",
     "prior_therapy": "既往治疗",
+    "therapy_count": "既往治疗数量",
     "line_of_therapy": "治疗线数",
     "treatment_status": "复发 / 难治状态",
+    "combination_requirement": "联合用药要求",
+    "surgery_status": "手术状态",
+    "radiotherapy_status": "放疗状态",
+    "transplant_eligibility": "移植资格",
+    "time_window": "资格时间窗口",
     "clinician_assessment": "移植适合性评估",
     "payer_scope": "支付性质",
     "unsupported": "其他条件",
@@ -72,6 +84,12 @@ _STATE_ZH = {
     "CONFLICT": "证据冲突",
 }
 _STATE_MARK = {"SATISFIED": "✓", "NOT_SATISFIED": "✗", "UNKNOWN": "？", "CONFLICT": "⚠"}
+_QUALITY_FLAG_ZH = {
+    "DRAFT_RULE_PREVIEW_ONLY": "草稿规则预览：仅供人工审核，不参与自动裁决",
+    "AUTHORING_REVIEW_REQUIRED": "候选知识尚未获专家批准，必须人工复核",
+    "NO_APPROVED_ELIGIBILITY_RULE": "该药尚无生效且已审核的结构化资格规则",
+    "MISSING_CANDIDATE_SERVICE_DATE": "缺少可核验的本次用药日期",
+}
 
 
 def _criterion_label(criterion_type: str | None) -> str:
@@ -84,6 +102,11 @@ def _state_zh(state: str | None) -> str:
 
 def _state_mark(state: str | None) -> str:
     return _STATE_MARK.get((state or "").strip(), "·")
+
+
+def _quality_flag_zh(flag: str | None) -> str:
+    value = (flag or "").strip()
+    return _QUALITY_FLAG_ZH.get(value, value)
 
 
 # criterion 证据锚点 → 可跳原文的 anchor (复用命中项目的 openSourcePanel 高亮机制).
@@ -161,6 +184,7 @@ def build_env() -> Environment:
     env.filters["criterion_label"] = _criterion_label
     env.filters["state_zh"] = _state_zh
     env.filters["state_mark"] = _state_mark
+    env.filters["quality_flag_zh"] = _quality_flag_zh
     env.filters["onco_evidence_anchor"] = _onco_evidence_anchor
     env.filters["onco_needs_date_check"] = _onco_needs_date_check
     env.filters["format_dt"] = _format_dt

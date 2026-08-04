@@ -28,9 +28,8 @@ Javert 用规则 YAML、确定性预检/后置闸和本地 LLM，审计国家医
 .venv/bin/javert list
 ```
 
-2026-07-17 的已核对基线是 159 条 YAML：118 ready、28 abandoned、13 drafting；
-ready 模板分布 M1-M8 为 22/22/17/13/10/9/20/5。CLI 有 15 个顶层命令，
-工具注册表当前提供 10 个工具。历史报告里的旧数字保留原样，但必须标明快照日期。
+规则、模板、CLI 与工具库存都是会变化的运行时事实；以相应命令的实时输出为准。
+历史报告里的旧数字可以保留，但必须标明快照日期，不能当作当前工作树口径。
 
 ## 不可违反的边界
 
@@ -49,6 +48,9 @@ ready 模板分布 M1-M8 为 22/22/17/13/10/9/20/5。CLI 有 15 个顶层命令�
   环境地址、库名和凭据不要写进 YAML。
 - 142 `sh_yb_platform` 是 DE 维护的数据中台，只读；`TP_data_hub` 是我方开发库；
   `zadig` 保存工作台业务结果。243 是独立产品环境，不能沿用 62 的上线授权。
+- 肿瘤专家维护数据在 142 上只能写入精确库名 `知识库_work`；不得把
+  `sh_yb_platform`、`TP_data_hub` 或 `zadig` 当作知识库。generated DRAFT、专家审核、
+  release 与运行时资产是四个独立阶段，任一阶段完成不得冒充下一阶段完成。
 - `scripts/push_data_hub_filled.py` 的 `--database` 是必填项；建库、建表、增量写和重灌全部
   必须命中 `JAVERT_OWNED_DBS`，无越权参数。142 上只能显式写 `TP_data_hub`；
   243 的同名产品库需在本机单独声明为 owned。
@@ -69,6 +71,10 @@ ready 模板分布 M1-M8 为 22/22/17/13/10/9/20/5。CLI 有 15 个顶层命令�
 - `precheck` 只处理声明过的确定性费用形态；`verdict_gate` 只对 VIOLATION 生效且只降不升。
 - 修改 SSE/2C 返回字段时保持“只加不删不改名”，同步
   `docs/2c对接_javert审计服务.md`，并检查下游 BFF 契约。
+- 2C 生产对接固定使用最新 v3：`POST /api/audit/v3/submit` 与
+  `GET /api/audit/v3/results/{SYXH}`；v1/v2 只做兼容。62 每次覆盖 Web 源码或重启后，必须
+  用空数组 submit 验证 HTTP 202，并用不存在的去标识号验证 results 返回 HTTP 200/unknown，
+  不能只凭仓库文档或本地测试宣称 v3 已在线。
 
 ### 肿瘤医保资格 v2
 
@@ -78,8 +84,9 @@ ready 模板分布 M1-M8 为 22/22/17/13/10/9/20/5。CLI 有 15 个顶层命令�
   （不分时间全部生效 + 窗口外「核查生效时间」提示）。生效期闸在条件树选择与免疫组化阈值
   选择两处，须一起放开；审核状态闸不受此开关影响。KB 生效期本身不得私改，见 operations.md。
 - `on` 模式下 RD04 独占 `oncology=true AND source_type=insurance`，R007 只处理非肿瘤
-  限适应症候选；`off/shadow` 保留 R007 旧候选集合。RD04 当前 ready，
-  RD10-RD37 保持 abandoned。
+  限适应症候选；`off/shadow` 保留 R007 旧候选集合。RD04 当前 ready。62 的 2026-07-17
+  已部署基线中 RD10-RD37 为 abandoned；当前 authoring change 将其置为
+  `drafting/migration-pending`，但两种状态都不得进入默认执行集。
 - RD04 无净正收费候选时必须确定性 CLEAN、零 LLM；不得让方案文本凭空创建费用候选。
 - 条件树、病理标志物和方案三份资产只有 schema/checksum/生效期合法且
   `review_status=approved` 才能自动裁决；其余一律显式 REVIEW_REQUIRED。
@@ -92,7 +99,9 @@ ready 模板分布 M1-M8 为 22/22/17/13/10/9/20/5。CLI 有 15 个顶层命令�
 
 ### 62 部署
 
-- 62 的 `/home/admin2/javert` 是 tar 部署目录，不是 Git 仓库。
+- 62 的 `/home/admin2/javert` 是只检出受控运行时范围的稀疏 Git 工作树，固定分支
+  `production-62`；发布只能从已提交 `HEAD` 经 `scripts/deployment_sync.py artifact/install`
+  完成，验收必须同时满足两端 `HEAD` 相等和 62 受控工作树 clean。
 - 覆盖源码前先无回显读取并固化旧进程实际生效的 SQL/Hub 配置，备份代码与 mode 0600 的
   `.env`；不要让新代码默认值覆盖生产连接。
 - 先部署代码/配置/router index，再运行 `javert ensure-mssql-schema`，最后重启服务。

@@ -12,6 +12,10 @@ import pytest
 
 from javert.oncology.regimen import (
     CancerContextStatus,
+    ComponentRequirement,
+    ComponentTargetKind,
+    DrugClass,
+    RegimenComponent,
     ResolutionStatus,
     TreatmentEventStatus,
     load_regimen_kb,
@@ -106,6 +110,126 @@ def test_explicit_component_conflict_is_retained(regimen_asset):
     assert "EXPLICIT_COMPONENT_NEGATED:polatuzumab-vedotin" in result.conflicts
     assert result.review_required is True
     assert result.legacy_review_verdict == "INCONCLUSIVE"
+    negated = next(
+        item
+        for item in result.components
+        if item.target_id == "polatuzumab-vedotin"
+    )
+    assert negated.target_matched is False
+    assert negated.evidence_type == "regimen_inference"
+
+
+def test_legacy_components_upgrade_to_required_concept(regimen_asset):
+    component = regimen_asset.entries[0].components[0]
+    assert component.target_kind == ComponentTargetKind.CONCEPT
+    assert component.target_id == component.drug_concept_id
+    assert component.requirement == ComponentRequirement.REQUIRED
+
+
+def test_optional_and_with_or_without_are_not_inferred_when_absent(regimen_asset):
+    entry = next(item for item in regimen_asset.entries if item.regimen_id == "r-gemox")
+    components = [
+        entry.components[0],
+        entry.components[1].model_copy(
+            update={"requirement": ComponentRequirement.OPTIONAL}
+        ),
+        entry.components[2].model_copy(
+            update={"requirement": ComponentRequirement.WITH_OR_WITHOUT}
+        ),
+    ]
+    asset = regimen_asset.model_copy(
+        update={"entries": [entry.model_copy(update={"components": components})]}
+    )
+
+    absent = resolve_regimen(
+        text="已行R-GemOx方案化疗",
+        asset=asset,
+        cancer_context="DLBCL",
+    )
+    assert [item.target_id for item in absent.components] == ["rituximab"]
+    assert absent.review_required is False
+
+    explicit = resolve_regimen(
+        text="已行R-GemOx方案化疗，并予吉西他滨",
+        asset=asset,
+        cancer_context="DLBCL",
+    )
+    assert {item.target_id for item in explicit.components} == {
+        "rituximab",
+        "gemcitabine",
+    }
+    assert next(
+        item for item in explicit.components if item.target_id == "gemcitabine"
+    ).evidence_type == "explicit"
+
+
+def test_class_component_is_preserved_and_unresolved_member_fails_closed(
+    regimen_asset,
+):
+    entry = next(item for item in regimen_asset.entries if item.regimen_id == "r-gemox")
+    class_component = RegimenComponent(
+        target_kind=ComponentTargetKind.CLASS,
+        target_id="platinum-class",
+        token="含铂",
+        requirement=ComponentRequirement.REQUIRED,
+    )
+    asset = regimen_asset.model_copy(
+        update={
+            "drug_classes": [
+                DrugClass(
+                    drug_class_id="platinum-class",
+                    canonical_name="铂类药物",
+                    match_terms=["含铂", "铂类"],
+                    lifecycle="APPROVED",
+                    reviewer_id="domain-reviewer",
+                )
+            ],
+            "entries": [entry.model_copy(update={"components": [class_component]})],
+        }
+    )
+
+    matched = resolve_regimen(
+        text="已行R-GemOx含铂方案化疗",
+        asset=asset,
+        cancer_context="DLBCL",
+    )
+    assert len(matched.components) == 1
+    resolved_class = matched.components[0]
+    assert resolved_class.target_kind == ComponentTargetKind.CLASS
+    assert resolved_class.target_id == "platinum-class"
+    assert resolved_class.drug_concept_id == ""
+    assert resolved_class.target_matched is True
+    assert matched.review_required is False
+
+    unresolved = resolve_regimen(
+        text="已行R-GemOx方案化疗",
+        asset=asset,
+        cancer_context="DLBCL",
+    )
+    assert unresolved.components[0].target_kind == ComponentTargetKind.CLASS
+    assert unresolved.components[0].drug_concept_id == ""
+    assert unresolved.review_required is True
+    assert "REQUIRED_CLASS_COMPONENT_UNRESOLVED:platinum-class" in unresolved.conflicts
+
+    negated = resolve_regimen(
+        text="已行R-GemOx方案化疗，方案不含铂",
+        asset=asset,
+        cancer_context="DLBCL",
+    )
+    assert negated.components[0].target_matched is False
+    assert negated.components[0].evidence_type == "regimen_inference"
+    assert "EXPLICIT_COMPONENT_NEGATED:platinum-class" in negated.conflicts
+
+
+def test_declared_composition_missing_required_component_requires_review(regimen_asset):
+    result = resolve_regimen(
+        text="已行R-GemOx方案化疗，方案组分：利妥昔单抗",
+        asset=regimen_asset,
+        cancer_context="DLBCL",
+    )
+    assert result.review_required is True
+    assert "REQUIRED_COMPONENT_MISSING:gemcitabine" in result.conflicts
+    assert "REQUIRED_COMPONENT_MISSING:oxaliplatin" in result.conflicts
 
 
 def test_planned_regimen_does_not_count_as_administered(regimen_asset):

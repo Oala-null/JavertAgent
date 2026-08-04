@@ -77,8 +77,11 @@ def test_type_level_empty_trigger_keywords(m8):
     assert (rendered.get("trigger_keywords") or []) == []
 
 
-def test_curated_rules_remain_abandoned_after_render():
-    """精选规则只供显式单跑，不能被生成器重新加入默认 router。"""
-    assert CURATED_STATUS == "abandoned"
+def test_curated_rules_remain_non_default_after_render():
+    """精选规则状态由迁移门禁决定，drafting/abandoned 都不能默认执行。"""
+    assert CURATED_STATUS == "drafting"
     for rule_id, *_ in CURATED:
-        assert load_rule(RULES_PATH / f"{rule_id}.yaml").status == CURATED_STATUS
+        rule = load_rule(RULES_PATH / f"{rule_id}.yaml")
+        assert rule.status in {"drafting", "abandoned"}
+        if rule.status == "drafting":
+            assert "knowledge_migration_pending=" in rule.notes

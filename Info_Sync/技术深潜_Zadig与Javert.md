@@ -6,7 +6,8 @@
 >
 > **状态说明（2026-07-17）**：Tab 1 的 Qwen3.5/GPTQ 参数是 2026-06-10
 > Zadig 架构快照；62 当前共享推理端点已升级为 `Qwen3.6-35B-A3B-FP8`。
-> Tab 2 已按 Javert 当前 159/118 规则和肿瘤资格 v2 更新。
+> Tab 2 反映 2026-07-17 的 62 部署快照（159 条规则、118 条 production-ready）和当时的
+> 肿瘤资格 v2；本地未部署的 authoring 状态以 Javert 仓库内 `AGENTS.md`/`operations.md` 为准。
 
 > **诚实声明**：模型/loop 上限/工具清单/gate 逻辑/reconfirm 四档/缓存机制均从两个 codebase 实际读出。
 > 少数**具体魔数**（icd_lookup RRF 权重 0.7/0.3、细码 boost 1.1、fee 阈值等）系从 CLAUDE.md / 代码推断，标 `~`/`e.g.` 为近似；正式对外前建议核源码。

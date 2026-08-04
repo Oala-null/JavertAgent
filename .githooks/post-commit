@@ -1,0 +1,23 @@
+#!/bin/sh
+# 每次 commit 后只读核对 62。post-commit 无法回滚已完成的 commit；远端不可达或
+# 发生漂移时只高亮报警，不把一次网络故障伪装成 commit 失败。
+set -u
+
+if [ "${JAVERT_SKIP_62_SYNC_HOOK:-0}" = "1" ]; then
+    exit 0
+fi
+
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+python_bin=python3
+if [ -x "$repo_root/.venv/bin/python" ]; then
+    python_bin="$repo_root/.venv/bin/python"
+fi
+
+"$python_bin" "$repo_root/scripts/deployment_sync.py" check --timeout 10 --max-diffs 8
+status=$?
+if [ "$status" -ne 0 ]; then
+    echo "[62-sync] ⚠ 本次 commit 已完成，但 62 尚未证明与本地 HEAD 同步。" >&2
+    echo "[62-sync]   手动复查: python3 scripts/deployment_sync.py check" >&2
+fi
+
+exit 0

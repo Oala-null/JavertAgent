@@ -3,7 +3,7 @@ domain: 药品
 violation_type: 超医保限定支付适应症用药
 question: 申请医保支付的「复方氨基酸注射液(20AA)」，超出医保限定支付适应症范围。
 example: ''
-status: abandoned
+status: drafting
 priority: P1
 prompt_addon: |+
   本规则关注: 复方氨基酸注射液(20AA) (限适应症) 是否存在超出适应症 / 医保限定支付范围的用药.
@@ -65,7 +65,7 @@ suggested_tools:
 expected_signal: |+
   典型违规: 复方氨基酸注射液(20AA) (限适应症) 命中, 但患者诊断完全不在限定/说明书适应症内 (如人血白蛋白用于无低蛋白血症/重症诊断者). 典型 CLEAN: 诊断落在依据内 (如甲状腺片用于甲状腺切除后甲减). 典型 INCONCLUSIVE: 诊断缺失或剂型存疑.
 
-notes: 精选药品规则 (M8 限适应症); 通用名「复方氨基酸注射液(20AA)」, router 触发词 ['复方氨基酸注射液(20AA)']. 由 bulk R007/RD01-03 独占, 消重复计违规 (fix-drug-audit-precision).
+notes: 精选药品规则 (M8 限适应症); 通用名「复方氨基酸注射液(20AA)」, router 触发词 ['复方氨基酸注射液(20AA)']. 由 bulk R007/RD01-03 独占, 消重复计违规 (fix-drug-audit-precision); knowledge_migration_pending=docs/oncology/authoring/curated_knowledge_manifest.json
 derived_from_template: M8
 drug_rule_type: 限适应症
 render_hash: bc57b0bbe168468e63cea60eb572b609674ae2c80a7d8f6ee17182ac4fe13d2e

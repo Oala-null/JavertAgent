@@ -3,7 +3,7 @@ domain: 药品
 violation_type: 用药安全/禁忌
 question: 申请医保支付的「奥美拉唑肠溶片」，用于存在该药说明书疾病禁忌的患者 (用药安全)。
 example: ''
-status: abandoned
+status: drafting
 priority: P1
 prompt_addon: |+
   本规则关注: 奥美拉唑肠溶片 (禁忌症) 是否存在超出适应症 / 医保限定支付范围的用药.
@@ -64,7 +64,7 @@ suggested_tools:
 expected_signal: |+
   典型违规: 患者诊断命中该药说明书疾病禁忌 (如哮喘患者用乙酰半胱氨酸). 典型 CLEAN: 诊断无禁忌项. 典型 INCONCLUSIVE: 诊断缺失.
 
-notes: 精选药品规则 (M8 禁忌症); 通用名「奥美拉唑肠溶片」, router 触发词 ['奥美拉唑肠溶片', '奥美拉唑']. 由 bulk R007/RD01-03 独占, 消重复计违规 (fix-drug-audit-precision).
+notes: 精选药品规则 (M8 禁忌症); 通用名「奥美拉唑肠溶片」, router 触发词 ['奥美拉唑肠溶片', '奥美拉唑']. 由 bulk R007/RD01-03 独占, 消重复计违规 (fix-drug-audit-precision); knowledge_migration_pending=docs/oncology/authoring/curated_knowledge_manifest.json
 derived_from_template: M8
 drug_rule_type: 禁忌症
 render_hash: e2e5f710c6eeb30033004dbd6b5372d07b81eb85d9dcc2215462acc8a1831a35

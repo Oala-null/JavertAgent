@@ -164,3 +164,11 @@ def test_index_sql_selects_no_database_and_fails_closed_before_ddl() -> None:
     assert rejection is not None
     assert first_ddl is not None
     assert on_error.start() < guard.start() < rejection.start() < first_ddl.start()
+
+
+def test_index_sql_uses_canonical_operation_detail_table() -> None:
+    sql = INDEX_SQL.read_text(encoding="utf-8")
+    executable = "\n".join(line.split("--", 1)[0] for line in sql.splitlines())
+
+    assert "ON TB_OPERATION_DETAIL (JZLSH)" in executable
+    assert "TB_OPRATION_DETAIL" not in executable

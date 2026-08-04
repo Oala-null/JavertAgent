@@ -3,7 +3,7 @@ domain: 药品
 violation_type: 超医保限定二线用药
 question: 申请医保支付的「艾普拉唑肠溶片」，无一线药失败/不耐受证据即作二线使用。
 example: ''
-status: abandoned
+status: drafting
 priority: P1
 prompt_addon: |+
   本规则关注: 艾普拉唑肠溶片 (限二线) 是否存在超出适应症 / 医保限定支付范围的用药.
@@ -66,7 +66,7 @@ suggested_tools:
 expected_signal: |+
   典型违规: 诊断在适应症内但文书无任何一线药失败/不耐受证据. 典型 CLEAN: 文书有一线失败记录. 典型 INCONCLUSIVE: 文书无一线用药史 (单病历看不清).
 
-notes: 精选药品规则 (M8 限二线); 通用名「艾普拉唑肠溶片」, router 触发词 ['艾普拉唑肠溶片', '艾普拉唑']. 由 bulk R007/RD01-03 独占, 消重复计违规 (fix-drug-audit-precision).
+notes: 精选药品规则 (M8 限二线); 通用名「艾普拉唑肠溶片」, router 触发词 ['艾普拉唑肠溶片', '艾普拉唑']. 由 bulk R007/RD01-03 独占, 消重复计违规 (fix-drug-audit-precision); knowledge_migration_pending=docs/oncology/authoring/curated_knowledge_manifest.json
 derived_from_template: M8
 drug_rule_type: 限二线
 render_hash: e49e86509e0fe1f6ff4b9a559d849179a7daba07b4556b4393fc9c339478b4ff

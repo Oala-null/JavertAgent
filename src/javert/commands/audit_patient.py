@@ -31,6 +31,7 @@ from javert.tools.registry import build_executor
 
 
 VALID_PRIORITIES = ("P0", "P1", "P2", "P3")
+_CURATED_DRUG_RULE_IDS = frozenset(f"RD{number:02d}" for number in range(10, 38))
 
 
 def _resolve_selection(
@@ -72,12 +73,30 @@ def _resolve_selection(
 
     # priority 单选过滤模式
     matches = [r for r in all_rules.values() if r.priority == priority]
-    selected_p = [r for r in matches if r.status != "abandoned"]
+    selected_p = [
+        r
+        for r in matches
+        if r.status != "abandoned"
+        and not (
+            r.rule_id in _CURATED_DRUG_RULE_IDS
+            and r.status == "drafting"
+        )
+    ]
     excluded = [r.rule_id for r in matches if r.status == "abandoned"]
+    migration_pending = [
+        r.rule_id
+        for r in matches
+        if r.rule_id in _CURATED_DRUG_RULE_IDS and r.status == "drafting"
+    ]
     selected_p.sort(key=lambda r: r.rule_id)
     label = f"priority={priority}"
     if excluded:
         label += f" (excluded {','.join(sorted(excluded))} [abandoned])"
+    if migration_pending:
+        label += (
+            f" (excluded {','.join(sorted(migration_pending))} "
+            "[knowledge-migration-pending])"
+        )
     return selected_p, label, []
 
 

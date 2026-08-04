@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 
 from javert.data.loader import DataLoader
+from javert.config import JavertConfig
 from javert.tools.registry import build_executor
 
 
@@ -148,6 +149,45 @@ def test_executor_lists_tools(stub_loader, drug_map_tmp):
         "search_pathology",   # add-visual-schema-onboarding view 工具
         "scan_progress_indications",  # add-verdict-gate-layer 病程指征扫描
     }
+
+
+def test_registry_wires_all_four_assets_from_configured_published_release(
+    stub_loader, tmp_path: Path, monkeypatch
+):
+    from javert.oncology.authoring import release as release_module
+    from javert.tools import drug_audit_lookup, registry
+
+    release_dir = tmp_path / "releases"
+    release_dir.mkdir()
+    assets = {
+        name: release_dir / name
+        for name in release_module.ASSET_FILENAMES
+    }
+    captured = {}
+
+    def capture_executor(loader, kb_path, zd_path, **kwargs):
+        captured.update(kb_path=kb_path, zd_path=zd_path, **kwargs)
+        return lambda **_kwargs: "ok"
+
+    monkeypatch.setattr(
+        release_module,
+        "resolve_active_release_assets",
+        lambda configured: assets if configured == release_dir else {},
+    )
+    monkeypatch.setattr(drug_audit_lookup, "create_executor", capture_executor)
+    monkeypatch.setattr(registry, "_spoke_tool_wiring", lambda loader, cfg: {})
+    cfg = JavertConfig(
+        oncology_eligibility_v2="on",
+        oncology_release_dir=str(release_dir),
+    )
+
+    build_executor(stub_loader, cfg)
+
+    assert captured["kb_path"].name == "drug_audit_kb.json"
+    assert captured["oncology_kb_path"] == assets[release_module.DRUG_ASSET]
+    assert captured["eligibility_path"] == assets[release_module.ELIGIBILITY_ASSET]
+    assert captured["pathology_path"] == assets[release_module.PATHOLOGY_ASSET]
+    assert captured["regimen_path"] == assets[release_module.REGIMEN_ASSET]
 
 
 # ==== harden-agent-loop: ToolExecutor 韧性原语 ====

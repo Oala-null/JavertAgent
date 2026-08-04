@@ -49,9 +49,34 @@ v2 SHALL 以 `matched_items[]` 表达命中项目，每项至少包含 `code`、
 
 #### Scenario: 无法取得编码或时间
 
-- **WHEN** evidence 能确定命中名称但无法关联患者费用行
-- **THEN** v2 SHALL 保留该命中名称
-- **AND** 缺失的 `code` 或 `occurrence_time` SHALL 使用空字符串，不得丢弃整个命中
+- **WHEN** evidence 仅记录检索词或未命中结论，且无法关联患者实际费用行
+- **THEN** v2 SHALL NOT 将该检索词放入 `matched_items` 或兼容 `hit_*` 数组
+- **AND** 原始 evidence SHALL 保留，供调用方追溯为什么判定规则不适用
+
+#### Scenario: 发生时间格式统一
+
+- **WHEN** 患者费用行的发生时间来自 datetime、ISO 字符串或斜杠日期字符串
+- **THEN** `occurrence_time` 和 `hit_times[]` SHALL 统一返回 `yyyy-MM-dd HH:mm:ss`
+- **AND** 无法解析的非空时间 SHALL 不得原样泄露为其他格式
+
+### Requirement: 规则不适用与合规明确区分
+
+v2 SHALL 保留既有三态 `verdict`，并增加卡片适用性字段。确定性预检确认主项费用未命中、
+规则不适用时，`verdict` 仍为 `CLEAN`，但 `applicability` SHALL 为
+`NOT_APPLICABLE`，对外标签 SHALL 为“不适用”，不得展示为普通“合规”。
+
+#### Scenario: A 类主项未命中
+
+- **WHEN** reasoning 表明确定性初步核查未见 A 类主项或术式费用，规则不适用
+- **THEN** card SHALL 返回 `verdict: CLEAN`
+- **AND** SHALL 返回 `applicability: NOT_APPLICABLE`
+- **AND** `verdict_label` 与 `applicability_label` SHALL 为“不适用”
+
+#### Scenario: 适用规则的普通 CLEAN
+
+- **WHEN** 规则已经命中审核对象并核查后未发现违规
+- **THEN** card SHALL 返回 `applicability: APPLICABLE`
+- **AND** `verdict_label` SHALL 继续为“合规”
 
 ### Requirement: RD04 肿瘤限定条件完整返回
 

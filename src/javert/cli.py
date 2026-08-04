@@ -291,6 +291,9 @@ def ensure_mssql_schema_cmd(drop_first: bool) -> None:
 from .commands.mssql_user import mssql_user_group as _mssql_user_group
 main.add_command(_mssql_user_group)
 
+from .commands.oncology_kb import oncology_kb_group as _oncology_kb_group
+main.add_command(_oncology_kb_group)
+
 
 @main.command("sync-to-mssql")
 @click.option("--dry-run", "dry_run", is_flag=True, help="仅打印 plan, 不写")

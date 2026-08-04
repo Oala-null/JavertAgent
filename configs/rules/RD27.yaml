@@ -3,7 +3,7 @@ domain: 药品
 violation_type: 超药品说明书适应症用药
 question: 申请医保支付的「苯磺酸氨氯地平片」，超出药品说明书适应症范围。
 example: ''
-status: abandoned
+status: drafting
 priority: P1
 prompt_addon: |+
   本规则关注: 苯磺酸氨氯地平片 (超说明书) 是否存在超出适应症 / 医保限定支付范围的用药.
@@ -66,7 +66,7 @@ suggested_tools:
 expected_signal: |+
   典型违规: 苯磺酸氨氯地平片 (超说明书) 命中, 但患者诊断完全不在限定/说明书适应症内 (如人血白蛋白用于无低蛋白血症/重症诊断者). 典型 CLEAN: 诊断落在依据内 (如甲状腺片用于甲状腺切除后甲减). 典型 INCONCLUSIVE: 诊断缺失或剂型存疑.
 
-notes: 精选药品规则 (M8 超说明书); 通用名「苯磺酸氨氯地平片」, router 触发词 ['苯磺酸氨氯地平片', '苯磺酸氨氯地平']. 由 bulk R007/RD01-03 独占, 消重复计违规 (fix-drug-audit-precision).
+notes: 精选药品规则 (M8 超说明书); 通用名「苯磺酸氨氯地平片」, router 触发词 ['苯磺酸氨氯地平片', '苯磺酸氨氯地平']. 由 bulk R007/RD01-03 独占, 消重复计违规 (fix-drug-audit-precision); knowledge_migration_pending=docs/oncology/authoring/curated_knowledge_manifest.json
 derived_from_template: M8
 drug_rule_type: 超说明书
 render_hash: d7151302b8ee5f3dede23032f0498a95dc5a4aa00dfc94c4b0a04dad53bb2e81

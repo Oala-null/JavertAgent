@@ -13,12 +13,14 @@ import pytest
 from pydantic import ValidationError
 
 from javert.audit.result import AuditResult, Evidence, ToolCall
+from javert.audit.runner import _structured_evidence, _structured_reasoning
 from javert.oncology.contracts import (
     AuditDisposition,
     CriterionAssessment,
     CriterionState,
     EligibilityEvaluation,
     EligibilityStatus,
+    EvidenceAnchor,
     ProofNode,
 )
 from javert.oncology.guidance import (
@@ -93,7 +95,7 @@ def _result(evaluation: EligibilityEvaluation | None = None) -> AuditResult:
         run_id="aud_pola_gap_001",
         rule_id="RD04",
         patient_id="GOLDEN-POLA-TRANSPLANT-GAP",
-        verdict="CLEAN" if evaluation else "INCONCLUSIVE",
+        verdict=evaluation.legacy_verdict if evaluation else "INCONCLUSIVE",
         confidence=0.9,
         reasoning="结构化资格测试",
         evidence=[Evidence(source="note", locator="golden", text="去标识事实")],
@@ -102,6 +104,78 @@ def _result(evaluation: EligibilityEvaluation | None = None) -> AuditResult:
         model="deterministic-test",
         started_at=datetime(2026, 7, 17, tzinfo=timezone.utc),
         eligibility_evaluation=evaluation,
+    )
+
+
+def _released_scope_evaluation(
+    policy_scope: str,
+    *,
+    violation: bool = False,
+) -> EligibilityEvaluation:
+    base = _pola_transplant_gap_evaluation()
+    label = (
+        "医保支付限定"
+        if policy_scope == "INSURANCE_PAYMENT"
+        else "指南适应证"
+    )
+    first = base.criterion_assessments[0].model_copy(
+        update={
+            "evidence_anchors": [
+                EvidenceAnchor(
+                    source="notes",
+                    locator=f"scope:{policy_scope}",
+                    text=f"{label}去标识证据",
+                )
+            ]
+        }
+    )
+    return EligibilityEvaluation.model_validate(
+        {
+            **base.model_dump(mode="json"),
+            "audit_disposition": (
+                "VIOLATION_FOUND" if violation else "NO_VIOLATION_FOUND"
+            ),
+            "eligibility_status": (
+                "NOT_SATISFIED" if violation else "DOCUMENTATION_GAP"
+            ),
+            "legacy_verdict": "VIOLATION" if violation else "CLEAN",
+            "rule_id": f"rule-{policy_scope.lower()}",
+            "rule_revision_id": f"revision-{policy_scope.lower()}",
+            "indication_branch_id": f"branch-{policy_scope.lower()}",
+            "release_id": "release-dual-synthetic",
+            "drug_concept_id": "drug-dual-synthetic",
+            "policy_scope": policy_scope,
+            "source_type": policy_scope,
+            "policy_scope_display_label": label,
+            "source_document_ids": [f"document-{policy_scope.lower()}"],
+            "source_fragment_ids": [f"fragment-{policy_scope.lower()}"],
+            "source_versions": [f"{policy_scope.lower()}@2025"],
+            "criterion_assessments": [
+                first.model_dump(mode="json"),
+                *[
+                    item.model_dump(mode="json")
+                    for item in base.criterion_assessments[1:]
+                ],
+            ],
+            "rule_effective_from": "2026-01-01",
+            "rule_effective_to": "2027-12-31",
+            "evaluated_service_date": "2026-06-18",
+            "temporal_applicability": "IN_WINDOW",
+        }
+    )
+
+
+def _dual_scope_evaluation() -> EligibilityEvaluation:
+    insurance = _released_scope_evaluation("INSURANCE_PAYMENT")
+    guideline = _released_scope_evaluation("GUIDELINE_INDICATION", violation=True)
+    return EligibilityEvaluation.model_validate(
+        {
+            **guideline.model_dump(mode="json", exclude={"scope_evaluations"}),
+            "scope_evaluations": [
+                insurance.as_scope_evaluation().model_dump(mode="json"),
+                guideline.as_scope_evaluation().model_dump(mode="json"),
+            ],
+        }
     )
 
 
@@ -123,6 +197,22 @@ def test_old_audit_result_deserializes_without_eligibility():
     loaded = AuditResult.model_validate(raw)
     assert loaded.eligibility_evaluation is None
     assert loaded.verdict == "INCONCLUSIVE"
+
+
+def test_scope_evaluations_enforce_uniqueness_and_worst_projection():
+    evaluation = _dual_scope_evaluation()
+    assert evaluation.legacy_verdict == "VIOLATION"
+
+    duplicate = evaluation.model_dump(mode="json")
+    duplicate["scope_evaluations"].append(duplicate["scope_evaluations"][0])
+    with pytest.raises(ValidationError, match="只能保留一个资格状态"):
+        EligibilityEvaluation.model_validate(duplicate)
+
+    less_severe = evaluation.model_dump(mode="json")
+    less_severe["audit_disposition"] = "NO_VIOLATION_FOUND"
+    less_severe["legacy_verdict"] = "CLEAN"
+    with pytest.raises(ValidationError, match="最严重确定性投影"):
+        EligibilityEvaluation.model_validate(less_severe)
 
 
 def test_pola_transplant_gap_guidance_is_exact_and_does_not_change_facts():
@@ -266,7 +356,7 @@ def _fake_engine(conn: MagicMock) -> MagicMock:
 
 
 def test_sqlserver_write_and_read_keep_eligibility_json(monkeypatch):
-    result = _result(_pola_transplant_gap_evaluation())
+    result = _result(_dual_scope_evaluation())
     write_conn = MagicMock()
     not_found = MagicMock()
     not_found.fetchone.return_value = None
@@ -276,7 +366,12 @@ def test_sqlserver_write_and_read_keep_eligibility_json(monkeypatch):
     monkeypatch.setattr(write_store, "get_engine", lambda: _fake_engine(write_conn))
     assert write_store.write_audit(result) is True
     params = write_conn.execute.call_args_list[1].args[1]
-    assert json.loads(params["eligibility_json"])["eligibility_status"] == "DOCUMENTATION_GAP"
+    written = json.loads(params["eligibility_json"])
+    assert written["eligibility_status"] == "NOT_SATISFIED"
+    assert {item["policy_scope"] for item in written["scope_evaluations"]} == {
+        "INSURANCE_PAYMENT",
+        "GUIDELINE_INDICATION",
+    }
 
     read_conn = MagicMock()
     row_result = MagicMock()
@@ -356,3 +451,155 @@ def test_api_payload_and_workbench_show_pola_transplant_gap_suggestion():
     assert "认同 (V)" in html
     assert "改判不明 (I)" in html
     assert "驳回 (C)" in html
+
+
+def test_release_scope_and_temporal_provenance_round_trip_as_additive_fields(
+    tmp_path: Path,
+):
+    old_evaluation = _pola_transplant_gap_evaluation()
+    assert old_evaluation.release_id is None
+    assert old_evaluation.policy_scope is None
+    assert old_evaluation.temporal_applicability is None
+    assert old_evaluation.scope_evaluations == []
+
+    evaluation = EligibilityEvaluation.model_validate(
+        {
+            **old_evaluation.model_dump(mode="json"),
+            "release_id": "release-synthetic",
+            "rule_revision_id": "revision-synthetic",
+            "drug_concept_id": "drug-synthetic",
+            "policy_scope": "GUIDELINE_INDICATION",
+            "source_type": "GUIDELINE_INDICATION",
+            "policy_scope_display_label": "指南适应证",
+            "source_document_ids": ["source-document-synthetic"],
+            "source_fragment_ids": ["source-fragment-synthetic"],
+            "source_versions": ["synthetic-guideline@2025"],
+            "rule_effective_from": "2026-01-01",
+            "rule_effective_to": "2027-12-31",
+            "evaluated_service_date": "2025-12-31",
+            "effective_date_enforced": False,
+            "temporal_applicability": "BEFORE_EFFECTIVE_WINDOW",
+            "temporal_warning": "核查当期指南/医保限定是否适用",
+        }
+    )
+    result = _result(evaluation)
+
+    store = SqliteStore(tmp_path / "release-provenance.sqlite")
+    store.init_schema()
+    store.write(result)
+    loaded = store.find_by_run_id(result.run_id)
+    store.close()
+
+    assert loaded is not None and loaded.eligibility_evaluation is not None
+    persisted = loaded.eligibility_evaluation
+    assert persisted.release_id == "release-synthetic"
+    assert persisted.rule_revision_id == "revision-synthetic"
+    assert persisted.policy_scope == "GUIDELINE_INDICATION"
+    assert persisted.evaluated_service_date.isoformat() == "2025-12-31"
+    assert persisted.temporal_applicability == "BEFORE_EFFECTIVE_WINDOW"
+    assert persisted.effective_date_enforced is False
+
+    api_payload = _result_payload(loaded)["eligibility_evaluation"]
+    assert api_payload["release_id"] == "release-synthetic"
+    assert api_payload["policy_scope"] == "GUIDELINE_INDICATION"
+    assert api_payload["rule_effective_from"] == "2026-01-01"
+    assert api_payload["temporal_warning"] == "核查当期指南/医保限定是否适用"
+
+    run = RunWithReviews(
+        run_id=result.run_id,
+        rule_id=result.rule_id,
+        patient_id=result.patient_id,
+        verdict=result.verdict,
+        confidence=result.confidence,
+        reasoning=result.reasoning,
+        created_at=result.started_at,
+        eligibility_evaluation=evaluation,
+    )
+    html = render(
+        "patient_detail.html",
+        title="release provenance",
+        current_user=type("User", (), {"id": 1, "username": "tester"})(),
+        patients=[],
+        active_patient=result.patient_id,
+        filter="all",
+        filter_label="全部",
+        runs=[run],
+    )
+    assert "release-synthetic" in html
+    assert "revision-synthetic" in html
+    assert "指南适应证" in html
+    assert "BEFORE_EFFECTIVE_WINDOW" in html
+    assert "窗口前回溯应用最早已批准版本" in html
+    assert "source-document-synthetic" in html
+    assert "source-fragment-synthetic" in html
+
+
+def test_dual_scope_round_trips_through_store_api_runner_and_workbench(
+    tmp_path: Path,
+):
+    evaluation = _dual_scope_evaluation()
+    result = _result(evaluation)
+    store = SqliteStore(tmp_path / "dual-scope.sqlite")
+    store.init_schema()
+    store.write(result)
+    loaded = store.find_by_run_id(result.run_id)
+    store.close()
+
+    assert loaded is not None and loaded.eligibility_evaluation is not None
+    persisted = loaded.eligibility_evaluation
+    assert len(persisted.scope_evaluations) == 2
+    assert persisted.legacy_verdict == "VIOLATION"
+
+    api_payload = _result_payload(loaded)["eligibility_evaluation"]
+    assert {item["policy_scope"] for item in api_payload["scope_evaluations"]} == {
+        "INSURANCE_PAYMENT",
+        "GUIDELINE_INDICATION",
+    }
+
+    reasoning = _structured_reasoning(persisted, ["合成肿瘤药"])
+    assert "[医保支付限定]" in reasoning
+    assert "[指南适应证]" in reasoning
+    assert "法定说明书" not in reasoning
+    evidence = _structured_evidence(persisted, ["合成肿瘤药"])
+    assert {item.locator for item in evidence if item.source == "notes"} == {
+        "scope:INSURANCE_PAYMENT",
+        "scope:GUIDELINE_INDICATION",
+    }
+
+    run = RunWithReviews(
+        run_id=result.run_id,
+        rule_id=result.rule_id,
+        patient_id=result.patient_id,
+        verdict=result.verdict,
+        confidence=result.confidence,
+        reasoning=reasoning,
+        created_at=result.started_at,
+        eligibility_evaluation=persisted,
+    )
+    html = render(
+        "patient_detail.html",
+        title="dual scope",
+        current_user=type("User", (), {"id": 1, "username": "tester"})(),
+        patients=[],
+        active_patient=result.patient_id,
+        filter="all",
+        filter_label="全部",
+        runs=[run],
+    )
+    assert 'data-policy-scope="INSURANCE_PAYMENT"' in html
+    assert 'data-policy-scope="GUIDELINE_INDICATION"' in html
+    assert "医保支付限定" in html
+    assert "指南适应证" in html
+    assert "法定说明书" not in html
+
+
+def test_guideline_provenance_cannot_be_serialized_as_label_source():
+    with pytest.raises(ValidationError, match="不得显示成法定说明书"):
+        EligibilityEvaluation.model_validate(
+            {
+                **_pola_transplant_gap_evaluation().model_dump(mode="json"),
+                "policy_scope": "GUIDELINE_INDICATION",
+                "source_type": "GUIDELINE_INDICATION",
+                "policy_scope_display_label": "法定说明书",
+            }
+        )

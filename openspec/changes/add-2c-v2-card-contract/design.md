@@ -53,9 +53,22 @@ v1 继续保持 CLEAN 的 `hits=[]`。v2 不按 verdict 限制命中解析；只
 
 v2 在最终响应序列化前递归清理字符串中的“暂未描述”；清理后无内容的字段按其类型返回 `""`、`[]` 或 `null`。原始数据库证据不被修改，v1 也不受影响。
 
+### 7. 只把实际费用关联项投影为 matched_items
+
+费用/药品 evidence 可能只是记录“检索了 PTCA 但未命中”。解析器为工作台追溯仍可保留这类
+锚点，但 v2 的 `matched_items` 与 `hit_*` 只投影能关联到患者实际费用行的项目，避免把
+检索词误报成只有名称、没有编码和时间的命中项。
+
+### 8. 不适用是 CLEAN 的适用性子状态
+
+现有持久化和下游统计只有 `CLEAN/VIOLATION/INCONCLUSIVE` 三态，本 change 不新增数据库
+裁决枚举。v2 根据持久化 reasoning 中确定性预检的“规则不适用”结论增加
+`applicability`；不适用卡仍保持 `verdict=CLEAN`，但展示标签改为“不适用”。普通 CLEAN
+仍显示“合规”。
+
 ## Risks / Trade-offs
 
-- [费用名称或编码无法关联原始行，时间为空] → 保留命中项并返回空 `occurrence_time`，同时提供 `review_note`，不得丢掉药品名称。
+- [证据只有检索词，无法关联原始行] → 保留 evidence/hits 追溯信息，但不投影为 `matched_items`，避免制造 name-only 假命中。
 - [同项目多条重复费用造成数组膨胀] → 按 `(code, name, occurrence_time)` 稳定去重，不按金额/数量重复。
 - [历史 RD04 没有 `eligibility_json`] → 明确返回 `null`；仅新审计能提供完整限定条件，不用新知识静默改写旧记录。
 - [v2 与 v1 共用任务导致客户端重复提交] → running 状态复用 attempt；done 后沿用 v1 的“重新提交即重跑”语义。

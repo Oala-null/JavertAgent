@@ -14,6 +14,7 @@ from javert.audit.runner import Runner
 from javert.config import JavertConfig
 from javert.data.loader import DataLoader
 from javert.oncology.guidance import TRANSPLANT_SUGGESTION_TEXT
+from javert.oncology.knowledge import asset_payload_checksum
 from javert.store.audit_store import SqliteStore
 from javert.tools import drug_audit_lookup as dal
 from javert.tools.tool_executor import ToolExecutor
@@ -159,6 +160,7 @@ def _lookup(
     *,
     mode: str = "on",
     rule_id: str = "RD04",
+    eligibility: Path = ELIGIBILITY,
 ) -> dict:
     return dal.lookup_patient_drugs(
         patient_id,
@@ -169,10 +171,66 @@ def _lookup(
         source_type="insurance" if rule_id == "RD04" else None,
         oncology_v2_mode=mode,
         audit_rule_id=rule_id,
-        eligibility_path=ELIGIBILITY,
+        eligibility_path=eligibility,
         pathology_path=PATHOLOGY,
         regimen_path=REGIMEN,
     )
+
+
+def _published_release_eligibility(
+    tmp_path: Path,
+    *,
+    dual_scope: bool = False,
+    guideline_effective_to: str | None = None,
+) -> Path:
+    raw = json.loads(ELIGIBILITY.read_text(encoding="utf-8"))
+    raw["metadata"].update(
+        {
+            "schema_version": "2.0.0",
+            "content_version": "release_synthetic",
+            "release_id": "release_synthetic",
+            "release_status": "published",
+            "source_snapshot_checksum": "sha256:" + "1" * 64,
+        }
+    )
+    for index, entry in enumerate(raw["entries"]):
+        entry["metadata"].update(
+            {
+                "content_version": "release_synthetic",
+                "release_id": "release_synthetic",
+                "rule_revision_id": f"rev-{index}",
+                "policy_scope": "INSURANCE_PAYMENT",
+            }
+        )
+        for ref_index, source_ref in enumerate(entry["metadata"]["source_refs"]):
+            source_ref["source_fragment_id"] = (
+                f"fragment-insurance-{index}-{ref_index}"
+            )
+    if dual_scope:
+        guideline_entries = []
+        for index, entry in enumerate(raw["entries"]):
+            duplicate = json.loads(json.dumps(entry, ensure_ascii=False))
+            duplicate["rule_id"] = f"{entry['rule_id']}-guideline"
+            duplicate["indication_branch_id"] = f"{entry['indication_branch_id']}-guideline"
+            duplicate["metadata"]["rule_revision_id"] = f"rev-guideline-{index}"
+            duplicate["metadata"]["policy_scope"] = "GUIDELINE_INDICATION"
+            if guideline_effective_to is not None:
+                duplicate["metadata"]["effective_to"] = guideline_effective_to
+            for ref_index, source_ref in enumerate(
+                duplicate["metadata"]["source_refs"]
+            ):
+                source_ref["source_fragment_id"] = (
+                    f"fragment-guideline-{index}-{ref_index}"
+                )
+            guideline_entries.append(duplicate)
+        raw["entries"].extend(guideline_entries)
+    raw["metadata"]["revision_ids"] = [
+        entry["metadata"]["rule_revision_id"] for entry in raw["entries"]
+    ]
+    raw["metadata"]["checksum"] = asset_payload_checksum(raw)
+    target = tmp_path / "published-eligibility.json"
+    target.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+    return target
 
 
 @pytest.mark.parametrize(
@@ -221,6 +279,125 @@ def test_golden_lookup_structured_results(
         assert evaluation["documentation_suggestions"][0]["suggested_content"] == (
             TRANSPLANT_SUGGESTION_TEXT
         )
+
+
+@pytest.mark.parametrize(
+    ("service_date", "expected_temporal", "expected_legacy", "warning"),
+    [
+        ("2025-06-18", "BEFORE_EFFECTIVE_WINDOW", "VIOLATION", True),
+        ("2026-06-18", "IN_WINDOW", "VIOLATION", False),
+        ("2028-01-01", "AFTER_EFFECTIVE_WINDOW", "INCONCLUSIVE", True),
+    ],
+)
+def test_published_release_non_symmetric_temporal_goldens(
+    tmp_path: Path,
+    service_date: str,
+    expected_temporal: str,
+    expected_legacy: str,
+    warning: bool,
+) -> None:
+    patient_id, loader, zd, kb = _golden_loader("urothelial_her2_low", tmp_path)
+    loader.fees["fee_ocur_time"] = service_date
+    loader.notes["事件时间"] = service_date
+    result = _lookup(
+        patient_id,
+        loader,
+        zd,
+        kb,
+        eligibility=_published_release_eligibility(tmp_path),
+    )
+    evaluation = result["oncology_structured"]["selected_eligibility_evaluation"]
+    assert evaluation["release_id"] == "release_synthetic"
+    assert evaluation["temporal_applicability"] == expected_temporal
+    assert evaluation["legacy_verdict"] == expected_legacy
+    assert bool(evaluation["temporal_warning"]) is warning
+    if expected_temporal == "BEFORE_EFFECTIVE_WINDOW":
+        assert evaluation["effective_date_enforced"] is False
+    elif expected_temporal == "AFTER_EFFECTIVE_WINDOW":
+        assert "AFTER_EFFECTIVE_WINDOW" in evaluation["data_quality_flags"]
+
+
+def test_published_release_returns_one_status_per_policy_scope(tmp_path: Path) -> None:
+    patient_id, loader, zd, kb = _golden_loader("urothelial_her2_low", tmp_path)
+    result = _lookup(
+        patient_id,
+        loader,
+        zd,
+        kb,
+        eligibility=_published_release_eligibility(tmp_path, dual_scope=True),
+    )
+    candidate = result["oncology_structured"]["candidate_evaluations"][0]
+    evaluations = candidate["eligibility_evaluations"]
+    assert {item["policy_scope"] for item in evaluations} == {
+        "INSURANCE_PAYMENT",
+        "GUIDELINE_INDICATION",
+    }
+    assert len(evaluations) == 2
+    assert all(item["release_id"] == "release_synthetic" for item in evaluations)
+    assert {item["policy_scope_display_label"] for item in evaluations} == {
+        "医保支付限定",
+        "指南适应证",
+    }
+    selected = result["oncology_structured"]["selected_eligibility_evaluation"]
+    assert selected["legacy_verdict"] == "VIOLATION"
+    scope_evaluations = selected["scope_evaluations"]
+    assert len(scope_evaluations) == 2
+    assert len(
+        {
+            (item["drug_concept_id"], item["policy_scope"])
+            for item in scope_evaluations
+        }
+    ) == 2
+    by_scope = {item["policy_scope"]: item for item in scope_evaluations}
+    assert all(item["criterion_assessments"] for item in scope_evaluations)
+    assert all(item["proof_tree"] for item in scope_evaluations)
+    assert all(item["source_fragment_ids"] for item in scope_evaluations)
+    assert all(
+        fragment.startswith("fragment-insurance-")
+        for fragment in by_scope["INSURANCE_PAYMENT"]["source_fragment_ids"]
+    )
+    assert all(
+        fragment.startswith("fragment-guideline-")
+        for fragment in by_scope["GUIDELINE_INDICATION"]["source_fragment_ids"]
+    )
+    assert all(item["scope_evaluations"] == [] for item in evaluations)
+
+
+def test_dual_scope_uses_independent_offset_windows(tmp_path: Path) -> None:
+    patient_id, loader, zd, kb = _golden_loader("urothelial_her2_low", tmp_path)
+    loader.fees["fee_ocur_time"] = "2027-06-18"
+    loader.notes["事件时间"] = "2027-06-18"
+    result = _lookup(
+        patient_id,
+        loader,
+        zd,
+        kb,
+        eligibility=_published_release_eligibility(
+            tmp_path,
+            dual_scope=True,
+            guideline_effective_to="2026-12-31",
+        ),
+    )
+    selected = result["oncology_structured"]["selected_eligibility_evaluation"]
+    by_scope = {
+        item["policy_scope"]: item for item in selected["scope_evaluations"]
+    }
+
+    insurance = by_scope["INSURANCE_PAYMENT"]
+    assert insurance["temporal_applicability"] == "IN_WINDOW"
+    assert insurance["legacy_verdict"] == "VIOLATION"
+    assert insurance["temporal_warning"] == ""
+
+    guideline = by_scope["GUIDELINE_INDICATION"]
+    assert guideline["temporal_applicability"] == "AFTER_EFFECTIVE_WINDOW"
+    assert guideline["audit_disposition"] == "REVIEW_REQUIRED"
+    assert guideline["legacy_verdict"] == "INCONCLUSIVE"
+    assert guideline["temporal_warning"]
+    assert "AFTER_EFFECTIVE_WINDOW" in guideline["data_quality_flags"]
+
+    # 只有指南 scope 过期；医保 scope 的明确不符合仍是最严重旧三态投影。
+    assert selected["audit_disposition"] == "VIOLATION_FOUND"
+    assert selected["legacy_verdict"] == "VIOLATION"
 
 
 def test_differential_template_does_not_create_pola_status_conflict(tmp_path: Path):
@@ -410,6 +587,82 @@ def test_self_pay_note_excludes_candidate_from_violation(tmp_path: Path):
     evaluation = result["oncology_structured"]["selected_eligibility_evaluation"]
     assert evaluation["legacy_verdict"] == "CLEAN"
     assert "SELF_PAY_EXCLUDED" in evaluation["data_quality_flags"]
+    assert evaluation["scope_evaluations"] == []
+
+
+@pytest.mark.parametrize(
+    (
+        "service_date",
+        "guideline_effective_to",
+        "guideline_legacy",
+        "guideline_temporal",
+        "top_legacy",
+    ),
+    [
+        ("2026-06-18", None, "VIOLATION", "IN_WINDOW", "VIOLATION"),
+        (
+            "2027-06-18",
+            "2026-12-31",
+            "INCONCLUSIVE",
+            "AFTER_EFFECTIVE_WINDOW",
+            "INCONCLUSIVE",
+        ),
+    ],
+)
+def test_published_dual_scope_self_pay_only_short_circuits_insurance(
+    tmp_path: Path,
+    service_date: str,
+    guideline_effective_to: str | None,
+    guideline_legacy: str,
+    guideline_temporal: str,
+    top_legacy: str,
+) -> None:
+    patient_id, loader, zd, kb = _golden_loader("urothelial_her2_low", tmp_path)
+    loader.fees["fee_ocur_time"] = service_date
+    loader.notes["事件时间"] = service_date
+    loader.notes = pd.concat(
+        [
+            loader.notes,
+            pd.DataFrame(
+                {
+                    "住院号": [patient_id],
+                    "事件时间": [service_date],
+                    "子阶段": ["自费药品使用同意书"],
+                    "内容": [
+                        "自费药品名称：注射用维迪西妥单抗。患者同意自费使用。"
+                    ],
+                }
+            ),
+        ],
+        ignore_index=True,
+    )
+    result = _lookup(
+        patient_id,
+        loader,
+        zd,
+        kb,
+        eligibility=_published_release_eligibility(
+            tmp_path,
+            dual_scope=True,
+            guideline_effective_to=guideline_effective_to,
+        ),
+    )
+    selected = result["oncology_structured"]["selected_eligibility_evaluation"]
+    by_scope = {
+        item["policy_scope"]: item for item in selected["scope_evaluations"]
+    }
+
+    insurance = by_scope["INSURANCE_PAYMENT"]
+    assert insurance["legacy_verdict"] == "CLEAN"
+    assert insurance["rule_id"] == "payer-scope-self-pay"
+    assert "SELF_PAY_EXCLUDED" in insurance["data_quality_flags"]
+
+    guideline = by_scope["GUIDELINE_INDICATION"]
+    assert guideline["legacy_verdict"] == guideline_legacy
+    assert guideline["temporal_applicability"] == guideline_temporal
+    assert guideline["rule_id"] != "payer-scope-self-pay"
+    assert "SELF_PAY_EXCLUDED" not in guideline["data_quality_flags"]
+    assert selected["legacy_verdict"] == top_legacy
 
 
 def test_uncertain_self_pay_note_does_not_exclude_violation(tmp_path: Path):
@@ -481,6 +734,7 @@ def _runner(
     kb: Path,
     mode: str,
     contents: list[str],
+    eligibility: Path = ELIGIBILITY,
 ) -> Runner:
     prompts = tmp_path / "prompts"
     prompts.mkdir(exist_ok=True)
@@ -502,7 +756,7 @@ def _runner(
             kb,
             zd,
             oncology_v2_mode=mode,
-            eligibility_path=ELIGIBILITY,
+            eligibility_path=eligibility,
             pathology_path=PATHOLOGY,
             regimen_path=REGIMEN,
         ),
@@ -557,6 +811,48 @@ def test_golden_runner_store_and_api_path(
     assert loaded.eligibility_evaluation == result.eligibility_evaluation
     assert _result_payload(loaded)["eligibility_evaluation"]["legacy_verdict"] == expected
     store.close()
+
+
+def test_dual_scope_runner_persists_all_scopes_from_release_metadata(
+    tmp_path: Path,
+) -> None:
+    patient_id, loader, zd, kb = _golden_loader("urothelial_her2_low", tmp_path)
+    runner = _runner(
+        tmp_path=tmp_path,
+        patient_id=patient_id,
+        loader=loader,
+        zd=zd,
+        kb=kb,
+        mode="on",
+        contents=[
+            '```json\n{"verdict":"CLEAN","confidence":0.9,"reasoning":"legacy",'
+            '"evidence":[]}\n```'
+        ],
+        eligibility=_published_release_eligibility(tmp_path, dual_scope=True),
+    )
+    result = runner.audit(_rule(), patient_id)
+    assert result.eligibility_evaluation is not None
+    scopes = result.eligibility_evaluation.scope_evaluations
+    assert {(item.drug_concept_id, item.policy_scope) for item in scopes} == {
+        ("disitamab-vedotin", "INSURANCE_PAYMENT"),
+        ("disitamab-vedotin", "GUIDELINE_INDICATION"),
+    }
+    assert all(item.source_fragment_ids for item in scopes)
+    assert result.verdict == "VIOLATION"
+    assert "[医保支付限定]" in result.reasoning
+    assert "[指南适应证]" in result.reasoning
+    assert "法定说明书" not in result.reasoning
+
+    store = SqliteStore(tmp_path / "dual-runner.sqlite")
+    store.init_schema()
+    store.write(result)
+    loaded = store.find_by_run_id(result.run_id)
+    store.close()
+    assert loaded is not None and loaded.eligibility_evaluation is not None
+    assert len(loaded.eligibility_evaluation.scope_evaluations) == 2
+    assert len(
+        _result_payload(loaded)["eligibility_evaluation"]["scope_evaluations"]
+    ) == 2
 
 
 def test_shadow_persists_comparison_without_changing_legacy_verdict(tmp_path: Path):

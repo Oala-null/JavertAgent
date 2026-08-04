@@ -75,6 +75,37 @@ DRUG_CHRGITM_TYPES = frozenset({"西药", "中药", "草药"})
 
 RULE_TYPES = ("限适应症", "超说明书", "限二线", "禁忌症")
 
+_ONCOLOGY_POLICY_SCOPES = frozenset({"insurance", "guideline"})
+_GENERAL_ELIGIBILITY_RULES = frozenset({"R007", "RD01", "RD02"})
+
+
+def _canonical_policy_scope(source_type: str) -> str:
+    """兼容旧 KB 短名与 authoring 合同枚举，返回运行时 scope 短名。"""
+    return {
+        "INSURANCE_PAYMENT": "insurance",
+        "GUIDELINE_INDICATION": "guideline",
+    }.get(source_type, source_type)
+
+
+def _entry_owned_by_rule(
+    *,
+    oncology_v2_mode: str,
+    audit_rule_id: str,
+    is_oncology: bool,
+    entry_source_type: str,
+) -> bool:
+    """肿瘤资格在 v2 on 时只由 RD04 承载，安全规则不受影响。"""
+    policy_scope = _canonical_policy_scope(entry_source_type)
+    if audit_rule_id == "RD04" and oncology_v2_mode in {"shadow", "on"}:
+        return is_oncology and policy_scope in _ONCOLOGY_POLICY_SCOPES
+    if (
+        oncology_v2_mode == "on"
+        and audit_rule_id in _GENERAL_ELIGIBILITY_RULES
+        and is_oncology
+    ):
+        return False
+    return True
+
 # ────────────────────────── stem 匹配 (确定性, 纯函数; build_drug_kb 复用) ──────────────────────────
 
 # fee 名前缀标记: (基)(集)(国谈)(集）... 半角/全角括号都剥
@@ -209,6 +240,87 @@ def _kb_stems(
     return out
 
 
+def _runtime_kb_stems(
+    kb_path: Path,
+    *,
+    oncology_kb_path: Path | None,
+    oncology_v2_mode: str,
+) -> list[tuple[str, str, list[dict], list[str], str, bool]]:
+    """Published 肿瘤 KB 覆盖 legacy 肿瘤条目，同时保留通用药知识。
+
+    ``oncology_drug_kb.json`` 只是肿瘤 release 资产，不能直接替换
+    包含通用药的 ``drug_audit_kb.json``。激活 published release 时，这里
+    丢弃 legacy 中的肿瘤条目，以 release 条目覆盖；非肿瘤条目继续
+    供 R007/RD01/RD02/RD03 使用。
+    """
+
+    base = _kb_stems(kb_path)
+    if oncology_kb_path is None or oncology_v2_mode not in {"shadow", "on"}:
+        return base
+    released = _kb_stems(oncology_kb_path)
+    non_oncology = [item for item in base if not item[5]]
+    if any(not item[5] for item in released):
+        raise ValueError("published oncology_drug_kb 含缺失 oncology metadata 的条目")
+
+    # release 资产接管肿瘤资格，但一期 compiler 未必承载 RD03 的禁忌知识。
+    # 同名 release 已提供禁忌时以 release 为准；否则把 legacy 禁忌条目和编码
+    # 并入该 published 实体。尚未进入 release 的肿瘤药也只保留禁忌臂，避免
+    # R007/RD01/RD02 重新看到 legacy 资格条目。
+    legacy_oncology = {item[0]: item for item in base if item[5]}
+    released_rows: list[tuple[str, str, list[dict], list[str], str, bool]] = []
+    supplemental_safety: list[
+        tuple[str, str, list[dict], list[str], str, bool]
+    ] = []
+    released_names: set[str] = set()
+    for generic, stem, entries, codes, fallback, is_oncology in released:
+        released_names.add(generic)
+        legacy = legacy_oncology.get(generic)
+        has_released_safety = any(
+            str(entry.get("rule_type") or "") == "禁忌症" for entry in entries
+        )
+        legacy_safety = (
+            []
+            if legacy is None or has_released_safety
+            else [
+                entry
+                for entry in legacy[2]
+                if str(entry.get("rule_type") or "") == "禁忌症"
+            ]
+        )
+        released_rows.append((generic, stem, entries, codes, fallback, is_oncology))
+        if legacy_safety:
+            supplemental_safety.append(
+                (
+                    generic,
+                    stem,
+                    legacy_safety,
+                    sorted(set(codes) | set(legacy[3])),
+                    fallback or legacy[4],
+                    is_oncology,
+                )
+            )
+
+    legacy_safety_only = []
+    for item in legacy_oncology.values():
+        if item[0] in released_names:
+            continue
+        safety_entries = [
+            entry
+            for entry in item[2]
+            if str(entry.get("rule_type") or "") == "禁忌症"
+        ]
+        if safety_entries:
+            legacy_safety_only.append(
+                (item[0], item[1], safety_entries, item[3], item[4], item[5])
+            )
+    return [
+        *non_oncology,
+        *legacy_safety_only,
+        *supplemental_safety,
+        *released_rows,
+    ]
+
+
 # ────────────────────────── bulk / single 主逻辑 ──────────────────────────
 
 def lookup_patient_drugs(
@@ -224,9 +336,19 @@ def lookup_patient_drugs(
     eligibility_path: Path | None = None,
     pathology_path: Path | None = None,
     regimen_path: Path | None = None,
+    oncology_kb_path: Path | None = None,
     enforce_effective_date: bool = True,
 ) -> dict[str, Any]:
     """bulk 模式: 患者用药 ∩ KB → 命中药 (+ 各 rule_type 依据) + 病案首页诊断."""
+    # RD04 是双 scope owner。旧 prompt 可能仍传单一 rule/source 过滤；在 v2 路径
+    # 必须忽略这两个展示层过滤，避免后续 LLM 工具调用把确定性预取降回单 scope。
+    if (
+        audit_rule_id == "RD04"
+        and oncology_v2_mode in {"shadow", "on"}
+    ):
+        rule_type = None
+        source_type = None
+
     fees_df = loader.get_fees(patient_id)
     # 收集药品 fee 行 (名, 国家码) — 码为主路, 名为兜底 (设计 D1)
     coded_rows: list[tuple[str, str]] = []   # (name, code) code 非空
@@ -263,8 +385,12 @@ def lookup_patient_drugs(
 
     # 命中: 按 (通用名, rule_type) 聚合, 记录命中的原始 fee 名
     # 码主路: 患者 fee 行国家码 ∈ 该知识点 code set; 无码 fee 行退 stem 子串 (needs_review).
-    matches: dict[tuple[str, str], dict[str, Any]] = {}
-    for generic, stem, entries, codes, name_fallback, is_oncology in _kb_stems(kb_path):
+    matches: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for generic, stem, entries, codes, name_fallback, is_oncology in _runtime_kb_stems(
+        kb_path,
+        oncology_kb_path=oncology_kb_path,
+        oncology_v2_mode=oncology_v2_mode,
+    ):
         code_set = set(codes)
         # 码命中: 该知识点码集合 ∩ 患者已编码 fee 行
         matched_codes = fee_code_set & code_set if code_set else set()
@@ -289,28 +415,26 @@ def lookup_patient_drugs(
         needs_review = not code_fees  # 仅靠名兜底命中 → 需人工复核剂型/复方歧义
         for entry in entries:
             rt = entry.get("rule_type", "")
-            if rule_type and rt != rule_type:
-                continue
             entry_source_type = str(entry.get("source_type") or "")
-            # v2 on 时所有权硬互斥: RD04 独占肿瘤医保限定，R007 保留非肿瘤限适应症.
-            if (
-                oncology_v2_mode == "on"
-                and audit_rule_id == "R007"
-                and is_oncology
-                and entry_source_type == "insurance"
+            if not _entry_owned_by_rule(
+                oncology_v2_mode=oncology_v2_mode,
+                audit_rule_id=audit_rule_id,
+                is_oncology=is_oncology,
+                entry_source_type=entry_source_type,
             ):
                 continue
-            if (
-                oncology_v2_mode in {"shadow", "on"}
-                and audit_rule_id == "RD04"
-                and not (is_oncology and entry_source_type == "insurance")
-            ):
+            if rule_type and rt != rule_type:
                 continue
             # 依据层级过滤 (肿瘤药专项): insurance=医保限定优先 / guideline=指导原则兜底;
             # 老 KB 条目无 source_type 字段, 过滤时一律不命中.
-            if source_type and entry_source_type != source_type:
+            if (
+                source_type
+                and _canonical_policy_scope(entry_source_type)
+                != _canonical_policy_scope(source_type)
+            ):
                 continue
-            mkey = (generic, rt)
+            # 同一药/类型的医保与指南状态必须保持独立，不能因聚合键相同互相覆盖。
+            mkey = (generic, rt, _canonical_policy_scope(entry_source_type))
             if mkey not in matches:
                 candidate_keys = set(matched_codes)
                 candidate_keys.update(fee_group_key("", name) for name in name_fees)
@@ -598,6 +722,7 @@ def create_executor(
     eligibility_path: Path | None = None,
     pathology_path: Path | None = None,
     regimen_path: Path | None = None,
+    oncology_kb_path: Path | None = None,
     enforce_effective_date: bool = True,
 ) -> Callable[..., str]:
     """绑定 loader + KB 路径 + shi_zd 路径, 返回 drug_audit_lookup(...) 函数.
@@ -615,6 +740,10 @@ def create_executor(
         **_kwargs,
     ) -> str:
         if drug_name and str(drug_name).strip():
+            if oncology_kb_path is not None and oncology_v2_mode in {"shadow", "on"}:
+                released = lookup_single_drug(str(drug_name).strip(), oncology_kb_path)
+                if released.get("found") or released.get("ambiguous"):
+                    return format_for_agent(released)
             return format_for_agent(lookup_single_drug(str(drug_name).strip(), kb_path))
         if not patient_id or not str(patient_id).strip():
             return "drug_audit_lookup 需要 patient_id (bulk) 或 drug_name (single)."
@@ -628,6 +757,7 @@ def create_executor(
             eligibility_path=eligibility_path,
             pathology_path=pathology_path,
             regimen_path=regimen_path,
+            oncology_kb_path=oncology_kb_path,
             enforce_effective_date=enforce_effective_date,
         )
         return format_for_agent(result)

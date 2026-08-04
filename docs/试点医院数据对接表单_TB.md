@@ -34,7 +34,7 @@
 | TB_HIS_ZY_FEE_DETAIL_FS | 住院费用发生明细 | 1 | Javert `search_fees` + Router 预筛 |
 | TB_HIS_ZY_FEE_DETAIL_EXT ⁺ | 费用医保分解扩展 | 1 | M4 超标准收费信号 + 开单医生/科室 + 药品通用名 |
 | TB_IH_DIAGNOSIS_DETAIL | 诊断明细 | 1 | 诊断指征判断 + `drug_audit_lookup` + verdict_gate |
-| TB_OPRATION_DETAIL | 手术明细 | 1 | 手术类规则 + verdict_gate 麻醉/手术判据 |
+| TB_OPERATION_DETAIL | 手术明细 | 1 | 手术类规则 + verdict_gate 麻醉/手术判据 |
 | TB_DIC_HOSPITAL | 医院信息 | 1 | 院区码↔机构码映射 (取数桥必需) |
 | TB_YL_ZY_MEDICAL_RECORD | 住院就诊记录 | 1 | 键桥锚点 (JZLSH↔CISID↔BAH) + 入出院时间 |
 | TB_LIS_REPORT / TB_LIS_INDICATORS | 检验报告头 / 指标 | 2 | Javert `search_lab_results` (检查指征类规则) |
@@ -139,7 +139,7 @@
 
 **院方情况**: □ 可提供 □ 部分 □ 无 源系统: ________ 备注: ________
 
-### 3.5 TB_OPRATION_DETAIL — 手术明细 【一台手术/操作一行】
+### 3.5 TB_OPERATION_DETAIL — 手术明细 【一台手术/操作一行】
 
 | 字段 | 类型 | 中文 | 必填 | 说明 |
 |------|------|------|:----:|------|
@@ -215,7 +215,7 @@
 **SYSSK** (首页手术) ●: SYXH · SSXH · SSDM/SSMC (手术代码/名称) · SFZYSS (是否主手术)
 ○: SSRQ · SSJB (级别) · MZFS (麻醉方式) · SSYS/MZYS (主刀/麻醉医生) · MZKSSJ/MZJSSJ (麻醉起止)
 
-> 注 (v2.2): 原 SYSSK_EXT 扩展表已取消——术者/麻醉医师编码与手术时间在国标 TB_OPRATION_DETAIL 原生列
+> 注 (v2.2): 原 SYSSK_EXT 扩展表已取消——术者/麻醉医师编码与手术时间在国标 TB_OPERATION_DETAIL 原生列
 > (SXYHRYID/MZYHRYID/SSKSSJ, **SSXH 请与 SYSSK.SSXH 对齐**); 医保版手术双码经 zadig_agent 重确认请求体提交, 不入中台。
 
 **院方情况**: □ 可提供 □ 部分 □ 无 源系统: ________ 备注: ________

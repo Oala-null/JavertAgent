@@ -33,7 +33,7 @@ MUST NOT 生成一条空主诊记录. 手术取数维持 SYSSK per-patient 源�
 #### Scenario: sy 院区不受影响
 
 - **WHEN** 查询 sy (0001) 患者
-- **THEN** 仍走 IH/OPRATION 源, 行为与现状一致 (sy 首页库回填不全, 刻意不切)
+- **THEN** 仍走 IH/OPERATION 源, 行为与现状一致 (sy 首页库回填不全, 刻意不切)
 
 ### Requirement: BA 分支纯逻辑可单测
 

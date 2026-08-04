@@ -130,7 +130,8 @@
 ### eligibility_evaluation（RD04，可空）
 
 RD04 在 62 的 `on` 模式会返回结构化资格结果；旧三态 `verdict` 继续保留，现有客户端可以
-不解析本字段。最小示例：
+不解析本字段。下例展示将来经授权的 published release 返回形状；当前 legacy 资产下
+`release_id/rule_revision_id/policy_scope/source_*` 等追加字段为 `null` 或空数组。最小示例：
 
 ```json
 {
@@ -139,12 +140,22 @@ RD04 在 62 的 `on` 模式会返回结构化资格结果；旧三态 `verdict` 
   "legacy_verdict": "CLEAN",
   "rule_id": "RD04",
   "rule_version": "2026.1",
+  "release_id": "release_example",
+  "rule_revision_id": "revision_example",
+  "drug_concept_id": "drug_example",
+  "policy_scope": "INSURANCE_PAYMENT",
+  "source_type": "INSURANCE_PAYMENT",
+  "policy_scope_display_label": "医保支付限定",
   "indication_branch_id": "example-branch",
   "source_versions": ["eligibility:2026.1", "regimen:2026.1"],
+  "source_document_ids": ["source-document-example"],
+  "source_fragment_ids": ["source-fragment-example"],
   "rule_effective_from": "2026-01-01",
   "rule_effective_to": "2027-12-31",
   "evaluated_service_date": "2025-08-22",
   "effective_date_enforced": false,
+  "temporal_applicability": "BEFORE_EFFECTIVE_WINDOW",
+  "temporal_warning": "核查当期指南/医保限定是否适用",
   "criterion_assessments": [
     {
       "criterion_id": "example-criterion",
@@ -193,13 +204,55 @@ RD04 在 62 的 `on` 模式会返回结构化资格结果；旧三态 `verdict` 
 `NO_VIOLATION_FOUND→CLEAN`、`VIOLATION_FOUND→VIOLATION`、
 `REVIEW_REQUIRED→INCONCLUSIVE`。文书建议不能充当证据，也不会改变条件状态。
 
-生效期字段（2026-07-18 新增，**只加不改名**，旧行/旧客户端不解析即可）：
+生效期字段（2026-07-18 起追加，**只加不改名**，旧行/旧客户端不解析即可）：
 
 | 字段 | 说明 |
 |---|---|
 | `rule_effective_from` / `rule_effective_to` | 该医保限定条件树声明的生效期（可空；`to` 空=长期） |
 | `evaluated_service_date` | 本次求值采用的就诊/收费日期（可空） |
 | `effective_date_enforced` | 是否按生效期过滤。`false` 且就诊日在声明窗口外时，`data_quality_flags` 含「未按生效期过滤·需核查就诊时该医保限定是否已生效」，该结果定性前须人工核查生效期 |
+
+published release provenance 与时间字段（2026-07-21 追加，全部按可空/可忽略解析）：
+
+| 字段 | 说明 |
+|---|---|
+| `release_id` / `rule_revision_id` | 本次裁决使用的 published release 和不可变规则 revision；legacy 资产/旧行为 `null` |
+| `drug_concept_id` | 跨产品/别名归一后的药品概念 ID（可空） |
+| `policy_scope` / `source_type` | `INSURANCE_PAYMENT` 或 `GUIDELINE_INDICATION`；两字段同时存在时必须一致，两个 scope 的资格状态不合并 |
+| `policy_scope_display_label` | 受控展示名「医保支付限定」或「指南适应证」；指南不得显示成法定说明书 |
+| `scope_evaluations[]` | published 双 scope 的完整独立快照；每项包含各自处置、资格、proof tree、来源和时间字段。legacy/单 scope 结果为空数组 |
+| `source_document_ids` / `source_fragment_ids` / `source_versions` | 可追溯来源 ID 和版本数组；可为空数组 |
+| `temporal_applicability` | `BEFORE_EFFECTIVE_WINDOW / IN_WINDOW / AFTER_EFFECTIVE_WINDOW`（可空） |
+| `temporal_warning` | 日期适用性人工提示；无提示时为空字符串或旧行 `null` |
+
+published release 的日期策略是：服务日早于声明窗口（例如 2025）时使用当前
+release 自动裁决并返回告警；窗口内（例如 2026–2027）正常裁决；超出窗口且
+无适用新版（例如 2028）时 fail-closed 为 `REVIEW_REQUIRED/INCONCLUSIVE`。
+**该非对称策略只属于校验通过的 `PUBLISHED` release**；现行 legacy `configs/` 资产仍
+按既有 `JAVERT_ONCOLOGY_ENFORCE_EFFECTIVE_DATE` 开关执行，不因本次契约追加而改变。
+存在 `scope_evaluations` 时，顶层 `audit_disposition/eligibility_status` 只是两个 scope
+中最严重结果的确定性兼容投影；消费方展示或复核医保与指南差异时必须读取数组，不能把
+顶层单值反推成两个 scope 都得出同一结论。
+
+### SSE `new_audit_run` 兼容性
+
+工作台 SSE 仍保留完整嵌套 `eligibility_evaluation`，同时在事件顶层**只追加**
+以下可空摘要，便于不展开 proof tree 的消费方：
+
+```text
+audit_disposition, eligibility_status,
+release_id, rule_revision_id, drug_concept_id,
+policy_scope, source_type, policy_scope_display_label,
+source_versions, source_document_ids, source_fragment_ids,
+rule_effective_from, rule_effective_to, evaluated_service_date,
+effective_date_enforced, temporal_applicability, temporal_warning
+```
+
+非 RD04 或空 `eligibility_json` 的上述顶层摘要均为 `null`。已有结构化的 legacy RD04 旧行
+仍保留它原有的处置/资格/日期摘要；新增 release/revision/scope/来源 provenance 为
+`null` 或空数组。旧的 `run_id/patient_id/rule_id/verdict/confidence/is_new_patient` 及
+嵌套字段不删除、不改名；
+客户端仍应忽略未知字段。
 
 ### hits[] 字段 (违规项 ↔ 费用明细关联键)
 

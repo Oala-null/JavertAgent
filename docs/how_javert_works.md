@@ -10,9 +10,9 @@ Javert 是基于大语言模型 (LLM) 的**医保违规智能审计系统**。
 
 对标国家医保局 2026《医疗机构自查自纠问题清单》(0325 版) 中 163 条违规情形，Javert 逐条审计每位住院患者的费用明细与病历文书，输出**违规 (VIOLATION) / 合规 (CLEAN) / 待核 (INCONCLUSIVE)** 三档裁决，并附带完整的证据链与置信度评分。
 
-**核心价值**: 把人工逐页翻阅费用与病历的工作转成可批跑、可追溯的证据审计。当前建模
-159 条规则，其中 118 条 production-ready，复用 8 套模板 M1-M8；单患者耗时随 Router
-候选数、数据完整度和模型负载变化，历史性能快照见 `docs/performance_report.md`。
+**核心价值**: 把人工逐页翻阅费用与病历的工作转成可批跑、可追溯的证据审计。规则执行集复用
+8 套模板 M1-M8；实时规则状态以 `.venv/bin/javert list` 为准。单患者耗时随 Router 候选数、
+数据完整度和模型负载变化，历史性能快照见 `docs/performance_report.md`。
 
 ---
 
@@ -32,8 +32,9 @@ Javert 是基于大语言模型 (LLM) 的**医保违规智能审计系统**。
 | 药品违规 (M8) | 药品超说明书适应症 / 超医保限定支付 (限适应症/超说明书/限二线/禁忌症) | 5 条生产 bulk（含 RD04 肿瘤医保臂） |
 
 > 药品规则当前以 `RD04/R007/RD01/RD02/RD03` 五条 bulk 为生产入口；`RD10-RD37`
-> 精选规则已 abandoned 以消除重复裁决。62 的肿瘤资格 v2 已切换为 `on`：
-> RD04 独占肿瘤医保限定，R007 保留非肿瘤范围。
+> 为保全精选知识原子已转为 `drafting`，在迁移台账逐条核验前不进入默认批跑。
+> 62 的现行 legacy 肿瘤资格 v2 已切换为 `on`：RD04 独占肿瘤医保限定，
+> R007 保留非肿瘤范围。
 
 ### 2.2 输出物
 
@@ -72,7 +73,7 @@ v2/v3 在同一 attempt 内按 run 增量复用卡片投影，并对同 attempt 
 │                    Javert 审计引擎                            │
 ├──────────────────────────────────────────────────────────────┤
 │                                                              │
-│  ① 规则库 (159 条 YAML / 118 ready)  ② 模板库 (8 套 M1-M8) │
+│  ① 规则库（执行集以 javert list 为准）② 模板库（8 套 M1-M8）│
 │       ↓                         ↓                            │
 │  ③ Router 预筛 ──→ 与本患者相关的规则子集                    │
 │       ↓                                                      │
@@ -179,6 +180,45 @@ Javert 的审计运行时不把原始数据整包塞给模型，而是通过**�
 
 **好处**: 模板经过充分调优，保证审计质量一致；新增同类规则只需填字段，不需要重新写 prompt。
 
+### 3.6 肿瘤知识从专家维护到运行时
+
+肿瘤知识维护与患者审计分层隔离，并不让工作簿或草稿直接进入裁决：
+
+```text
+受控来源并集 → 两份专家工作簿 → 离线校验 → staging/审核
+             → approve 投影不可变 revision → 只读 authority 三 pin
+             → 数据库 CANDIDATE → PUBLISHED release
+             → 本地四资产 bundle + active_release.json → RD04 离线加载
+```
+
+- 医保支付限定与指南适应证是两个独立 `policy_scope`，共用药品概念和
+  release，但不互相冒充来源或合并资格状态。
+- `release-authority` 从当前 authoring 全集和病理 bootstrap 计算 source、curated、
+  pathology 三个需在库外审批单固定的 checksum；build/publish 任一 pin 不一致即拒绝。
+- `release-build` 只在 authoring 库登记可重建的 `CANDIDATE`，不把 candidate 写入本地目录；
+  只有 `release-publish` 会重建校验并写不可变 `PUBLISHED` bundle、数据库指针和本地原子指针。
+  领域审核人与 release operator 分离，publish 必须由 build 的同一 operator 完成。
+- published release 路径只接受四份 JSON 齐全、schema/checksum/审核状态通过且由
+  `active_release.json` 指向的 `PUBLISHED` bundle；指针或资产校验失败时 fail-closed，
+  不回退到草稿或 candidate。运行中不连专家维护库。
+- publish 或 rollback 跨数据库与本地指针失败时恢复调用前状态；bundle、revision 和回滚
+  事件不靠删除“修复”，同参数重试会重新校验后再复用。
+- published release 对服务日期采用非对称策略：早于声明窗口的历史病例使用
+  当前 release 并显式告警；窗口内正常裁决；超过窗口且无新版时
+  fail-closed 为人工复核。该策略不改写 legacy `configs/` 资产的现有开关语义。
+- 新结果在旧 `eligibility_json` 上只追加可空的 release、revision、来源、
+  scope 和时间 provenance；历史旧行不回填，旧三态投影保持兼容。
+
+维护入口及当前子命令以 `.venv/bin/javert oncology-kb --help` 为准；来源与候选计数
+从 `docs/oncology/kb_authoring_baseline.json` 和 `docs/oncology/authoring/` 内的生成报告读取，
+不在长期架构文档复制易漂移库存。
+
+截至 2026-07-22，142 `知识库_work` 已实际建立 authoring schema、23 个必需触发器与 6 个
+中文审核视图；两次历史 generated DRAFT 物化探针均已全量回滚，最终修正版则已完成
+validate/preflight/服务端校验和 DRAFT 物化。专家批准、生产 publish/rollback、备份恢复演练
+和新方案 paired shadow 仍未执行；以 `docs/oncology/authoring/142_draft_seed_import_report.md`
+为当前实库事实记录。
+
 ---
 
 ## 四、数据流转
@@ -195,7 +235,7 @@ Javert 的审计运行时不把原始数据整包塞给模型，而是通过**�
 | 检验结果 | LIS 导出 | 856,647 条 | search_lab_results 工具数据源 (化验异常判定) |
 | 药品适应症 | 内置映射表 (drug_indication) | 52 种药物 | M2 反向洗白匹配 |
 | 药品监管 KB (v0.8) | `drug_audit_kb.json` (4 监管 xlsx 归一化) | 928 通用名 | M8 药品违规审计 (限适应症/超说明书/限二线/禁忌症) |
-| 肿瘤资格知识 (v2 on，62) | 条件树 + 病理标志物 + 方案三份版本化 JSON | approved 条目自动裁决，其余显式待核 | RD04 双轴资格证明与病历完善建议 |
+| 肿瘤资格知识 | legacy 三资产；可选 published release 四资产 bundle | 仅 approved/published 条目可裁决，其余显式待核 | RD04 双 scope 资格证明、provenance 与病历完善建议 |
 
 ### 4.2 数据在审计中怎么用
 
@@ -215,6 +255,8 @@ Javert 的审计运行时不把原始数据整包塞给模型，而是通过**�
   数据不出内网
 - LLM 模型部署在内网 62 GPU 服务器，无需调用外部 API
 - 审计结果双写: 本地 SQLite (审计引擎) + SQL Server (工作台归档)
+- 肿瘤专家维护库与 `zadig` 结果库、`TP_data_hub`/`sh_yb_platform` 数据源分离；
+  写入前必须同时通过精确库名、owned 白名单、连接库和权限预检
 - 工作台访问需账号密码，注册通道关闭，由管理员 CLI 分配
 
 ---
@@ -247,8 +289,8 @@ Javert 的审计运行时不把原始数据整包塞给模型，而是通过**�
 ┌── 医院内网 ──────────────────────────────────────────────────┐
 │                                                              │
 │  GPU 服务器 (192.168.31.62, RTX 5880 Ada 48GB)              │
-│    ├─ Qwen3.6-35B-A3B-FP8 (sglang 推理引擎)                │
-│    ├─ Javert 审计引擎 (Python, systemd 纳管)                 │
+│    ├─ Qwen3.6-35B-A3B-FP8 (sglang, 端口 30000)             │
+│    ├─ Javert 审计引擎 (稀疏 Git production-62, systemd)     │
 │    └─ 专家工作台 (FastAPI, 端口 8090)                        │
 │                                                              │
 │  数据库服务器 (192.168.31.142)                               │
@@ -259,4 +301,6 @@ Javert 的审计运行时不把原始数据整包塞给模型，而是通过**�
 └──────────────────────────────────────────────────────────────┘
 ```
 
-**全链路内网部署，无外网依赖。**
+**全链路内网部署，无外网依赖。** 62 的 W2 试验端口 30002 与 OCR 端口 30001 当前均已停；
+代码发布以本地和 62 的 Git HEAD 相等、远端受控工作树 clean 为完成条件，操作细节见
+`docs/deployment_192_62.md`。

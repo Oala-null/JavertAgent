@@ -13,7 +13,7 @@
 | 1 | 就诊主索引与机构 | TB_YL_ZY_MEDICAL_RECORD · TB_HIS_ZY_ADM_REG · TB_YL_PATIENT_INFORMATION · TB_DIC_HOSPITAL |
 | 2 | 病历文书 | TB_CIS_MEDICAL_DOCUMENT ⁺ · TB_CIS_LEAVEHOSPITAL_SUMMARY |
 | 3 | 住院费用 | TB_HIS_ZY_FEE_DETAIL_FS · TB_HIS_ZY_FEE_DETAIL_EXT ⁺ |
-| 4 | 诊断与手术 (临床版) | TB_IH_DIAGNOSIS_DETAIL · TB_OPRATION_DETAIL |
+| 4 | 诊断与手术 (临床版) | TB_IH_DIAGNOSIS_DETAIL · TB_OPERATION_DETAIL |
 | 5 | 检验 (LIS) | TB_LIS_REPORT · TB_LIS_INDICATORS |
 | 6 | 检查 (RIS) | TB_RIS_REPORT · TB_RIS_REPORT2 |
 | 7 | 病案首页 | TB_BA_SYJBK · TB_BA_SYZDK · TB_BA_SYSSK |
@@ -35,7 +35,7 @@
 | 6.1 | TB_HIS_ZY_FEE_DETAIL_FS | 住院费用发生明细 | 一笔收费一行 | 27 |
 | 6.2 | TB_HIS_ZY_FEE_DETAIL_EXT ⁺ | 费用医保分解扩展 | 与 FS 1:1 挂接 | 28 |
 | 7.1 | TB_IH_DIAGNOSIS_DETAIL | 诊断明细 | 一个诊断一行 | 22 |
-| 7.2 | TB_OPRATION_DETAIL | 手术明细 | 一台手术/操作一行 | 40 |
+| 7.2 | TB_OPERATION_DETAIL | 手术明细 | 一台手术/操作一行 | 40 |
 | 8.1 | TB_LIS_REPORT | 检验报告 | 一份报告一行 | 39 |
 | 8.2 | TB_LIS_INDICATORS | 检验指标结果 | 一个指标一行 | 31 |
 | 9.1 | TB_RIS_REPORT | 检查报告 (放射/核医学) | 一份报告一行 | 47 |
@@ -370,7 +370,7 @@
 | 21 | YLYL5 | varchar(128) |  |  | 预留五 |
 | 22 | YLYL6 | varchar(128) |  |  | 预留六 |
 
-### 7.2 TB_OPRATION_DETAIL — 手术明细 【一台手术/操作一行】
+### 7.2 TB_OPERATION_DETAIL — 手术明细 【一台手术/操作一行】
 
 主键: `YLJGYQDM + SSMXLSH`
 

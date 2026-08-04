@@ -28,11 +28,23 @@ from .knowledge import (
 
 CriterionType = Literal[
     "diagnosis",
+    "histology",
     "stage",
+    "disease_status",
+    "resectability",
     "biomarker",
+    "age",
+    "sex",
+    "menopausal_status",
     "prior_therapy",
+    "therapy_count",
     "line_of_therapy",
     "treatment_status",
+    "combination_requirement",
+    "surgery_status",
+    "radiotherapy_status",
+    "transplant_eligibility",
+    "time_window",
     "clinician_assessment",
 ]
 
@@ -331,6 +343,28 @@ def evaluate_rule(
             for source in rule.metadata.source_refs
         }
     )
+    provenance = {
+        "release_id": rule.metadata.release_id,
+        "rule_revision_id": rule.metadata.rule_revision_id,
+        "drug_concept_id": rule.drug_concept_id,
+        "policy_scope": rule.metadata.policy_scope,
+        "source_type": rule.metadata.policy_scope,
+        "policy_scope_display_label": (
+            "医保支付限定"
+            if rule.metadata.policy_scope == "INSURANCE_PAYMENT"
+            else "指南适应证"
+            if rule.metadata.policy_scope == "GUIDELINE_INDICATION"
+            else None
+        ),
+        "source_document_ids": sorted({item.source_id for item in rule.metadata.source_refs}),
+        "source_fragment_ids": sorted(
+            {
+                item.source_fragment_id
+                for item in rule.metadata.source_refs
+                if item.source_fragment_id
+            }
+        ),
+    }
     if rule.metadata.review_status != ReviewStatus.APPROVED:
         blocked = _unknown_assessment(
             ConditionNode(
@@ -364,6 +398,7 @@ def evaluate_rule(
             data_quality_flags=["UNAPPROVED_RULE_VERSION"],
             rule_effective_from=rule.metadata.effective_from,
             rule_effective_to=rule.metadata.effective_to,
+            **provenance,
         )
 
     proof = evaluate_condition_tree(
@@ -383,4 +418,5 @@ def evaluate_rule(
         proof_tree=proof,
         rule_effective_from=rule.metadata.effective_from,
         rule_effective_to=rule.metadata.effective_to,
+        **provenance,
     )

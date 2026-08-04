@@ -420,8 +420,8 @@ def build_surg(em: Emitter, src, tag: str) -> None:
         "GDRQ": parse_dt(ss["create_time"], dayfirst=True).str[:10],
         "GDBBH": pd.Series("1", index=ss.index),
     }, n, tag)
-    # v2.1: SYSSK_EXT 已删 (术者/麻醉编码与手术时间在 OPRATION_DETAIL; 医保版双码走 zadig_agent 请求体)
-    em.emit("TB_OPRATION_DETAIL", {
+    # v2.1: SYSSK_EXT 已删 (术者/麻醉编码与手术时间在 OPERATION_DETAIL; 医保版双码走 zadig_agent 请求体)
+    em.emit("TB_OPERATION_DETAIL", {
         "YLJGYQDM": ss["yq"],
         "SSMXLSH": dedup_suffix(ss["pid"] + "-S" + ssxh),
         "JZLSH": ss["pid"],
@@ -1049,8 +1049,8 @@ TABLE_DOCS: list[tuple[str, str, str, str, str]] = [
      "sy: shi_ss(6795) · szx: r_basy_ss(7437)",
      "PK=(YLJGYQDM,SYXH,SSXH), SSXH=oprn_oprt_sn (同患者重复 sn 加 `-序` 后缀)",
      "⚠sy 侧 SSRQ='-': 源 xls 手术日期列全是 '00:00:00' 纯时间无日期。⚠sy 侧 MZYS(麻醉医生姓名)与术者 100% 同名(源脏数据), "
-     "可靠麻醉医师编码用 OPRATION_DETAIL.MZYHRYID"),
-    ("TB_OPRATION_DETAIL", "手术明细 (HIS 口径手术主表)",
+     "可靠麻醉医师编码用 OPERATION_DETAIL.MZYHRYID"),
+    ("TB_OPERATION_DETAIL", "手术明细 (HIS 口径手术主表)",
      "同 SYSSK 两源",
      "PK=(YLJGYQDM,SSMXLSH), SSMXLSH=`{患者号}-S{序}`",
      "与 IH_DIAGNOSIS_DETAIL 对称的手术侧明细; ZCBZ 1主/2次; 含术者/麻醉师编码+姓名"),
@@ -1127,7 +1127,7 @@ EXT_DDL = """-- data_hub_filled 扩展表 DDL v2.2 (回传 142 前先执行; 幂
 --   费用扩展    = 性能必要, FS/结算两张国标费用表实现不了的字段 (逐列见列注释):
 --                 INSCP_SCP_AMT→Router 预筛精度 (实测缺失多跑规则) / PRODNAME/SPEC→LLM 证据与展示
 --                 / FEE_TYPE→zadig 信号 / 科室医生→审计上下文 / 甲乙丙+医保分解族→M4 (163 目录内待上线)
---   SYSSK_EXT   = 已删除不恢复 (管道消费面实测=0: 术者/麻醉/时间在国标 OPRATION_DETAIL,
+--   SYSSK_EXT   = 已删除不恢复 (管道消费面实测=0: 术者/麻醉/时间在国标 OPERATION_DETAIL,
 --                 医保版手术双码走 zadig_agent 重确认请求体)
 -- 文书表最小交付 5 列 (院区/就诊流水/文书流水/文书名称/正文); WSLB 可空(接入按 WSMC 派生),
 -- 整篇一行即可(DLBT/DLXH 可空), 出院小结改灌标准表 TB_CIS_LEAVEHOSPITAL_SUMMARY 不进本表
@@ -1301,7 +1301,7 @@ def main() -> None:
         "## 已知近似与坑 (与映射总纲一致)",
         "- sy 侧入出院时间 (SYJBK.RYRQ/CYRQ, 就诊记录, 入院登记) 用费用时间跨度近似 (无费用患者为哨兵/'-')",
         "- sy 侧手术日期/起止时间无源 (源 xls 全是纯时间 '00:00:00'), SSRQ='-', 时间列 NULL",
-        "- SYSSK.MZYS: sy 侧 anst_dr_name 与术者同名 (源脏数据), 可靠麻醉医师编码在 TB_OPRATION_DETAIL.MZYHRYID",
+        "- SYSSK.MZYS: sy 侧 anst_dr_name 与术者同名 (源脏数据), 可靠麻醉医师编码在 TB_OPERATION_DETAIL.MZYHRYID",
         "- sy 424 名患者无姓名源 (检验表覆盖 2838/3063), 患者表 XM='-'",
         "- szx 药品/耗材不进 DIC_MEDICINES/MATERIALS (数值类别码不定药品边界)",
         "- MXFYLB 为自定 2 位码 (官方码表到位后按 _dictionaries/mxfylb_码表.csv 一键替换)",

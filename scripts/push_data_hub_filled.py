@@ -25,6 +25,7 @@ import pyodbc
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from javert.config import load_config  # noqa: E402
+from javert.store.write_safety import owned_databases  # noqa: E402
 
 SCRIV = Path("/Users/shane/26er/Scriv")
 DATA = SCRIV / "data_hub_filled"
@@ -86,8 +87,7 @@ def main() -> None:
 
     # 保险栓: 建库、建表、增量写和 --recreate 都只允许对自有库执行。
     # 防止默认读取库 sh_yb_platform 被误灌；243 同名产品库需显式加入白名单。
-    owned = {d.strip() for d in
-             (os.environ.get("JAVERT_OWNED_DBS") or "TP_data_hub").split(",") if d.strip()}
+    owned = owned_databases(os.environ.get("JAVERT_OWNED_DBS") or "TP_data_hub")
     if target_db not in owned:
         sys.exit(f"拒绝写入: 目标库 {target_db!r} 不在自有库白名单 {sorted(owned)} "
                  f"(误灌防线; 自有环境需显式设置 JAVERT_OWNED_DBS)")

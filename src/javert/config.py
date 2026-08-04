@@ -62,6 +62,9 @@ class JavertConfig(BaseSettings):
     # False=不分时间全部生效, 窗口外就诊追加"核查生效时间"提示 (前端 fail-loud, 不静默).
     # 审核状态闸 (review_status=approved) 与本开关无关, 始终生效.
     oncology_enforce_effective_date: bool = True
+    # 可选 published release bundle 目录；空值保持现有 configs/ 离线资产路径。
+    # 设置后启动时必须通过 active pointer/schema/checksum/review status 全部门禁，失败不回退。
+    oncology_release_dir: str = ""
 
     # Paths (字符串, 相对项目根)
     data_dir: str = "data"

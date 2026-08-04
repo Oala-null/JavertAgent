@@ -1,0 +1,38 @@
+from scripts.deployment_sync import compare_head_state
+
+
+def test_equal_heads_and_clean_remote_are_synced():
+    head = "a" * 40
+
+    report = compare_head_state(
+        head,
+        {"head": head, "branch": "production-62", "dirty": []},
+    )
+
+    assert report["synced"] is True
+    assert report["remote_branch"] == "production-62"
+
+
+def test_different_heads_are_not_synced():
+    report = compare_head_state(
+        "a" * 40,
+        {"head": "b" * 40, "branch": "production-62", "dirty": []},
+    )
+
+    assert report["synced"] is False
+
+
+def test_same_head_with_remote_overwrite_is_not_synced():
+    head = "a" * 40
+
+    report = compare_head_state(
+        head,
+        {
+            "head": head,
+            "branch": "production-62",
+            "dirty": [" M src/javert/data/hub_source.py"],
+        },
+    )
+
+    assert report["synced"] is False
+    assert report["remote_dirty"] == [" M src/javert/data/hub_source.py"]

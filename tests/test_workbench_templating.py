@@ -32,7 +32,7 @@ def alice():
 def test_filters_registered():
     env = get_env()
     for k in ("humanize_delta", "humanize_since", "verdict_color",
-              "verdict_label", "format_dt"):
+              "verdict_label", "quality_flag_zh", "format_dt"):
         assert k in env.filters
 
 
@@ -52,6 +52,15 @@ def test_verdict_label_filter():
     assert env.filters["verdict_label"]("I") == "改判不明"
     assert env.filters["verdict_label"]("C") == "驳回"
     assert env.filters["verdict_label"]("VIOLATION") == "违规"
+
+
+def test_oncology_draft_quality_flags_are_human_readable():
+    quality_flag_zh = get_env().filters["quality_flag_zh"]
+    assert "草稿规则预览" in quality_flag_zh("DRAFT_RULE_PREVIEW_ONLY")
+    assert "必须人工复核" in quality_flag_zh("AUTHORING_REVIEW_REQUIRED")
+    assert "尚无生效且已审核" in quality_flag_zh(
+        "NO_APPROVED_ELIGIBILITY_RULE"
+    )
 
 
 def test_login_renders(alice):

@@ -185,20 +185,22 @@ def _structured_evidence(
             continue
         seen.add(key)
         out.append(Evidence(source="drug_audit_lookup", locator=name, text=""))
-    for assessment in evaluation.criterion_assessments:
-        for anchor in assessment.evidence_anchors:
-            key = (anchor.source, anchor.locator, anchor.text)
-            if key in seen:
-                continue
-            seen.add(key)
-            out.append(
-                Evidence(
-                    source=anchor.source,
-                    locator=anchor.locator,
-                    text=anchor.text[:1000],
-                    anchor=anchor.anchor,
+    scoped = evaluation.scope_evaluations or [evaluation]
+    for scope in scoped:
+        for assessment in scope.criterion_assessments:
+            for anchor in assessment.evidence_anchors:
+                key = (anchor.source, anchor.locator, anchor.text)
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(
+                    Evidence(
+                        source=anchor.source,
+                        locator=anchor.locator,
+                        text=anchor.text[:1000],
+                        anchor=anchor.anchor,
+                    )
                 )
-            )
     return out
 
 
@@ -207,6 +209,47 @@ def _structured_reasoning(
     candidate_names: list[str] | None = None,
 ) -> str:
     names = candidate_names or []
+    if evaluation.scope_evaluations:
+        drug_clause = "、".join(names[:3]) + (
+            f" 等 {len(names)} 种" if len(names) > 3 else ""
+        ) if names else "本例肿瘤药"
+        overall = {
+            "NO_VIOLATION_FOUND": "各政策范围均未发现不符合。",
+            "VIOLATION_FOUND": "至少一个政策范围明确不符合，旧三态按最严重范围投影为违规。",
+            "REVIEW_REQUIRED": "至少一个政策范围需人工复核，旧三态按最严重范围投影为不明。",
+        }[evaluation.audit_disposition.value]
+        lines = [f"{drug_clause}（肿瘤资格双来源核对）：{overall}"]
+        conclusions = {
+            ("NO_VIOLATION_FOUND", "SATISFIED"): "满足该范围全部条件，未见不符合。",
+            ("NO_VIOLATION_FOUND", "DOCUMENTATION_GAP"): (
+                "现有病历未见明确不符合，但部分条件缺少文书佐证"
+                "（不影响本次该范围结论）。"
+            ),
+            ("VIOLATION_FOUND", "NOT_SATISFIED"): "明确不满足该范围条件。",
+            ("REVIEW_REQUIRED", "DOCUMENTATION_GAP"): (
+                "关键条件缺少文书佐证，无法自动定性，需人工复核。"
+            ),
+            ("REVIEW_REQUIRED", "CONFLICT"): "条件出现相互矛盾的证据，需人工复核。",
+        }
+        for scope in evaluation.scope_evaluations:
+            label = scope.policy_scope_display_label
+            conclusion = conclusions.get(
+                (scope.audit_disposition.value, scope.eligibility_status.value),
+                "核对结果见下。",
+            )
+            lines.extend(["", f"[{label}] {conclusion}"])
+            for item in scope.criterion_assessments:
+                mark = _STATE_MARK.get(item.state.value, "·")
+                reason = item.reason or item.criterion_id
+                lines.append(f"{mark} {reason}")
+            for suggestion in scope.documentation_suggestions:
+                lines.append(f"[病历完善建议] {suggestion.suggested_content}")
+            if scope.temporal_warning:
+                lines.append(f"[时间提示] {scope.temporal_warning}")
+            if scope.data_quality_flags:
+                lines.append(f"[数据质量] {'; '.join(scope.data_quality_flags)}")
+        return "\n".join(lines)
+
     if names:
         drug_clause = "、".join(names[:3]) + (
             f" 等 {len(names)} 种" if len(names) > 3 else ""
@@ -493,7 +536,8 @@ class Runner:
         verdict_data: dict[str, Any] | None = None
         final_reason = ""
 
-        # v2: RD04 先确定性取候选/条件树，保证每个净正收费候选都进入结构化求值。
+        # v2: RD04 先确定性取医保/指南双 scope 候选与条件树，保证每个净正收费
+        # 肿瘤候选都进入结构化求值。
         # shadow 只记录预取结果，不喂回 LLM、也不计入旧「至少一次工具成功」门槛。
         if (
             rule.rule_id == "RD04"
@@ -501,13 +545,11 @@ class Runner:
         ):
             oncology_mode = self.config.oncology_eligibility_v2
             prefetch_success = self._execute_and_record(
-                "[Oncology v2] 预取 RD04 肿瘤医保候选与结构化资格证明。",
+                "[Oncology v2] 预取 RD04 肿瘤医保/指南候选与结构化资格证明。",
                 [{
                     "name": "drug_audit_lookup",
                     "arguments": {
                         "patient_id": patient_id,
-                        "rule_type": "限适应症",
-                        "source_type": "insurance",
                     },
                 }],
                 messages,

@@ -187,6 +187,145 @@ SQL/Hub 连接值无回显固化进 mode 0600 的 `.env` 并完成可回滚备�
 运行日志仅以 target 编号存放在 0700 私有目录，未写入 Git；本文不记录患者号、run_id、
 推理原文或证据原文。
 
+## add-oncology-kb-authoring 本地验收（2026-07-21）
+
+本节是新 change 的**本地离线验收快照**，不改写上文 2026-07-17 现网结论。
+截至本快照，未执行 142 知识库 DDL/上传/物化，未收到专家回传或发布批准，
+未在 62/生产启用 published release，也未运行任务 10.5 要求的同输入 paired shadow。
+2026-07-21 额外运行了 142 `sh_yb_platform` 只读的 DRAFT 候选预览，并把一批明确标为
+DRAFT/人工复核的患者级结果写入现有工作台结果库 `zadig`；它不写知识库，也不构成专家批准
+或 shadow 性能结论。
+
+已完成并在本地可重复核对的事实：
+
+- 来源快照、肿瘤候选并集、精选知识原子和方案候选均有机器可读产物；
+  库存与覆盖以 `docs/oncology/kb_authoring_baseline.json`、
+  `docs/oncology/authoring/*.json` 及 `source_coverage_matrix.md` 中的 `jq` 口径为准，
+  本节不复制会随来源变动的计数。
+- 两份专家工作簿已本地生成，完成页面预览、下拉/公式/保护回读和
+  PHI/凭据校验；两份 `.validation.json` 均为 `valid=true` 且 `error_count=0`。
+  这只证明模板与当前候选通过离线校验，不代表专家已批准其业务内容。
+- 当前候选 checksum 为
+  `sha256:79cd6d0c4046cef3a034f4b9ab5f9d5cacc512cb16ac00fdd0544670effdbfaa`：
+  225 条 DRAFT 来源 revision 已拆为 469 个待审适应证分支、754 个聚合节点和
+  2186 个条件叶子；树错误和 `unsupported` 叶子均为 0。release readiness 仍为
+  `REVIEW_REQUIRED`，阻断项包括 1 个未解析联合药概念（地塞米松）、8 个待审药物类别
+  和 133 个需专家确认上下文/阈值的病理节点。
+- DRAFT 预览编译器已加载全部 469 个分支并复用真实结构化求值器，但无论叶子求值结果如何，
+  最终都强制 `REVIEW_REQUIRED`，并带 `DRAFT_RULE_PREVIEW_ONLY`；不得由该路径产生自动
+  `CLEAN` 或 `VIOLATION`。
+- 142 只读批测以“`TB_BA_SYJBK` 非空主诊锚 + 明确恶性肿瘤诊断 + 净正肿瘤药收费 +
+  有病历文本”为硬门禁，并按肺癌优先、同优先层药物多样性优先选人。扫描到的 95 名药物
+  候选均有 SY 病案首页主诊锚，其中 94 名有明确肿瘤诊断、22 名为肺癌；最终 10/10 来自
+  SY 病案首页、10/10 是肿瘤患者且 10/10 是肺癌，10/10 读取到诊断和病历文本。
+  本批覆盖 8 种肿瘤药、14 个药物匹配和 101 个医保分支求值，0 未映射、0 歧义、
+  0 求值异常。结果不再出现 `NO_APPROVED_ELIGIBILITY_RULE`；条件状态为
+  `SATISFIED 131 / NOT_SATISFIED 62 / CONFLICT 5 / UNKNOWN 400`。UNKNOWN 主要来自病种
+  分支不匹配、治疗线次、病理阈值、联合方案、进展状态和组织学证据缺口，不是数据库未连接
+  或患者数据未读取。首次只读预览报告位于
+  `outputs/add-oncology-kb-authoring/authoring_preview_batch.json`，其中两个数据库写标志均为
+  `false`。
+- 为满足工作台人工审阅，随后把同一严格选择口径重新运行并按患者聚合为 10 条 RD04 结果，
+  写入 `zadig` 的 `kb_test1` 标签；旧的同名 10 条 `NO_APPROVED_ELIGIBILITY_RULE` 历史未删除，
+  以单事务改标为 `kb_test1_legacy`。新批次为 10 行/10 人、全部 `INCONCLUSIVE`，包含 14 个
+  patient/drug/insurance scope；10/10 `eligibility_json` 可经 Pydantic 回读，10/10 带
+  `DRAFT_RULE_PREVIEW_ONLY` 与 `AUTHORING_REVIEW_REQUIRED`，0 条含
+  `NO_APPROVED_ELIGIBILITY_RULE`，且 Web 实际 store 读路径核验侧栏和详情均为 10/10。
+  去标识写入报告位于
+  `outputs/add-oncology-kb-authoring/authoring_preview_workbench_batch.json`，不含患者号或病历原文，
+  权限为 0600；其中 `knowledge_database_write=false`、`result_database_write=true`。
+- `oncology-kb export/validate/preflight/schema-apply/upload/materialize` 的边界已落代码：
+  `validate` 不读数据库配置；所有数据库路径先校验精确库名与
+  `JAVERT_OWNED_DBS`，再检查 `DB_NAME()`。`schema-apply` 另校验数据库 ALTER 权限，
+  `preflight/upload/materialize` 校验 principal、schema 权限和 version；
+  日志/错误不回显密码、连接串或工作簿原文。
+- `materialize` 仅接受已通过服务端校验的完整 batch，单事务投影并核对每类实体。
+  `approve` 已按 append-only 最新事件集和完整 typed 子图投影 approved 不可变 revision；
+  未落库的 `APPROVE_WITH_EDIT`、审核人不一致或引用/日期/药品概念不完整均 fail closed。
+- `APPROVE_WITH_EDIT` 不原地覆盖 revision：有效期、条件节点或方案字段修订会克隆完整子图，
+  生成 content-addressed superseding DRAFT 并要求重新审核。精选知识映射修订只落为 `MAPPED`，
+  必须由后续新的 `APPROVE` 事件核验已 materialize 的同一目标后才能升为 `VERIFIED`；
+  VERIFIED 原子和映射由数据库触发器冻结。
+- 条件树和方案引用的 `CLASS` 目标来自独立 `kb.drug_class` authority，必须具备非空规范名、
+  match terms、批准状态及匹配 checksum 的审核事件；未知或 DRAFT 类别阻断 revision 批准和 release。
+- 每条审核事件都保存并校验 `reviewed_content_checksum`：它必须精确等于被审核
+  branch/node/regimen/alias/context/component 当前 typed 内容的 checksum。物化插入事件前会锁定
+  并复核目标行，内容在审核后改变会以 `REVIEW_CONTENT_CHECKSUM_MISMATCH` 阻断批准，不能让旧
+  意见静默批准新内容。已有 `review_event` 历史行若缺 checksum，DDL 会阻断并要求依据当时内容
+  人工补齐，禁止自动猜测。
+- operational release CLI/store 已覆盖只读 `release-authority`、`release-build`、
+  `release-publish` 和 `release-rollback`。authority 把 source、curated、pathology 三个 checksum
+  固定为库外审批 pin；build 只在 authoring 库登记确定性 `CANDIDATE`，publish 必须由与
+  领域审核人分离且和 build 相同的 operator 用同一组 pin 重建校验。只有 publish 会写四资产
+  `PUBLISHED` 不可变 bundle、数据库 pointer 和本地 `active_release.json`。
+- publish/rollback 已实现数据库与本地指针的失败补偿及幂等重试校验；回滚只切到已验证的
+  历史 published bundle，保留 bundle、revision 和事件，不以删除历史完成恢复。
+- published release 运行时合成金标已覆盖双 `policy_scope` 独立状态，以及
+  2025 年使用当前 release 并告警、2026–2027 年窗口内正常裁决、2028 年无
+  适用新版时 fail-closed 为 `REVIEW_REQUIRED/INCONCLUSIVE`。该策略仅对带
+  `release_id` 的 published 资产生效；legacy `configs/` 资产仍由既有生效期开关控制。
+- `eligibility_json`、2C 返回和 `new_audit_run` SSE 只追加可空的 release/revision/
+  scope/来源/时间 provenance；非肿瘤结果和未曾有结构化资格的旧行保持 `null`，
+  已有 legacy RD04 结构化行保留旧字段且新 provenance 为空；旧三态投影不删除、不改名。
+
+本地定向回归命令：
+
+```bash
+.venv/bin/pytest -q \
+  tests/test_oncology_kb_release.py \
+  tests/test_oncology_kb_release_store.py \
+  tests/test_oncology_kb_runtime_policy.py \
+  tests/test_oncology_integration.py \
+  tests/test_event_bus.py
+```
+
+2026-07-21 最终本地门禁结果：
+
+- SQL 写安全、staging、materialize、release store：**73 collected / 73 passed /
+  0 skipped / 0 failed / 0 errors**；未连接真实 SQL Server。
+- oncology 专项（含候选、工作簿、生命周期、release、双 scope、ownership、API/SSE）：
+  **277 collected / 277 passed / 0 skipped / 0 failed / 0 errors**。
+- 全仓：**998 collected / 997 passed / 1 skipped / 0 failed / 0 errors**；唯一 skip 为
+  `tests/test_runner.py:293` 已有不可达 `for-else` 分支契约，不是本 change 新失败。
+- 两份最终 `.xlsx` 离线 CLI 校验均为 `valid=True, errors=0`；Router 重建后为
+  159 条 YAML（118 ready、41 drafting）；`openspec validate add-oncology-kb-authoring --strict`
+  通过。
+- 本次全量候选解析、非裁决预览、runtime criteria、workbook、release/store、SQL safety、
+  ownership、integration、tools/SSE/result/regimen 定向组合门禁为
+  **254 collected / 254 passed / 0 skipped / 0 failed / 0 errors**。
+
+2026-07-22 在 concept authority、来源多锚点合并、curated target 门禁和文档真相收尾后，
+重新执行全仓门禁：**1040 collected / 1039 passed / 1 skipped / 0 failed / 0 errors**；唯一
+skip 仍为上述既有不可达分支契约。两份最终工作簿再次离线校验为 `valid=True, errors=0`，
+Router 重建仍为 159 条（118 ready、41 drafting），严格 OpenSpec 校验与
+`git diff --check` 均通过。
+
+外部门禁状态：以下 2026-07-22 实库补充事实不改变专家/发布门禁。OpenSpec 9.3–9.5、
+9.7–9.10 仍待最小权限与备份策略留痕、专家回传/审批、受控导入门禁的完整演练、独立发布授权和完整恢复演练；10.5 的获授权
+paired shadow 也待执行。不得把 DDL、staging、generated DRAFT 或 release candidate 写成
+专家验收或生产发布。
+
+## 142 generated DRAFT 物化补充（2026-07-22）
+
+- `DB_NAME()` 精确核验为 `知识库_work`；最终幂等 DDL 连续执行两次成功，实际建立 3 个 schema、
+  25 张表、6 个中文人工审核视图、129 个约束、44 个索引和 23 个必需触发器。账号仍为 `db_owner` 而非
+  最小权限，当前备份策略/恢复点未获证明。
+- 首个旧方案 batch 因 concept authority namespace 断裂被触发器阻断；首个资格 batch 因
+  同文本多锚点未合并被唯一约束阻断。两次 typed 事务均完整回滚为 0，FAILED batch 和去敏
+  reconciliation 保留。
+- 修复后两份最终工作簿均为 0 validation error、0 PHI，跨工作簿 typed authority 缺口为 0；
+  资格 SHA 为 `sha256:58ad7dc5f10fdbdb249347a8d55d105a7b2e0b83707882aee280bc95287f509c`
+  （9,511 staging 行），方案 SHA 为
+  `sha256:ff4648982b31c486f6bebc383ee0118a348a385a59d104f9c6160e0befd6deb3`
+  （339 行）。两份均已通过 preflight/dry-run。
+- 用户重新授权后，资格与方案最终 SHA 分别 materialize 为
+  `batch_c2e4cf39a6e406aea8308953`（9,511 staging 行、13,353 个投影实体）和
+  `batch_e06cc07d61563c5f48479534`（339 staging 行、339 个投影实体）；各自重复上传均
+  `reused=true`。只读对账为 221 条 eligibility revision、462 branch、2,900 node、4 条
+  regimen revision、130 alias、11 context、16 component，`review_event=0`、release=0。
+  完整去敏证据和后续审核顺序见
+  `docs/oncology/authoring/142_draft_seed_import_report.md`。
+
 ## 复现命令
 
 ```bash

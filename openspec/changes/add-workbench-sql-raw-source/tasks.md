@@ -31,6 +31,6 @@
 
 - [x] 5.1 全量 `uv run pytest tests/ -v` 绿
 - [x] 5.2 Mac 本地冒烟: 开关开 + 空 data_import, `/api/patient/211318013/raw` 返回 200 且内容与流B ETL 产出一致; J66252 与改前一致
-- [x] 5.3 142 核对/补 JZLSH 索引 (幂等 CREATE INDEX, 只读库加索引): TB_HIS_ZY_FEE_DETAIL_FS/TB_CIS_MEDICAL_DOCUMENT/TB_LIS_REPORT/TB_IH_DIAGNOSIS_DETAIL/TB_OPRATION_DETAIL
+- [x] 5.3 142 核对/补 JZLSH 索引 (幂等 CREATE INDEX, 只读库加索引): TB_HIS_ZY_FEE_DETAIL_FS/TB_CIS_MEDICAL_DOCUMENT/TB_LIS_REPORT/TB_IH_DIAGNOSIS_DETAIL/TB_OPERATION_DETAIL
 - [x] 5.4 62 部署 (开关未配, 验证零变化) → `.env` 加开关 → 重启 → 点 hub-only 患者原文 200 + J66252 一致
 - [x] 5.5 CLAUDE.md 变更日志 + `docs/deployment_192_62.md` 升级步骤 (开关/回滚一行)

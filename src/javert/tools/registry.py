@@ -127,6 +127,24 @@ def build_executor(loader: DataLoader, config: JavertConfig | None = None) -> To
         requires_patient_id=getattr(drug_indication, "REQUIRES_PATIENT_ID", False),
     )
     drug_kb_path = cfg.resolve("configs") / "drug_audit_kb.json"
+    eligibility_path = cfg.resolve("configs/oncology_eligibility_rules.json")
+    pathology_path = cfg.resolve("configs/pathology_biomarker_kb.json")
+    regimen_path = cfg.resolve("configs/oncology_regimen_kb.json")
+    oncology_drug_path = None
+    if cfg.oncology_release_dir.strip():
+        from javert.oncology.authoring.release import (
+            DRUG_ASSET,
+            ELIGIBILITY_ASSET,
+            PATHOLOGY_ASSET,
+            REGIMEN_ASSET,
+            resolve_active_release_assets,
+        )
+
+        release_assets = resolve_active_release_assets(cfg.resolve(cfg.oncology_release_dir))
+        oncology_drug_path = release_assets[DRUG_ASSET]
+        eligibility_path = release_assets[ELIGIBILITY_ASSET]
+        pathology_path = release_assets[PATHOLOGY_ASSET]
+        regimen_path = release_assets[REGIMEN_ASSET]
     executor.register(
         "drug_audit_lookup",
         drug_audit_lookup.create_executor(
@@ -134,9 +152,10 @@ def build_executor(loader: DataLoader, config: JavertConfig | None = None) -> To
             drug_kb_path,
             cfg.zd_path,
             oncology_v2_mode=cfg.oncology_eligibility_v2,
-            eligibility_path=cfg.resolve("configs/oncology_eligibility_rules.json"),
-            pathology_path=cfg.resolve("configs/pathology_biomarker_kb.json"),
-            regimen_path=cfg.resolve("configs/oncology_regimen_kb.json"),
+            eligibility_path=eligibility_path,
+            pathology_path=pathology_path,
+            regimen_path=regimen_path,
+            oncology_kb_path=oncology_drug_path,
             enforce_effective_date=cfg.oncology_enforce_effective_date,
         ),
         description=drug_audit_lookup.DESCRIPTION,

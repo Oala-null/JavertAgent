@@ -22,6 +22,9 @@ class SourceReference(BaseModel):
     """不可变知识来源引用."""
 
     source_id: str = Field(min_length=1)
+    # authoring release 可把文档内的稳定片段 ID 一并带到运行时；
+    # legacy 资产只有 source_id，因此必须保持可空。
+    source_fragment_id: str | None = None
     title: str = Field(min_length=1)
     version: str = ""
     publication_date: date | None = None
@@ -46,6 +49,11 @@ class KnowledgeMetadata(BaseModel):
     source_refs: list[SourceReference] = Field(min_length=1)
     checksum: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     review_status: ReviewStatus
+    # add-oncology-kb-authoring: published bundle provenance；旧资产保持 None。
+    release_id: str | None = None
+    release_status: Literal["candidate", "published"] | None = None
+    source_snapshot_checksum: str | None = None
+    revision_ids: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_effective_range(self) -> "KnowledgeMetadata":
@@ -62,6 +70,9 @@ class KnowledgeEntryMetadata(BaseModel):
     effective_to: date | None = None
     source_refs: list[SourceReference] = Field(min_length=1)
     review_status: ReviewStatus
+    release_id: str | None = None
+    rule_revision_id: str | None = None
+    policy_scope: Literal["INSURANCE_PAYMENT", "GUIDELINE_INDICATION"] | None = None
 
     @model_validator(mode="after")
     def _validate_effective_range(self) -> "KnowledgeEntryMetadata":

@@ -16,11 +16,11 @@
 | 主机 | `192.168.31.62` (Ubuntu 24.10, 6.11.0-19-generic) |
 | 用户 | `admin2` (SSH key auth) |
 | 端口 | **8090** (TCP, 仅内网) |
-| 项目路径 | `/home/admin2/javert/` |
+| 项目路径 | `/home/admin2/javert/`（`production-62` 稀疏 Git 工作树） |
 | Python | 3.12.7 (系统) |
 | uv | `/home/admin2/.local/bin/uv` (curl 装的, 用户级) |
 | 系统 ODBC | `msodbcsql18` 18.6.1.1 + `unixodbc` 2.3.12 (apt 已装) |
-| 同机服务 | sglang :30000 (不干扰); gdparse :8889; open-webui :8080; lethe :18090 (各自端口) |
+| 同机服务 | Qwen3.6 FP8 / sglang :30000；W2 :30002 与 OCR :30001 当前已停；gdparse :8889、open-webui :8080、lethe :18090 |
 
 ---
 
@@ -65,6 +65,10 @@ JAVERT_ONCOLOGY_ELIGIBILITY_V2=on
 # 生效期闸（代码默认 true；62 于 2026-07-18 设 false = 不分时间全部生效 + 窗口外核查提示）
 JAVERT_ONCOLOGY_ENFORCE_EFFECTIVE_DATE=false
 ```
+
+`JAVERT_ONCOLOGY_RELEASE_DIR` 对本 change 在 62 **不应设置**。只有专家批准、发布授权、
+published bundle 部署和回滚演练均完成后，才能按 §10.7 把它指向本地 release 目录。
+留空时继续读现行 `configs/` 离线资产，不改变 2026-07-18 已验收的 legacy 行为。
 
 ---
 
@@ -234,27 +238,53 @@ uv run javert mssql-user delete dr_zhang --confirm
 
 ## 10. 升级 / 改代码流程
 
-Mac 上改完代码:
+62 自 2026-08-04 起使用稀疏 Git 工作树，只检出受控运行时范围。禁止再用“只打包当前工作树
+的 `src`”作为标准发布流程。标准流程必须从已提交 `HEAD` 生成最小 Git 对象包，62 的
+`production-62` HEAD 必须与本地 HEAD 相等，且受控工作树必须 clean。只比较 HEAD 而不检查
+clean 会漏掉远端文件被手工覆盖但未 commit 的事故。
+
+首次启用仓库内 Git hook：
 
 ```bash
-# 1. Mac 上 tar src
+git config core.hooksPath .githooks
+```
+
+此后每次本地 commit 完成都会自动执行只读核验。远端不可达或版本漂移只报警，不会回滚已经
+完成的 commit。也可随时手动运行：
+
+```bash
+python3 scripts/deployment_sync.py check
+```
+
+Mac 上改完并提交代码后：
+
+```bash
+# 1. 从已提交 HEAD 构建最小 Git 部署物；运行时范围有未提交改动时默认拒绝
 cd /Users/shane/26er/Javert
-tar -czf /tmp/javert-src.tgz --exclude='__pycache__' -C . src
+python3 scripts/deployment_sync.py artifact --output /tmp/javert-git-deploy.tgz
 
-# 2. scp 到 62
-scp /tmp/javert-src.tgz admin2@192.168.31.62:/tmp/
+# 2. scp 部署物和安装器到 62
+scp /tmp/javert-git-deploy.tgz scripts/deployment_sync.py admin2@192.168.31.62:/tmp/
 
-# 3. 62 unpack
-ssh admin2@192.168.31.62 'cd ~/javert && tar xzf /tmp/javert-src.tgz \
-    && rm /tmp/javert-src.tgz && find . -name "._*" -delete 2>/dev/null'
+# 3. 安装器在 62 上先备份源码、mode 0600 的 .env 和旧进程实际环境，再更新稀疏 Git 工作树
+ssh admin2@192.168.31.62 'python3 /tmp/deployment_sync.py install \
+    --artifact /tmp/javert-git-deploy.tgz --remote-root /home/admin2/javert'
 
 # 4. 重拉进程 (无 sudo — admin2 杀自己进程, systemd Restart=on-failure 自动拉起)
 ssh admin2@192.168.31.62 'OLD=$(systemctl show -p MainPID --value javert-web); \
     kill -9 "$OLD"; sleep 8; \
     echo "active=$(systemctl is-active javert-web) http=$(curl -s -o /dev/null -w %{http_code} http://127.0.0.1:8090/login)"'
+
+# 5. HEAD + 62 clean 双重验收；必须输出 SYNCED
+python3 scripts/deployment_sync.py check
 ```
 
-**纯前端改动 (只 scp `src/javert/web/static/*` 或模板) 跳过 step 4** — 静态文件即时生效 + cache-busting 自动刷; 仅 `*.py`/yaml 改动才需 step 4 重拉.
+部署物只携带当前 commit/tree 和 `src/`、`configs/`、`data/router/`、`scripts/`、
+`pyproject.toml`、`uv.lock` 的 blob；不携带仓库历史、`.env`、`data/` 患者文件或 `output/`。
+`artifact --allow-dirty` 仍然只取已提交 HEAD，仅供明确知道工作树未提交内容不属于本次发布时使用。
+
+**纯前端改动虽然无需重启，但仍必须使用带清单的部署包并跑 step 5**；静态文件即时生效 +
+cache-busting 自动刷新。仅 `*.py`/yaml 改动才需 step 4 重拉。
 
 数据 (data/) 或 schema (scripts/sql/) 改了类似流程, 但 schema 改完还要在 62 跑 `ensure-mssql-schema`.
 
@@ -388,6 +418,163 @@ uv run python scripts/drift_report.py --target mssql --out output/drift_142.csv
 
 **② 受影响患者重跑**: RD04 卡片改造（自然语言推理 + 命中药明细定位 + 「肿瘤靶向药用药方案合理性」follow-up + 免疫组化定位原文双链）只对**新 run** 生效, 旧 `med_rst*` 卡进历史。生效期闸关闭后, 窗口外就诊也会求值并带"核查生效时间"提示——如 K57728 维迪西妥单抗（HER2 IHC 1+ < 2+/3+）已翻 VIOLATION（batch `onco-uro-fix`）, 定性前须人工核查该限定 2025 就诊时是否已生效（见 `docs/oncology/operations.md` KB 生效期待核对）。重跑: `export JAVERT_BATCH_TAG=<≤20字符>; uv run javert audit-patient <号> --rules RD04`。
 
+### 10.7 肿瘤知识专家维护与 published release（142 authoring DDL 已落地，生产未发布）
+
+`add-oncology-kb-authoring` 已提供工作簿、校验、staging/物化边界、幂等 DDL 和 published
+release 离线加载能力。**本节不是发布记录**：截至 2026-07-22，142 `知识库_work` 已实际
+建立 schema、23 个必需触发器和中文审核视图；两次历史失败物化均已回滚，最终修正版已
+MATERIALIZED 为待审 DRAFT。专家审批、release candidate/publish 和 62 新 release 目录均未启用。
+
+子命令库存以当前程序动态输出为准：
+
+```bash
+uv run javert oncology-kb --help
+```
+
+工作流分为三道不可合并的门禁：
+
+1. **纯本地**：`export` 确定性生成两份工作簿；`validate` 只读 xlsx，
+   不读 SQL 配置、不建连接。每次专家回传都先离线校验：
+
+   ```bash
+   uv run javert oncology-kb validate \
+     /secure/path/肿瘤药指南适应证与医保限定条件树KB.xlsx --kind eligibility
+   uv run javert oncology-kb validate \
+     /secure/path/肿瘤治疗方案组成KB.xlsx --kind regimen
+   ```
+
+2. **知识库写入**：只能命中精确库名 `知识库_work`，且该库必须在该环境的
+   `JAVERT_OWNED_DBS` 中被单独批准。所有路径先核对白名单和 `DB_NAME()`；
+   DDL 还要求 ALTER 权限，内部用
+   `sqlcmd -d 知识库_work -v KB_DATABASE=知识库_work -b` 双重指定。不得把
+   `zadig`、`TP_data_hub` 或 `sh_yb_platform` 当成知识库目标。
+
+   升级既有 schema 时，`kb.review_event.reviewed_content_checksum` 不允许推测回填：若历史
+   审核行缺值，DDL 会在收紧 `NOT NULL` 前 `THROW 51003`。应由知识管理员根据当时被审核的
+   typed 内容和原始审批记录人工补齐、复核并留痕，再重新执行 `schema-apply`；不得用当前内容
+   checksum 覆盖历史事实。
+
+   DBA 创库、备份策略、最小权限 principal 和 owned 授权四项均留痕后，才按顺序执行：
+
+   ```bash
+   uv run javert oncology-kb schema-apply --database 知识库_work
+   uv run javert oncology-kb preflight /secure/path/专家回传工作簿.xlsx \
+     --kind eligibility --database 知识库_work
+   uv run javert oncology-kb upload /secure/path/专家回传工作簿.xlsx \
+     --kind eligibility --database 知识库_work --dry-run
+   ```
+
+   dry-run 只保存目标、checksum、计数和去敏预检结果。人工确认后才能去掉
+   `--dry-run` 并显式提供 `--uploaded-by`；已服务端校验为完整的 batch 才能进入
+   `materialize --batch-id ... --kind ... --database 知识库_work`。物化为单事务，任一实体
+   引用、日期、审核状态或对账失败都整批回滚。上传成功不等于批准或发布。
+
+   两类工作簿均物化后，append-only 最新审核事件必须完整且无未落库编辑，再逐个批准父
+   revision；`approve` 不创建或覆盖专家意见：
+
+   ```bash
+   uv run javert oncology-kb approve \
+     --entity-type eligibility \
+     --revision-id <eligibility-rule-revision-id> \
+     --reviewer-id <domain-reviewer-id> \
+     --database 知识库_work
+   uv run javert oncology-kb approve \
+     --entity-type regimen \
+     --revision-id <regimen-revision-id> \
+     --reviewer-id <domain-reviewer-id> \
+     --database 知识库_work
+   ```
+
+   `APPROVE_WITH_EDIT` 会生成完整 superseding DRAFT 子图，必须先 materialize 并针对新 checksum
+   追加已解决该编辑的最新审核事件；精选知识须按“编辑落 MAPPED → 新事件核验为 VERIFIED”
+   两步执行，药物类别 authority 也必须独立审核；
+   每条事件的 `reviewed_content_checksum` 还必须精确等于当前被审核 typed 内容；所有子项
+   checksum 过期、审核人不一致、条件树/来源/日期/药品概念不完整时，批准会整事务失败。
+
+3. **发布与 62 加载**：只有 approved 不可变 revision、来源全集分区、日期不重叠、
+   精选知识保全和职责分离门禁全部通过，才能编译为包含四份 JSON、
+   `release_manifest.json` 和 `coverage_manifest.json` 的不可变 bundle。先由发布管理员运行
+   只读 authority 检查：
+
+   ```bash
+   uv run javert oncology-kb release-authority \
+     --database 知识库_work \
+     --pathology-bootstrap /secure/path/pathology_biomarker_kb.json \
+     --pathology-bootstrap-checksum <sha256:pathology>
+   ```
+
+   将输出的 source、curated、pathology 三个 checksum pin 记录到 authoring 库之外的审批单。
+   任一权威集合或病理文件变化都必须重新检查和审批。随后由不属于任何领域审核人的 release
+   operator 构建数据库 candidate：
+
+   ```bash
+   uv run javert oncology-kb release-build \
+     --database 知识库_work \
+     --operator <release-operator-id> \
+     --created-at <ISO-8601> \
+     --pathology-bootstrap /secure/path/pathology_biomarker_kb.json \
+     --pathology-bootstrap-checksum <sha256:pathology> \
+     --source-authority-checksum <sha256:source> \
+     --curated-authority-checksum <sha256:curated> \
+     --releases-dir /secure/releases/oncology
+   ```
+
+   `release-build` 只登记 `CANDIDATE` 和 release items，不写本地 candidate bundle、不切指针。
+   独立发布授权核对返回的 release ID、三项 pin 和职责分离后，由 build 的同一 operator 发布：
+
+   ```bash
+   uv run javert oncology-kb release-publish \
+     --database 知识库_work \
+     --release-id <release-id> \
+     --operator <same-release-operator-id> \
+     --published-at <ISO-8601> \
+     --pathology-bootstrap /secure/path/pathology_biomarker_kb.json \
+     --pathology-bootstrap-checksum <sha256:pathology> \
+     --source-authority-checksum <sha256:source> \
+     --curated-authority-checksum <sha256:curated> \
+     --releases-dir /secure/releases/oncology
+   ```
+
+   publish 会在事务锁内从 authoring 全集重建 candidate；只有校验通过时才写不可变
+   `PUBLISHED` bundle、数据库状态/pointer 和本地 `active_release.json`。本地激活或数据库
+   commit 失败会恢复调用前的数据库与 active pointer；不可变 bundle 保留供使用原参数重试
+   时先校验后复用。不得以上传成功或数据库 candidate 替代发布授权。
+
+未来获授权部署时，将完整 published bundle 放到 62 的 mode 0700 本地目录，
+用经校验的 `active_release.json` 原子指向目标 release，然后才在 `.env` 设置：
+
+```bash
+JAVERT_ONCOLOGY_RELEASE_DIR=/home/admin2/javert/releases/oncology
+```
+
+重拉后必须在 `/proc/<pid>/environ` 核对实值，并验证 active pointer、manifest、四资产
+schema/checksum/review status/release ID 一致后再跑去标识回归。加载器只接受
+`PUBLISHED`；任一校验失败都中止，不回退到 candidate、staging 或专家维护库。
+回滚只切换到另一个已校验 published bundle，保留所有 release/revision/审计历史；
+执行参数为：
+
+```bash
+uv run javert oncology-kb release-rollback \
+  --database 知识库_work \
+  --target-release-id <historical-published-release-id> \
+  --operator <authorized-release-operator-id> \
+  --reason <approved-reason> \
+  --occurred-at <ISO-8601> \
+  --releases-dir /secure/releases/oncology
+```
+
+本地回滚切换失败时会补偿恢复数据库 release 状态和 pointer，并保留已有 bundle 与事件；
+同一目标已经 active 时返回 `reused=true`。职责固定为 DBA 管库与权限、领域专家管内容意见、
+知识管理员管导入/物化/批准投影、release operator 管 build/publish/rollback、独立授权人决定
+是否发布和部署。
+
+截至 2026-07-22，真实 142 DDL/视图已执行，23 个必需触发器均已启用；两次历史 generated
+DRAFT 失败 batch 留存且保持回滚，最终修正版已完成 validate/preflight/服务端校验并物化为
+待审 DRAFT。专家批准、production publish、
+62 新 bundle 启用、上一 release/数据库备份恢复演练及 paired shadow 均未执行；不得在 62
+设置 `JAVERT_ONCOLOGY_RELEASE_DIR`。当前事实见
+`docs/oncology/authoring/142_draft_seed_import_report.md`。
+
 ---
 
 ### 10.8 2C v2 联调热修复（2026-07-27）
@@ -456,6 +643,25 @@ uv run python scripts/drift_report.py --target mssql --out output/drift_142.csv
   `cache_misses=64→cache_hits=64`，终态为64张卡，v2 398个 matched item、v3 427条收费行。
 - 回滚：从上述备份恢复 `src/javert/web/api/routes_audit.py`，按 §3 kill-9 MainPID 触发
   systemd 重拉；无数据库变更，无需数据库回滚。
+
+### 10.11 2C v3 恢复与 FP8 端点复位（2026-08-03）
+
+- 用户确认 2C 生产对接固定使用最新 v3；v1/v2 只保留兼容。检查发现 62 后续部署曾把
+  `routes_audit.py` 和 `middleware.py` 覆盖为仅 v1 的旧版，导致 v2/v3 匿名探针返回 401；
+  同时 Javert 仍指向 FP8 `30000`，但端口未监听，不能受理真实审计。
+- 恢复前备份：`/home/admin2/backup/javert-2c-v3-restore-20260803-Y2Nf2R`（目录0700，
+  `.env`、重启前后进程环境、目标源码和完整 `src` 归档均为0600）。恢复后哈希：
+  `routes_audit.py = 4a83ed3b97f313c4a714302377dc730f139cf07334cbedaadbccee92740effd3`；
+  `middleware.py = 990af4283f721373b87ee612413f2f3ec67079415b55d202694085f348dfa493`。
+- W2 试验服务在无连接后停止，`30002` 关闭；DeepSeek-OCR 在无连接后停止，`30001` 关闭；
+  原 Qwen3.6 FP8 由 `/home/admin2/launch_qwen3.6.sh` 恢复到 `30000`。按 Javert 实际参数
+  `enable_thinking=false` 的无患者探针返回 `OK`、`reasoning_tokens=0`。
+- Javert Web 重拉后 MainPID `2731951`，systemd `active/running`、登录页 HTTP 200；重启前后
+  `JAVERT_*`/SQL/Hub 环境逐值无差异，`JAVERT_LLM_ENDPOINT` 仍为
+  `http://192.168.31.62:30000/v1`，SQL `zadig` 与同步线程健康，近5分钟错误标记0。
+- v3 外部空数组 submit 为 HTTP 202；不存在的去标识号 results 为 HTTP 200、
+  `api_version=3.0/status=unknown`；合成 Hub 查无探针为 HTTP 202 且明确 rejected，证明 Hub
+  只读连接正常。验收未提交真实患者、未创建审计任务、未写入患者结果。
 
 ## 11. 实测性能 (2026-05-21 50 病人 batch)
 

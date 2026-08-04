@@ -20,6 +20,8 @@ test4/
 
 # 审计结果与日志 (含患者裁决)
 output/
+outputs/
+.tmp_oncology_academic_slides/
 
 # 文档中的真实审核记录 (含患者 ID + 临床批注)
 docs/javert_vio_review.csv

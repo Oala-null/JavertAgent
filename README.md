@@ -2,12 +2,18 @@
 
 国家医保局 2026 年自查自纠问题清单 (0325) 中 163 条「做不了」违规情形的 LLM 审计脚手架.
 
-**当前库存（2026-07-17）**: 159 条规则 YAML，其中 118 ready、28 abandoned、13 drafting；
-运行 `.venv/bin/javert list` 获取实时口径，不要从历史实测报告反推当前规则数。
+**当前库存**: 运行 `.venv/bin/javert list` 获取实时口径，不要从历史实测报告反推规则数。
+当前 authoring change 已将 RD10-RD37 后退为 `drafting/migration-pending`，
+但不改变 5 条 production-ready bulk 入口。
 
 **data-hub (2026-07-03)**: 🟢 **数据中台三链打通** — 对接 `Scriv/Data_Hub` 46 张国标 TB_* 表: **回填** (`scripts/build_data_hub_filled.py`, sy 3309 + szx 全量 4701 患者 → 23 表 631 万记录, 含 通用文书/费用医保分解/手术医保双码 3 张扩展表) → **推送** (`scripts/push_data_hub_filled.py` → 142 `TP_data_hub` 库) → **反向取数** (`scripts/etl_from_data_hub.py`, 流B, zadig_agent 零改动). 双链路对照 J66252 裁决 16/18 一致无 V 级差异. 交接文档 `Scriv/data_hub_filled/_report.md`, 接入指引 `docs/数据接入清单.md` §四.
 
 **2C 对接 v3**：新接入使用 `/api/audit/v3/submit` 与 `/api/audit/v3/results/{SYXH}`；在完整规则卡片上按实际收费明细行返回数量、单价、开单科室编码/名称和开单医生工号/名称。`status=running` 时 cards 只是增量结果，必须轮询到 `done`。详见 `docs/2c对接_javert审计服务_v3.md`。
+
+**62 当前运行口径（2026-08-04）**：Javert 使用 30000 上的
+`Qwen/Qwen3.6-35B-A3B-FP8`；W2 试验服务 30002 与 OCR 30001 已停。62 的 Javert 目录为
+`production-62` 稀疏 Git 工作树，提交后用 `scripts/deployment_sync.py check` 核验本地与
+62 的 HEAD 相等且远端受控工作树 clean；发布步骤见 `docs/deployment_192_62.md` §10。
 
 **v0.12 (2026-06-04)**: 🟢 **现场演示自动驾驶 (redesign-onboarding-demo-flow)** — `/onboarding` 从工程师映射工具加一层自动驾驶, 面向投资方/合作医院现场演示. **稳**: 服务端进程内会话态单一真相源 (`onb_sid` 索引, 不落盘 JSON) — 删/重传(同名替换)/刷新都稳, 消灭"增删出问题"; **不炸**: `.loaded.env` 只写实际产出表 (缺表客户不再炸) + GUI「清空已载入」; **一词收尾**: `jv-go` 一词跑全量 + `jv-run-all` 逐患者进度行 (`[i/N] 患者号 ✓ xV yI zC`) + 载入面板自动复制剪贴板; **可解释**: 预检红灯可执行诊断 (命中最低表 + 成因) + 日期歧义一次性确认 (绝不静默反转); **丝滑**: 上传即自动认表 (`classifier.py` 最小启发式) + 绿/琥珀结果卡 (synth/asis/bridge 收进「调整▾」) + **我的文件→Javert 表流向图** (真实键标签·可拖节点·点线看明细). **483 测试 + 1 skip 绿**. 详见 `docs/sample_onboarding.md` §八.
 
@@ -19,7 +25,10 @@
 
 **v0.8 (2026-05-29)**: **药品违规审计上线** — M8 模板 + `drug_audit_lookup` 工具 + 928 通用名监管 KB, 32 条规则 (R007 + RD01-03 + RD10-37), on-label 误报闸. 详见 `docs/sample_drug_audit.md`.
 
-**肿瘤医保资格 v2（62 已验收启用）**: M8 当前生产入口收敛为 `RD04/R007/RD01/RD02/RD03` 五条 bulk；`RD04` 已 ready 并在 `on` 模式独占肿瘤医保限定臂；`RD10-RD37` 保持 abandoned。详见 `docs/oncology/operations.md`.
+**肿瘤医保资格 v2（62 已验收启用）**: M8 当前生产入口收敛为
+`RD04/R007/RD01/RD02/RD03` 五条 bulk；`RD04` 已 ready 并在 `on` 模式独占肿瘤医保限定臂；
+`RD10-RD37` 在当前 authoring change 中为 `drafting/migration-pending`，不进入
+默认执行集。知识 authoring、专家 Excel 和 142 门禁见 `docs/oncology/operations.md`。
 
 **v0.7 (2026-05-27)**: **外部医院数据接入** — ETL (`scripts/etl_import.py`) + 列名映射 + `【段落】` 自动拆分, 首次跑外部院真数据验证不依赖 shi 数据结构. 详见 `docs/数据接入清单.md`.
 
@@ -63,18 +72,25 @@ dry-run → 看 trace → 改 yaml → 再 dry-run; 成熟后 `mark ready` / `va
 每份模板文档含: master prompt 骨架 + 一条 reference yaml + 所有规则的 personalized 字段填充表.
 
 Y 装载: **101/109 = 92.7% ready** (M1-M7 骗保类; 剩 8 条等外部数据/工具, 详见 `docs/y_rules_status_v0_4.md`).
-药品类: **M8 当前 5 条 production-ready bulk** (`RD04/R007/RD01-03`)；`RD04` 是结构化肿瘤医保限定入口，`RD10-RD37` 已 abandoned，避免与 bulk 重复裁决。v0.8 历史验收见 `docs/sample_drug_audit.md`，当前所有权与启用流程见 `docs/oncology/operations.md`.
+药品类: **M8 当前 5 条 production-ready bulk** (`RD04/R007/RD01-03`)；`RD04` 是结构化
+肿瘤医保限定入口，`RD10-RD37` 在本地 authoring change 中为
+`drafting/migration-pending`，避免与 bulk 重复裁决。
+v0.8 历史验收见 `docs/sample_drug_audit.md`，当前所有权、专家维护与启用流程见
+`docs/oncology/operations.md`。
 
 ## 分析产出 (docs/)
 
 | 文件 | 用途 |
 |------|------|
-| `docs/how_javert_works.md` | 技术架构说明 (面向院方管理层/信息科/投资方的非技术汇报材料；159 条 YAML / 118 ready + 工具/Router/8 模板工作原理) |
+| `docs/how_javert_works.md` | 技术架构说明（面向院方管理层/信息科/投资方；工具、Router 与 8 模板工作原理；规则库存以 `javert list` 为准） |
+| `docs/2c对接_javert审计服务_v3.md` | 2C 新接入契约：异步轮询、完整 cards、收费明细行量价及开单科室/医生字段 |
 | `docs/做不了163规则可行性分析.md` | 163 条完整分析报告 (含 4 工具能力深潜 + 7 tier 分类 + pilot 选单) |
 | `docs/163规则可行性分析表.csv` | 给医保领域专家做 Y/N 标注 (4 优先级 + 留空 Y/N 列) |
 | `docs/templates/模板{1-7}.md` | 7 大模板的完整设计 + 全 109 条 Y personalization 数据 |
 | `docs/sample_drug_audit.md` | (v0.8) M8 药品类规则两批对照实测 + on-label 误报闸验收 + 抽样 ground-truth |
 | `docs/oncology/operations.md` | 肿瘤医保资格 v2 知识维护、运行验证、RD04/R007 所有权与回滚 |
+| `docs/oncology/kb_authoring_guide.md` | 肿瘤条件树/方案专家 Excel 一页式填写、校验与安全交回说明 |
+| `docs/oncology/authoring/source_coverage_matrix.md` | 从生成 JSON 动态查询医院/国家/指南/资产/规则/方案覆盖，不固化漂移计数 |
 | `docs/rule_design_guide.md` | yaml 字段含义与设计 checklist |
 | `docs/y_rules_status_v0_4.md` | **v0.4 历史快照**：当时 Y 装载 92.7% + 4 档质量分类 + 8 条缺口归因 |
 | `docs/y_rules_analysis.md` | (v0.3 旧版) 已被 v0.4 supersede |
@@ -245,9 +261,10 @@ cp /Users/shane/26er/shi/db/shi_ss.xls data/   # 病案首页手术
 uv run javert init --refresh-data --rebuild-store
 ```
 
-## 15 个顶层子命令
+## 顶层子命令（实时以 `--help` 为准）
 
 ```bash
+.venv/bin/javert --help                                   # 动态查看当前命令库存
 uv run javert list                                        # 列规则及统计 (含 priority 列)
 uv run javert dry-run R191 --patient J66252               # 单跑 + 打印 trace
 uv run javert run R191 --patient J66252                   # 单跑 (不打印 trace)
@@ -275,7 +292,32 @@ uv run javert prompt-fit R191 --template M1 --vars docs/m1_r191_vars.json --dry-
 uv run javert prompt-fit R045 --template M1 --vars docs/m1_r045_vars.json       # 写盘 + 标 derived_from_template
 uv run javert prompt-fit R047 --template M1 --interactive                       # 一字段一字段问
 uv run javert prompt-fit R047 --template M1 --auto                              # Qwen 起草 → 人审 [y/N]
+
+# 肿瘤知识专家维护（本地 export/validate；142 已有待审 DRAFT，仅供人工审阅）
+.venv/bin/javert oncology-kb --help
+.venv/bin/javert oncology-kb validate <workbook.xlsx> --kind eligibility
+.venv/bin/javert oncology-kb validate <workbook.xlsx> --kind regimen
+
+# 获授权后的命令参数以各自 --help 为准；执行顺序见 docs/oncology/operations.md
+.venv/bin/javert oncology-kb approve --help
+.venv/bin/javert oncology-kb release-authority --help
+.venv/bin/javert oncology-kb release-build --help
+.venv/bin/javert oncology-kb release-publish --help
+.venv/bin/javert oncology-kb release-rollback --help
 ```
+
+release 链路已是 operational 实现：`approve` 只投影 append-only 最新审核事件，并要求
+`reviewed_content_checksum` 精确匹配当前 typed 内容；只读
+`release-authority` 固定 source、curated、pathology 三个外部 checksum pin；
+`release-build` 只登记数据库 `CANDIDATE`，只有 `release-publish` 会用相同 pin 重建校验、
+写不可变 `PUBLISHED` 本地 bundle 并切 active pointer。领域审核人与 release operator 必须
+分离；publish/rollback 跨数据库与本地指针失败时执行补偿，使用原参数重试仍会重新校验。
+截至 2026-07-22，142 `知识库_work` 已实际执行幂等 DDL 并建立 6 个中文审核视图；两次
+历史 generated DRAFT 物化探针均由单事务完整回滚；用户重新授权后，最终修正版已通过离线校验、
+preflight、服务端校验并完成物化，23 个必需触发器均已启用。当前数据仍是待审 DRAFT，
+`review_event=0`、release=0。详见
+`docs/oncology/authoring/142_draft_seed_import_report.md`。这不代表专家批准或发布；生产
+publish/rollback、62 published bundle 启用和 paired shadow 仍未执行。
 
 ## 一次性脚本
 
@@ -355,9 +397,9 @@ abandoned (任意状态可达, 无需 force)
 uv run pytest tests/ -v
 ```
 
-2026-07-17 当前完整套件为 `807 collected / 795 passed / 12 skipped /
-0 failed / 0 errors`。12 个 skip 均有显式原因；精确命令、历史债务闭环和跳过清单见
-`docs/oncology/qa_report.md`。
+2026-07-22 记录的完整套件为 `1040 collected / 1039 passed / 1 skipped /
+0 failed / 0 errors`。唯一 skip 是已有不可达 `for-else` 分支契约；精确命令、SQL/oncology
+分组计数和外部门禁见 `docs/oncology/qa_report.md`。
 
 ## 与 zadig_agent 的关系
 

@@ -1,6 +1,9 @@
 # 药品类规则 (M8) 实测报告 — v0.8 `add-drug-audit-rules`
 
-> **历史快照**：本文记录 v0.8 当时的 32 条规则验收，不代表当前执行状态。当前 production-ready 入口已收敛为 `RD04/R007/RD01/RD02/RD03` 五条 bulk；`RD10-RD37` 均为 abandoned。当前状态见 `docs/oncology/operations.md`.
+> **历史快照**：本文记录 v0.8 当时的 32 条规则验收，不代表当前执行状态。production-ready
+> 入口已收敛为 `RD04/R007/RD01/RD02/RD03` 五条 bulk；2026-07-17 的 62 已部署基线中
+> `RD10-RD37` 为 `abandoned`，本地 authoring change 中则为 `drafting/migration-pending`。
+> 两者均不进入默认执行集，当前状态见 `docs/oncology/operations.md`。
 
 两批对照验证 M8 药品适应症/限定审计: **综合科批** (药品丰富, 验真违规信号) + **甲状腺批** (on-label 误报闸验收).
 
