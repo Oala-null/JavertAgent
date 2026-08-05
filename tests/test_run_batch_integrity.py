@@ -114,7 +114,9 @@ def test_unknown_rule_gets_explicit_fail(batch_client, monkeypatch):
     assert start["rules"] == ["R191"] and start["total"] == 1
 
 
-def test_normal_path_result_payload_unchanged(batch_client, monkeypatch):
+def test_normal_path_result_payload_keeps_legacy_fields_and_adds_public_projection(
+    batch_client, monkeypatch,
+):
     monkeypatch.setattr(ra, "persist_one",
                         lambda result, rule, triggered_by: {"sync_state": "synced"})
     r = batch_client.post("/api/audit/run-batch",
@@ -122,7 +124,7 @@ def test_normal_path_result_payload_unchanged(batch_client, monkeypatch):
     events = _parse_sse(r.text)
     results = [d for e, d in events if e == "result"]
     assert len(results) == 1
-    # 当前 SSE 契约：旧字段不变，结构化肿瘤资格字段以可空值向后兼容。
+    # 当前 SSE 契约：旧字段不变，公开解释与 Promise 摘要只做 additive 扩展。
     expected = {
         "run_id": "aud_abcdef123456",
         "rule_id": "R191",
@@ -140,6 +142,12 @@ def test_normal_path_result_payload_unchanged(batch_client, monkeypatch):
         "started_at": "2026-07-07T00:00:00+00:00",
         "eligibility_evaluation": None,
     }
-    assert results[0] == expected
+    assert {key: results[0][key] for key in expected} == expected
+    assert set(results[0]) == {*expected, "public_explanation", "promise"}
+    assert set(results[0]["public_explanation"]) == {
+        "conclusion", "audit_items", "charge_facts", "basis",
+        "clinical_evidence", "review_needs",
+    }
+    assert results[0]["promise"] is None
     done = [d for e, d in events if e == "done"][0]
     assert done == {"total": 1, "completed": 1}

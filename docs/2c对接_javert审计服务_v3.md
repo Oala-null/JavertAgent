@@ -182,6 +182,15 @@ v3 card 保留 v2 的大类、规则、裁决、推理、证据、适用性和�
     "code": "T380601",
     "title": "超范围支付"
   },
+  "public_explanation": {
+    "conclusion": {"label": "未发现违规", "summary": "现有结构化事实未支持违规结论。"},
+    "audit_items": ["申请医保支付的肿瘤药，超出医保药品目录限定支付范围。"],
+    "charge_facts": [],
+    "basis": [],
+    "clinical_evidence": [],
+    "review_needs": []
+  },
+  "promise": null,
   "rule": {
     "id": "RD04",
     "name": "超医保限定支付适应症用药",
@@ -211,6 +220,12 @@ v3 card 保留 v2 的大类、规则、裁决、推理、证据、适用性和�
 ```
 
 规则没有实际费用命中时，card 仍然返回，`matched_items` 和三个 `hit_*` 数组为空。不得因为 `matched_items=[]` 丢弃 CLEAN、不适用或其他卡片。
+
+`public_explanation` 和 `promise` 为 v1/v2/v3 共用的 additive 字段：前者固定包含
+`conclusion/audit_items/charge_facts/basis/clinical_evidence/review_needs`，后者为空或仅含
+`locked/historical_conflict`。既有 `rule_id/reasoning/evidence` 等兼容字段继续保留；医生
+默认界面应展示公开解释。该增量不改变 v3 按实际收费源行展开 `matched_items[]`、兼容数组
+等长对齐或每条规则一张 card 的语义。
 
 ## 5. matched_items[] 收费明细行
 

@@ -355,6 +355,11 @@ def test_results_done_with_runs(client):
     }]
     assert item["finished_at"] == "2026-07-15T08:00:45+00:00"
     assert item["rule_name"]  # R191 yaml 存在 → violation_type 非空
+    assert item["behavior_code"] == "T380301"
+    assert set(item["public_explanation"]) == {
+        "conclusion", "audit_items", "charge_facts", "basis", "clinical_evidence", "review_needs",
+    }
+    assert "promise" in item
     # hits: V 结果 join 患者费用行出编码 (2C 侧凭 code_nat/matched_fee_name 对明细)
     (hit,) = item["hits"]
     assert hit["source"] == "fee"
@@ -435,6 +440,10 @@ def test_v2_multiple_hits_keep_code_name_time_aligned(client):
     assert "results" not in body
     (card,) = body["cards"]
     assert card["category"] == {"code": "T380301", "title": "重复收费"}
+    assert set(card["public_explanation"]) == {
+        "conclusion", "audit_items", "charge_facts", "basis", "clinical_evidence", "review_needs",
+    }
+    assert "promise" in card
     assert len(card["matched_items"]) == 3
     assert card["hit_codes"] == [
         item["code"] for item in card["matched_items"]
@@ -456,6 +465,8 @@ def test_v2_multiple_hits_keep_code_name_time_aligned(client):
     assert v3["api_version"] == "3.0"
     assert "results" not in v3
     (v3_card,) = v3["cards"]
+    assert v3_card["public_explanation"] == card["public_explanation"]
+    assert v3_card["promise"] == card["promise"]
     assert len(v3_card["matched_items"]) == 3
     first = v3_card["matched_items"][0]
     assert first["quantity"] == 1

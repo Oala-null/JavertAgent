@@ -525,13 +525,13 @@ def test_release_scope_and_temporal_provenance_round_trip_as_additive_fields(
         filter_label="全部",
         runs=[run],
     )
-    assert "release-synthetic" in html
-    assert "revision-synthetic" in html
+    assert "release-synthetic" not in html
+    assert "revision-synthetic" not in html
     assert "指南适应证" in html
-    assert "BEFORE_EFFECTIVE_WINDOW" in html
-    assert "窗口前回溯应用最早已批准版本" in html
-    assert "source-document-synthetic" in html
-    assert "source-fragment-synthetic" in html
+    assert "BEFORE_EFFECTIVE_WINDOW" not in html
+    assert "核查当期指南/医保限定是否适用" in html
+    assert "source-document-synthetic" not in html
+    assert "source-fragment-synthetic" not in html
 
 
 def test_dual_scope_round_trips_through_store_api_runner_and_workbench(

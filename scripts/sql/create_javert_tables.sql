@@ -37,6 +37,7 @@ BEGIN
         evidence_json       NVARCHAR(MAX)  NULL,
         tool_calls_json     NVARCHAR(MAX)  NULL,
         eligibility_json    NVARCHAR(MAX)  NULL,
+        promise_trace_json  NVARCHAR(MAX)  NULL,
         duration_ms         INT            NULL,
         model               NVARCHAR(200)  NULL,
         rule_yaml_snapshot  NVARCHAR(MAX)  NULL,
@@ -51,6 +52,20 @@ BEGIN
 END
 ELSE
     PRINT 'Table javert_audit_runs already exists, skip CREATE';
+GO
+
+-- add-evolving-promise-harness: 可空、去标识终局 Promise trace (幂等迁移)
+IF NOT EXISTS (
+    SELECT 1 FROM sys.columns
+    WHERE Name = N'promise_trace_json'
+      AND Object_ID = Object_ID(N'javert_audit_runs')
+)
+BEGIN
+    ALTER TABLE javert_audit_runs ADD promise_trace_json NVARCHAR(MAX) NULL;
+    PRINT 'Added column promise_trace_json to javert_audit_runs';
+END
+ELSE
+    PRINT 'Column promise_trace_json already exists on javert_audit_runs';
 GO
 
 -- strengthen-oncology-drug-eligibility: 单一可空结构化资格 JSON (幂等迁移)

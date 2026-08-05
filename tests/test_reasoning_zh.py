@@ -83,5 +83,5 @@ def test_behavior_name_mapping():
     assert behavior_name("分解收费") == "分解项目收费"
     assert behavior_name("超医保限定支付适应症用药") == "超范围支付"
     assert behavior_name("串换项目") == "串换药品、医用耗材、诊疗项目和服务设施"
-    assert behavior_name("没登记的细类") == "没登记的细类"  # 回退原词
+    assert behavior_name("没登记的细类") == "未分类"  # 公开类别禁止回退内部类型
     assert behavior_name("") == "未分类"

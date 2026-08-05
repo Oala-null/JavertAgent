@@ -1,0 +1,11 @@
+asset_type: drift_case
+case_id: DRIFT-PUBLIC-HIT
+status: confirmed
+title: 无收费行时投影出抽象定位命中
+observed_behavior: 搜索参数或定位文本被当作真实费用命中。
+expected_behavior: 费用命中必须关联实际净正收费组。
+facts:
+  actual_charge_groups: 0
+confirmation:
+  source_type: test_reproduction
+  reference: tests/test_promise_drift_baseline.py 的去标识失败基线

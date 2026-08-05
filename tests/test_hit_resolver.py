@@ -244,36 +244,21 @@ def test_malformed_tool_calls_no_crash():
 
 
 def test_fee_anchor_no_match_uses_hit_name_not_unresolved():
-    """D1: drug 命中但该 patient 无 fee 行 (未计费/未匹码) → 锚点用命中名做模糊 query,
-    仍切 fees tab, match_level=name, NOT unresolved (跳转可达性与编码富集解耦)."""
+    """无患者实际收费行时不得公开投影药品搜索词。"""
     ev = _ev({"source": "drug_audit_lookup", "locator": "甘露醇注射液",
               "text": "通用名「甘露醇注射液」"})
     # fee_df 不含甘露醇行 → 无 fee 匹配 (拿不到码)
     no_match_fees = _fee_df([["脑功能成像", "S21020000300010", "210200003"]])
-    h = resolve_hits_from_json(ev, _tc(), "限适应症", no_match_fees, KB)[0]
-    assert h.anchor.tab == "fees"
-    assert h.anchor.match_level == "name"
-    assert h.anchor.unresolved is False
-    assert h.anchor.query == "甘露醇注射液"   # 命中名做 query, 费用 tab 子串高亮
-    # 编码缺失 (严格不臆造) 但名 + 限定仍渲染
-    assert h.code_nat == ""
-    assert h.name == "甘露醇注射液"
-    assert "脑水肿" in h.restriction
+    assert resolve_hits_from_json(ev, _tc(), "限适应症", no_match_fees, KB) == []
 
 
 def test_fee_hit_recomb_human_blood_jumps_without_code():
-    """spec 场景: drug 命中「重组人血」, 患者 fee 无 stem 匹配行 (无码) → 锚点带 query=重组人血,
-    NOT unresolved; 打开后费用 tab 高亮任何含「重组人血」的行 (修复 J94935 R007 跳不动)."""
+    """没有匹配收费组时不把模糊药名投影成公开命中。"""
     ev = _ev({"source": "drug_audit_lookup", "locator": "重组人血",
               "text": "用药「重组人血」无指征"})
     # 患者实际 fee 表里没有 stem 匹配「重组人血」的行 → 编码富集失败 (无码)
     other_fees = _fee_df([["注射用头孢曲松", "XA01", "001"]])
-    h = resolve_hits_from_json(ev, _tc(), "限适应症", other_fees, {})[0]
-    assert h.anchor.tab == "fees"
-    assert h.anchor.query == "重组人血"
-    assert h.anchor.unresolved is False
-    assert h.anchor.match_level == "name"
-    assert h.code_nat == ""  # 编码显示保持严格 — 无码不显码
+    assert resolve_hits_from_json(ev, _tc(), "限适应症", other_fees, {}) == []
 
 
 def test_underivable_evidence_skipped():
@@ -444,15 +429,13 @@ def test_generic_locator_name_from_quoted_text():
     """locator 是 '费用明细检索' 占位 → 从 text 引文捞首个关键词 (完整通用名)."""
     ev = _ev({"source": "search_fees", "locator": "费用明细检索",
               "text": "在患者全量费用明细中，使用关键词 '注射用盐酸万古霉素'、'万古霉素' 检索，均未找到。"})
-    h = resolve_hits_from_json(ev, _tc(), None, None, KB)[0]
-    assert h.name == "注射用盐酸万古霉素"  # 不再显示 "费用明细检索"
+    assert resolve_hits_from_json(ev, _tc(), None, None, KB) == []
 
 
 def test_generic_locator_name_from_fullwidth_quote():
     ev = _ev({"source": "search_fees", "locator": "费用明细搜索",
               "text": "在患者全量费用明细中搜索关键词「果糖」，未找到任何相关费用项目。"})
-    h = resolve_hits_from_json(ev, _tc(), None, None, KB)[0]
-    assert h.name == "果糖"
+    assert resolve_hits_from_json(ev, _tc(), None, None, KB) == []
 
 
 def test_generic_locator_name_from_keyword_arg():
@@ -467,8 +450,7 @@ def test_generic_locator_name_from_keyword_arg():
 def test_generic_locator_paren_fallback():
     ev = _ev({"source": "search_fees", "locator": "费用明细搜索(肩锁)",
               "text": "未找到费用项目"})
-    h = resolve_hits_from_json(ev, _tc(), None, None, KB)[0]
-    assert h.name == "肩锁"
+    assert resolve_hits_from_json(ev, _tc(), None, None, KB) == []
 
 
 def test_specific_locator_not_rewritten():
@@ -484,8 +466,7 @@ def test_generic_locator_falls_back_to_tool_call_keyword_in_text():
     ev = _ev({"source": "search_fees", "locator": "费用明细摘要",
               "text": "全身麻醉气管插管 800.00; 麻醉后复苏监护 300.00"})
     tc = _tc({"tool_name": "search_fees", "arguments": {"patient_id": "X", "keyword": "麻醉"}})
-    h = resolve_hits_from_json(ev, tc, None, None, KB)[0]
-    assert h.name == "麻醉"  # 不再是"费用明细摘要"
+    assert resolve_hits_from_json(ev, tc, None, None, KB) == []
 
 
 def test_generic_locator_tool_call_keyword_first_when_none_in_text():
@@ -494,8 +475,7 @@ def test_generic_locator_tool_call_keyword_first_when_none_in_text():
               "text": "以上项目均未在费用明细中找到"})
     tc = _tc({"tool_name": "search_fees", "arguments": {"keyword": "开髓引流"}},
              {"tool_name": "search_fees", "arguments": {"keyword": "根管充填"}})
-    h = resolve_hits_from_json(ev, tc, None, None, KB)[0]
-    assert h.name == "开髓引流"  # 第一个实搜词
+    assert resolve_hits_from_json(ev, tc, None, None, KB) == []
 
 
 # =========================================================

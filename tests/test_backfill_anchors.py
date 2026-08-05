@@ -199,7 +199,7 @@ def test_backfill_sqlite_dry_run_writes_nothing(tmp_path):
 # =========================================================
 # route fallback / cache-hit (无需 142)
 # =========================================================
-def test_route_resolve_hits_cache_hit_and_fallback():
+def test_route_resolve_hits_cache_hit_charge_recheck_and_fallback():
     from javert.web.api.routes_workbench import _resolve_hits_for_runs
 
     run = SimpleNamespace(
@@ -208,13 +208,23 @@ def test_route_resolve_hits_cache_hit_and_fallback():
     )
     meta = load_rule_meta()
 
-    # 缓存命中 — 直接用 anchors_map, 不触 loader/KB
-    cached_hits = [HitItem(source="drug", name="缓存药", code_nat="CC",
-                           restriction="完整缓存依据。",
-                           anchor=Anchor(tab="fees", query="x"))]
+    # 非收费锚点缓存可直接复用。
+    cached_hits = [HitItem(source="note", name="缓存文书",
+                           anchor=Anchor(tab="notes", query="x"))]
     amap = {"aud_cache1": hits_to_json(cached_hits)}
     out = _resolve_hits_for_runs("J90508", [run], meta, amap)
     assert [h.model_dump() for h in out["aud_cache1"]] == [h.model_dump() for h in cached_hits]
+
+    # fee/drug 旧缓存必须重算，抽象名称不能绕过患者实际净正收费约束。
+    stale_charge_hits = [HitItem(source="drug", name="缓存药", code_nat="CC",
+                                 restriction="完整缓存依据。",
+                                 anchor=Anchor(tab="fees", query="x"))]
+    out_rechecked = _resolve_hits_for_runs(
+        "J90508", [run], meta, {"aud_cache1": hits_to_json(stale_charge_hits)},
+    )
+    assert out_rechecked["aud_cache1"]
+    assert all(hit.matched_fee_name for hit in out_rechecked["aud_cache1"] if hit.source == "drug")
+    assert all(hit.name != "缓存药" for hit in out_rechecked["aud_cache1"])
 
     # 缓存缺失 — 现算回退 (真实 loader + KB), 仍出命中项目
     out2 = _resolve_hits_for_runs("J90508", [run], meta, {})

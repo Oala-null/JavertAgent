@@ -13,6 +13,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from javert.oncology.contracts import EligibilityEvaluation
+from javert.promises.models import PromiseTrace
 
 
 ReviewVerdict = Literal["V", "I", "C"]
@@ -111,6 +112,7 @@ class HistoricalRun(BaseModel):
     created_at: datetime
     reviews: list[ReviewRecord] = Field(default_factory=list)
     eligibility_evaluation: EligibilityEvaluation | None = None
+    promise_trace: PromiseTrace | None = None
 
 
 class RunWithReviews(BaseModel):
@@ -132,6 +134,7 @@ class RunWithReviews(BaseModel):
     batch_tag: str | None = None  # v0.7: 这是 latest run 的 tag (v1.2 或 NULL)
     gate_tag: str = ""  # add-verdict-gate-layer: gate 降级标签 (缺文书/单次放过/低置信降级/'')
     eligibility_evaluation: EligibilityEvaluation | None = None
+    promise_trace: PromiseTrace | None = None
     reviews: list[ReviewRecord] = Field(default_factory=list)
     history: list[HistoricalRun] = Field(default_factory=list)  # v0.7
 

@@ -21,6 +21,8 @@ from sse_starlette.sse import EventSourceResponse
 
 from javert.store.sqlserver_store import get_sqlserver_store
 from javert.web.auth import session_user_id
+from javert.web.public_presenter import present_public_explanation, public_promise_summary
+from javert.web.rule_meta import load_rule_meta
 
 logger = logging.getLogger("javert.web.routes_sse")
 
@@ -164,6 +166,10 @@ class AuditWatcher:
                         "confidence": row["confidence"],
                         "eligibility_evaluation": eligibility_evaluation,
                         **_eligibility_sse_fields(eligibility_evaluation),
+                        "public_explanation": present_public_explanation(
+                            row, load_rule_meta().get(row["rule_id"]), []
+                        ),
+                        "promise": public_promise_summary(row.get("promise_trace")),
                         "is_new_patient": is_new_p,
                     })
                     self._last_id = int(row["id"])

@@ -44,6 +44,10 @@ from javert.tools.registry import build_executor
 from javert.web.hit_resolver import load_kb_drugs, resolve_hits_from_json
 from javert.web.reasoning_zh import humanize_reasoning
 from javert.web.rule_meta import load_rule_meta
+from javert.web.public_presenter import (
+    present_public_explanation,
+    public_promise_summary,
+)
 
 from .routes_workbench import _get_loader
 from .schemas import AuditRunDetail, AuditRunSummary
@@ -64,6 +68,7 @@ def _format_sse(event: str, data: Any) -> str:
 
 def _result_payload(result: Any) -> dict:
     """AuditResult → result 事件 payload（单条 / 批量共用）。"""
+    meta = load_rule_meta().get(result.rule_id)
     return {
         "run_id": result.run_id,
         "rule_id": result.rule_id,
@@ -81,6 +86,8 @@ def _result_payload(result: Any) -> dict:
             if result.eligibility_evaluation is not None
             else None
         ),
+        "public_explanation": present_public_explanation(result, meta, []),
+        "promise": public_promise_summary(result.promise_trace),
     }
 
 
@@ -830,6 +837,7 @@ def _results_2c_payload(syxh: str, *, include_hits: bool) -> dict[str, Any]:
                 # 命中项目 (确定性, 复用工作台 hit_resolver): V/I 才算, 给 2C 侧
                 # join 自己的费用明细 (code_nat=国家医保码 / matched_fee_name=明细原始项目名)
                 hits: list[dict] = []
+                hit_items: list[Any] = []
                 hit_codes: list[str] = []
                 hit_names: list[str] = []
                 if include_hits and r.verdict in ("VIOLATION", "INCONCLUSIVE"):
@@ -870,6 +878,7 @@ def _results_2c_payload(syxh: str, *, include_hits: bool) -> dict[str, Any]:
                     "rule_id": r.rule_id,
                     "rule_name": meta["violation_type"] if meta else "",
                     "behavior_name": meta["behavior_name"] if meta else "",
+                    "behavior_code": meta["behavior_code"] if meta else "",
                     "verdict": r.verdict,
                     "verdict_label": _VERDICT_LABEL.get(r.verdict, r.verdict),
                     "confidence": r.confidence,
@@ -881,6 +890,10 @@ def _results_2c_payload(syxh: str, *, include_hits: bool) -> dict[str, Any]:
                         if r.eligibility_evaluation is not None
                         else None
                     ),
+                    "public_explanation": present_public_explanation(
+                        r, meta, hit_items
+                    ),
+                    "promise": public_promise_summary(r.promise_trace),
                     "evidence": [
                         {"source": e.source, "locator": e.locator, "text": e.text}
                         for e in r.evidence
@@ -1221,6 +1234,10 @@ def results_2c_v2(syxh: str):
                     "hits": hits,
                     "evidence": item["evidence"],
                     "eligibility_evaluation": item["eligibility_evaluation"],
+                    "public_explanation": present_public_explanation(
+                        run, meta, hit_items
+                    ),
+                    "promise": public_promise_summary(run.promise_trace),
                     "finished_at": item["finished_at"],
                 }
                 _2c_card_cache_put("2.0", projection_scope, run_id, card)

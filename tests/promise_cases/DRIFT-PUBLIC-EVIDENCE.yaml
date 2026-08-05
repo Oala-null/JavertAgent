@@ -1,0 +1,11 @@
+asset_type: drift_case
+case_id: DRIFT-PUBLIC-EVIDENCE
+status: confirmed
+title: 医生默认页面展示内部审计数据
+observed_behavior: 默认卡片展示内部规则编号、工具词和原始 evidence JSON。
+expected_behavior: 默认页面只展示结构化公共解释与人工复核提示。
+facts:
+  internal_fields_visible: true
+confirmation:
+  source_type: test_reproduction
+  reference: tests/test_promise_drift_baseline.py 的去标识失败基线

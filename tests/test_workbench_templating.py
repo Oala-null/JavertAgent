@@ -250,7 +250,7 @@ def test_patient_detail_v_card_with_my_review(alice):
         filter_label="违规 + 不明",
         runs=runs,
     )
-    assert "R191" in out
+    assert "R191" not in out
     assert "verdict-v" in out  # Javert verdict CSS class
     assert "您的审核" in out  # my_review block
     assert "符合规则" in out
@@ -417,9 +417,9 @@ def test_patient_detail_run_groups_chips_and_ordering(alice):
     assert "只看不明" in out
     assert "toggleInconclusiveOnly" in out
     assert 'data-has-i="0"' in out
-    # behavior-naming: 卡片头显示行为认定名称 (R 代号进 hover title), alias chip 已合并
+    # 公共卡片只显示行为认定名称，不再把内部 R 代号放进 hover。
     assert "rule-subtitle-alias" not in out
-    assert 'class="rule-id" title="' in out
+    assert 'class="rule-id" title="' not in out
 
 
 def test_patient_detail_long_comment_hover_full_text(alice):

@@ -16,6 +16,8 @@ from javert.oncology.contracts import EligibilityEvaluation
 from javert.oncology.runtime import decode_structured_payload
 from javert.tools.llm_provider import LlmUnavailableError, Qwen35Provider
 from javert.tools.tool_executor import ToolExecutor
+from javert.promises.loader import get_promise_repository
+from javert.promises.registry import evaluate_terminal_promises
 
 from javert.data.fee_netting import net_fee_items
 
@@ -299,6 +301,8 @@ class Runner:
         self._net_fee_ctx_cache: dict[str, Any] = {}
         # 套餐闸原始费用帧 per-patient 缓存 (同日不同项目名数需按日期分组, net ctx 拿不到).
         self._fee_df_cache: dict[str, Any] = {}
+        # 资产非法时 Runner 构造即 fail closed；不静默退回可漂移的普通裁决。
+        self._promise_repository = get_promise_repository()
 
     # --- 公共 API ---
     def audit(
@@ -345,7 +349,10 @@ class Runner:
             try:
                 ctx = net_fee_items(self.loader.get_fees(patient_id))
             except Exception as exc:  # noqa: BLE001
-                logger.warning("net_fee_ctx 构建失败 patient=%s: %s (单次闸 fail-open)", patient_id, exc)
+                logger.warning(
+                    "net_fee_ctx 构建失败 error_type=%s (Promise 不适用，单次闸 fail-open)",
+                    type(exc).__name__,
+                )
         self._net_fee_ctx_cache[patient_id] = ctx
         return ctx
 
@@ -499,6 +506,54 @@ class Runner:
         t_start: float,
     ) -> AuditResult:
         """audit() 主体 — 提出来便于 try/finally 包裹 patient_context 管理."""
+        # --- 终局 Promise: 在任何普通预检或 LLM 裁决之前 ---
+        net_fee_ctx = self._build_net_fee_ctx(patient_id)
+        promise_outcome = evaluate_terminal_promises(
+            self._promise_repository.active_definitions,
+            rule.rule_id,
+            net_fee_ctx or {},
+        )
+        duration_ms = int((time.perf_counter() - t_start) * 1000)
+        if promise_outcome.conflict_ids:
+            # 只记录安全 Promise ID；不记录 patient、费用事实或完整 trace。
+            logger.error(
+                "terminal Promise conflict promises=%s",
+                ",".join(promise_outcome.conflict_ids),
+            )
+            return AuditResult(
+                run_id=run_id,
+                rule_id=rule.rule_id,
+                patient_id=patient_id,
+                verdict="INCONCLUSIVE",
+                confidence=0.0,
+                reasoning="PROMISE_CONFLICT",
+                evidence=[],
+                tool_calls=[],
+                duration_ms=duration_ms,
+                model=self.provider.model_name,
+                started_at=started,
+            )
+        if promise_outcome.match is not None:
+            match = promise_outcome.match
+            self.emit(
+                f"[Promise] {match.trace.promise_id}@{match.trace.version} "
+                f"→ {match.guarantee} ({match.trace.reason_code})"
+            )
+            return AuditResult(
+                run_id=run_id,
+                rule_id=rule.rule_id,
+                patient_id=patient_id,
+                verdict=match.guarantee,
+                confidence=1.0,
+                reasoning="退费后目标收费项目净数量未超过一次，未触发多次检查边界。",
+                evidence=[],
+                tool_calls=[],
+                duration_ms=duration_ms,
+                model=self.provider.model_name,
+                started_at=started,
+                promise_trace=match.trace,
+            )
+
         # --- 确定性预检 (pilot-deterministic-precheck): LLM loop 之前 ---
         # clean → 短路 CLEAN 零 LLM 调用; facts → 注入事实块 + 判 V 时合并费用锚点; 否则原路径.
         precheck_facts: str | None = None

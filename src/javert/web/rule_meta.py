@@ -27,8 +27,9 @@ class RuleMeta(TypedDict):
     question: str
     subtitle: str  # 临床检验.过度检查.P0.模板M2
     drug_rule_type: str | None  # M8 药品规则: 限适应症/超说明书/限二线/禁忌症; 否则 None
-    behavior_name: str  # 行为认定名称 (对外展示口径; 未登记细类回退 violation_type)
+    behavior_name: str  # 行为认定名称 (对外展示口径; 未登记统一为“未分类”)
     behavior_code: str  # 行为认定编码 (如 T380301; 未登记为 "")
+    behavior_exception_key: str
 
 
 _CACHE: dict[str, RuleMeta] | None = None
@@ -37,7 +38,7 @@ _BEHAVIOR_REL = "configs/behavior_names.yaml"
 
 
 def load_behavior_map() -> dict[str, dict]:
-    """behavior_names.yaml → {violation_type: {code, name}}. 缺文件/损坏 → {} (回退原词)."""
+    """behavior_names.yaml → {violation_type: {code, name}}；缺文件/损坏时 fail closed。"""
     global _BEHAVIOR_CACHE
     if _BEHAVIOR_CACHE is not None:
         return _BEHAVIOR_CACHE
@@ -51,20 +52,21 @@ def load_behavior_map() -> dict[str, dict]:
                 out[str(vt).strip()] = {
                     "name": str(entry["name"]).strip(),
                     "code": str(entry.get("code") or "").strip(),
+                    "exception_key": str(entry.get("exception_key") or "").strip(),
                 }
     except Exception as e:  # noqa: BLE001
-        logger.warning("behavior_names load 失败 (回退 violation_type 原词): %s", e)
+        logger.warning("behavior_names load 失败 (公开类别回退未分类): %s", e)
     _BEHAVIOR_CACHE = out
     return out
 
 
 def behavior_name(violation_type: str | None) -> str:
-    """violation_type → 行为认定名称 (对外展示口径). 未登记 → 原词; 空 → 未分类."""
+    """violation_type → 行为认定名称；未登记或为空均 fail closed 为“未分类”。"""
     vt = (violation_type or "").strip()
     if not vt:
         return "未分类"
     entry = load_behavior_map().get(vt)
-    return entry["name"] if entry else vt
+    return entry["name"] if entry else "未分类"
 
 
 def behavior_code(violation_type: str | None) -> str:
@@ -114,6 +116,9 @@ def load_rule_meta() -> dict[str, RuleMeta]:
                 drug_rule_type=rule.drug_rule_type,
                 behavior_name=behavior_name(rule.violation_type),
                 behavior_code=behavior_code(rule.violation_type),
+                behavior_exception_key=(
+                    load_behavior_map().get(rule.violation_type, {}).get("exception_key", "")
+                ),
             )
         logger.info("rule_meta cache: %d rules loaded", len(out))
     except Exception as e:

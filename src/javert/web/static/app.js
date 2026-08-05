@@ -121,11 +121,56 @@
 
   // ---------- 原始数据 fetch (modal + 对照面板共用缓存) + table builders ----------
   var _rawCache = {};
-  function fetchRaw(pid) {
-    if (_rawCache[pid]) return Promise.resolve(_rawCache[pid]);
-    return fetch("/api/patient/" + encodeURIComponent(pid) + "/raw", {credentials: "same-origin"})
-      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
-      .then(function (data) { _rawCache[pid] = data; return data; });
+  function fetchRaw(pid, tab, force) {
+    var key = pid + ":" + tab;
+    if (!force && _rawCache[key]) return Promise.resolve(_rawCache[key]);
+    var url = "/api/patient/" + encodeURIComponent(pid) + "/raw?tab=" + encodeURIComponent(tab);
+    return fetch(url, {credentials: "same-origin"})
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (body) {
+          if (r.ok) return body;
+          var detail = body && body.detail && typeof body.detail === "object" ? body.detail : {};
+          var err = new Error(detail.message || "原文加载失败");
+          err.status = r.status;
+          err.code = detail.code || "RAW_REQUEST_FAILED";
+          err.retryable = !!detail.retryable;
+          throw err;
+        });
+      })
+      .then(function (data) { _rawCache[key] = data; return data; });
+  }
+
+  function _rawErrorMessage(err) {
+    if (err && err.status === 503) return "原文数据源暂不可用，请稍后重试。";
+    if (err && err.status === 404) return "该页签暂无原始数据。";
+    return "原文加载失败，请稍后重试。";
+  }
+
+  function _tabPanelHtml(tab, data, hidden) {
+    if (tab === "fees") return _feesPanelHtml(data, hidden);
+    if (tab === "labs") return _labsPanelHtml(data, hidden);
+    var html = _notesPanelHtml(data);
+    return hidden ? html.replace('data-panel="notes"', 'data-panel="notes" hidden') : html;
+  }
+
+  function _tabCount(tab, data) {
+    if (tab === "fees") return data.n_fees || 0;
+    if (tab === "labs") return (data.n_labs || 0) + (data.n_exams || 0);
+    return data.n_notes || 0;
+  }
+
+  function _tabLabel(tab) {
+    return tab === "fees" ? "费用" : (tab === "labs" ? "检验记录" : "文书");
+  }
+
+  function _firstAvailableRaw(pid, tabs, index) {
+    index = index || 0;
+    return fetchRaw(pid, tabs[index]).catch(function (err) {
+      if (err.status === 404 && index + 1 < tabs.length) {
+        return _firstAvailableRaw(pid, tabs, index + 1);
+      }
+      throw err;
+    });
   }
 
   function _notesPanelHtml(data) {
@@ -227,7 +272,8 @@
   // ---------- 原始病历 modal (全量浏览入口, 保留) ----------
   window.showRawData = function (patientId) {
     var root = document.getElementById("modal-root") || document.body;
-    fetchRaw(patientId).then(function (data) {
+    _firstAvailableRaw(patientId, ["notes", "fees", "labs"]).then(function (data) {
+      var activeTab = data.tab || "notes";
       root.innerHTML =
         '<div class="modal-overlay" onclick="if(event.target===this)closeModal()">' +
         '<div class="modal raw-modal" style="max-width:1040px;">' +
@@ -235,12 +281,11 @@
           '<h2>' + _esc(patientId) + ' · 原始病历</h2>' +
           '<p class="muted">主诊: ' + _esc(data.main_diagnosis || "—") + '</p>' +
           '<div class="modal-tabs" role="tablist">' +
-            '<button type="button" class="tab active" data-tab="notes" onclick="switchTab(this,\'notes\')">' +
-              '文书 (' + (data.n_notes || 0) + ' 段)</button>' +
-            '<button type="button" class="tab" data-tab="fees" onclick="switchTab(this,\'fees\')">' +
-              '费用 (' + (data.n_fees || 0) + ')</button>' +
-            '<button type="button" class="tab" data-tab="labs" onclick="switchTab(this,\'labs\')">' +
-              '检验记录 (' + ((data.n_labs || 0) + (data.n_exams || 0)) + ')</button>' +
+            ["notes", "fees", "labs"].map(function (tab) {
+              return '<button type="button" class="tab' + (tab === activeTab ? ' active' : '') +
+                '" data-tab="' + tab + '" onclick="switchRawTab(this,\'' + tab + '\')">' +
+                _tabLabel(tab) + (tab === activeTab ? ' (' + _tabCount(tab, data) + ')' : '') + '</button>';
+            }).join("") +
           '</div>' +
           '<div class="modal-search src-search">' +
             '<input type="text" class="src-search-input" placeholder="搜索 (Ctrl+F / ⌘F) — 当前 tab 内高亮跳转" ' +
@@ -251,14 +296,44 @@
             '<button type="button" onclick="clearSearch(this)" title="清空 (Esc)">×</button>' +
           '</div>' +
           '<div class="source-hint" hidden></div>' +
-          '<div class="modal-body src-scope">' +
-            _notesPanelHtml(data) + _feesPanelHtml(data, true) + _labsPanelHtml(data, true) + '</div>' +
+          '<div class="modal-body src-scope" data-patient-id="' + _esc(patientId) + '">' +
+            _tabPanelHtml(activeTab, data, false) + '</div>' +
         '</div></div>';
       setTimeout(function () {
         var inp = document.querySelector(".raw-modal .src-search-input");
         if (inp) inp.focus();
       }, 0);
-    }).catch(function (e) { alert("加载原始数据失败: " + e.message); });
+    }).catch(function (e) { alert(_rawErrorMessage(e)); });
+  };
+
+  window.switchRawTab = function (btn, tab, patientId) {
+    var container = btn.closest(".raw-modal") || btn.closest("#source-panel");
+    if (!container) return;
+    var scope = container.querySelector(".src-scope");
+    patientId = patientId || (scope && scope.getAttribute("data-patient-id")) || window.JAVERT_PATIENT;
+    if (!patientId) return;
+    var existing = scope && scope.querySelector('[data-panel="' + tab + '"]');
+    if (existing) { switchTab(btn, tab); return; }
+    btn.disabled = true;
+    fetchRaw(patientId, tab).then(function (data) {
+      if (scope) scope.insertAdjacentHTML("beforeend", _tabPanelHtml(tab, data, true));
+      btn.textContent = _tabLabel(tab) + " (" + _tabCount(tab, data) + ")";
+      btn.disabled = false;
+      switchTab(btn, tab);
+    }).catch(function (err) {
+      btn.disabled = false;
+      var hint = container.querySelector(".source-hint");
+      if (hint) {
+        hint.hidden = false;
+        hint.innerHTML = _esc(_rawErrorMessage(err)) +
+          (err.retryable ? ' <button type="button" class="btn-secondary raw-retry">重试</button>' : '');
+        var retry = hint.querySelector(".raw-retry");
+        if (retry) retry.onclick = function () {
+          delete _rawCache[patientId + ":" + tab];
+          window.switchRawTab(btn, tab, patientId);
+        };
+      }
+    });
   };
 
   window.closeModal = function () {
@@ -286,16 +361,25 @@
     // 始终用右侧滑出对照面板 (parallel, 不 cover 原页面; 原违规卡片保留可左右对比).
     // 不再退回 modal — modal 会盖住整页且有渲染竞态.
     var panel = _ensureSourcePanel();
-    fetchRaw(pid).then(function (data) {
+    var targetTab = anchor.tab;
+    if (targetTab === "labs" || targetTab === "exams") targetTab = "labs";
+    else if (targetTab !== "fees") targetTab = "notes";
+    panel.innerHTML = '<div class="source-head"><strong>' + _esc(pid) +
+      ' · 原文对照</strong><button class="close-btn" onclick="closeSourcePanel()" title="关闭 (Esc)">×</button></div>' +
+      '<div class="source-hint">正在加载' + _tabLabel(targetTab) + '…</div>';
+    document.body.classList.add("compare-open");
+    fetchRaw(pid, targetTab).then(function (data) {
       panel.innerHTML =
         '<div class="source-head">' +
           '<strong>' + _esc(pid) + ' · 原文对照</strong>' +
           '<button class="close-btn" onclick="closeSourcePanel()" title="关闭 (Esc)">×</button>' +
         '</div>' +
         '<div class="modal-tabs" role="tablist">' +
-          '<button type="button" class="tab" data-tab="notes" onclick="switchTab(this,\'notes\')">文书 (' + (data.n_notes || 0) + ')</button>' +
-          '<button type="button" class="tab" data-tab="fees" onclick="switchTab(this,\'fees\')">费用 (' + (data.n_fees || 0) + ')</button>' +
-          '<button type="button" class="tab" data-tab="labs" onclick="switchTab(this,\'labs\')">检验记录 (' + ((data.n_labs || 0) + (data.n_exams || 0)) + ')</button>' +
+          ["notes", "fees", "labs"].map(function (tab) {
+            return '<button type="button" class="tab' + (tab === targetTab ? ' active' : '') +
+              '" data-tab="' + tab + '" onclick="switchRawTab(this,\'' + tab + '\')">' +
+              _tabLabel(tab) + (tab === targetTab ? ' (' + _tabCount(tab, data) + ')' : '') + '</button>';
+          }).join("") +
         '</div>' +
         '<div class="modal-search src-search">' +
           '<input type="text" class="src-search-input" placeholder="搜索当前 tab" oninput="onSearchInput(this)" onkeydown="onSearchKey(event)">' +
@@ -304,11 +388,20 @@
           '<button type="button" onclick="jumpMatch(1)" title="下一个">↓</button>' +
         '</div>' +
         '<div class="source-hint" hidden></div>' +
-        '<div class="source-body src-scope">' +
-          _notesPanelHtml(data) + _feesPanelHtml(data, true) + _labsPanelHtml(data, true) + '</div>';
-      document.body.classList.add("compare-open");
+        '<div class="source-body src-scope" data-patient-id="' + _esc(pid) + '">' +
+          _tabPanelHtml(targetTab, data, false) + '</div>';
       _applyAnchorInScope(panel, anchor);
-    }).catch(function (e) { showToast("加载原文失败: " + e.message); });
+    }).catch(function (err) {
+      panel.innerHTML = '<div class="source-head"><strong>' + _esc(pid) +
+        ' · 原文对照</strong><button class="close-btn" onclick="closeSourcePanel()">×</button></div>' +
+        '<div class="source-hint">' + _esc(_rawErrorMessage(err)) +
+        (err.retryable ? ' <button type="button" class="btn-secondary" id="source-retry">重试</button>' : '') + '</div>';
+      var retry = document.getElementById("source-retry");
+      if (retry) retry.onclick = function () {
+        delete _rawCache[pid + ":" + targetTab];
+        window.openSourcePanel(anchor);
+      };
+    });
   };
 
   window.closeSourcePanel = function () {

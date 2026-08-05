@@ -31,7 +31,6 @@ from javert.store.sqlserver_store import get_sqlserver_store
 from javert.web.auth import current_user, request_meta, session_user_id
 from javert.web.doc_order import bucket_of
 from javert.web.hit_resolver import (
-    has_duplicate_drug_fee_hits,
     hits_from_json,
     load_kb_drugs,
     resolve_hits,
@@ -41,7 +40,8 @@ from javert.web.patient_overview import (
     get_fees_sum_map,
     get_primary_dx,
 )
-from javert.web.rule_meta import load_rule_meta, violation_alias
+from javert.web.rule_meta import load_rule_meta
+from javert.web.public_presenter import present_public_explanation
 from javert.web.templating import render
 
 logger = logging.getLogger("javert.web.routes_workbench")
@@ -115,18 +115,13 @@ def _resolve_hits_for_runs(
         drug_type = m.get("drug_rule_type")
         # 1) 缓存命中 (确定性回填的 anchors_json)
         cached = hits_from_json(anchors_map.get(run.run_id)) if anchors_map else None
-        # 旧版药品缓存可能只有项目/编码，没有把当次审计已落库的限定或说明书依据
-        # 写入 restriction。此类半成品缓存不能遮住 evidence_json，现场重算即可让
-        # 历史结果生效，无需重跑 LLM；后续批量 backfill 会把新结果固化。
-        stale_drug_cache = bool(
-            drug_type
-            and cached is not None
-            and (
-                any(h.source == "drug" and not h.restriction for h in cached)
-                or has_duplicate_drug_fee_hits(cached)
-            )
+        # fee/drug 旧缓存可能是 locator/search fallback，必须关联当前患者净正收费后重算；
+        # note/lab/exam 锚点仍可直接复用。
+        stale_public_charge_cache = bool(
+            cached is not None
+            and any(h.source in {"fee", "drug"} for h in cached)
         )
-        if cached is not None and not stale_drug_cache:
+        if cached is not None and not stale_public_charge_cache:
             out[run.run_id] = cached
             continue
         # 2) 现算回退 (lazy 加载 fee/KB, 仅在确有 miss 时)
@@ -155,32 +150,40 @@ def _resolve_hits_for_runs(
 
 
 def _group_runs_by_violation_type(runs: list, meta_map: dict) -> list[dict]:
-    """把 runs 按细类 (violation_type) 分组, 组内 V 前 I 后 (D5).
+    """按公开 `(behavior_code, behavior_name)` 分组，组内保留全部规则卡。
 
     violation_type 取自 rule_meta (RunWithReviews 无此字段); 缺 meta → '未分类'.
     返回 `[{vt, alias, anchor, n_v, n_i, runs}]`, 组按首次出现序稳定排列;
     `anchor` 用组序号 (vt-N) 当 DOM id, 避开中文 / 特殊字符在 id/CSS selector 的坑.
     """
-    groups: dict[str, list] = {}
-    order: list[str] = []
+    groups: dict[tuple[str, str], list] = {}
+    order: list[tuple[str, str]] = []
     for run in runs:
         m = meta_map.get(run.rule_id) or {}
-        vt = (m.get("violation_type") or "").strip() or "未分类"
-        if vt not in groups:
-            groups[vt] = []
-            order.append(vt)
-        groups[vt].append(run)
+        code = (m.get("behavior_code") or "").strip()
+        name = (m.get("behavior_name") or "").strip() or "未分类"
+        exception_key = (m.get("behavior_exception_key") or "").strip()
+        code_key = code or (f"exception:{exception_key}" if exception_key else "")
+        key = (code_key, name)
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(run)
 
     def _verdict_rank(r) -> int:
         return 0 if r.verdict == "VIOLATION" else (1 if r.verdict == "INCONCLUSIVE" else 2)
 
     out: list[dict] = []
-    for i, vt in enumerate(order):
-        grp = groups[vt]
+    for i, key in enumerate(order):
+        code_key, name = key
+        grp = groups[key]
         grp.sort(key=_verdict_rank)  # stable: 组内 V → I → 其他(CLEAN)
         out.append({
-            "vt": vt,
-            "alias": violation_alias(vt),
+            "vt": name,
+            "alias": name if len(name) <= 10 else name[:8] + "…",
+            "behavior_code": "" if code_key.startswith("exception:") else code_key,
+            "behavior_name": name,
+            "exception_key": code_key.removeprefix("exception:") if code_key.startswith("exception:") else "",
             "anchor": f"vt-{i}",
             "n_v": sum(1 for r in grp if r.verdict == "VIOLATION"),
             "n_i": sum(1 for r in grp if r.verdict == "INCONCLUSIVE"),
@@ -312,6 +315,12 @@ def workbench_patient(
     meta_map = load_rule_meta()
     anchors_map = store.fetch_anchors_for_patient(patient_id)
     hits_by_run = _resolve_hits_for_runs(patient_id, runs, meta_map, anchors_map)
+    public_explanations = {
+        run.run_id: present_public_explanation(
+            run, meta_map.get(run.rule_id), hits_by_run.get(run.run_id, [])
+        )
+        for run in runs
+    }
     # 按细类分组 + 组内 V 前 I 后 (D5) — 模板按 run_groups 渲染可折叠 section + 顶部 chip
     run_groups = _group_runs_by_violation_type(runs, meta_map)
 
@@ -328,6 +337,7 @@ def workbench_patient(
         rule_meta=meta_map,
         overview=overview,
         hits_by_run=hits_by_run,
+        public_explanations=public_explanations,
     ))
 
 
@@ -549,14 +559,110 @@ def log_raw_rate_limited(request: Request) -> None:
 
 @router.get("/api/patient/{patient_id}/raw")
 @_rate_limit_raw
-def get_raw_patient(request: Request, patient_id: str):
-    """加载病人 fee + notes 原始数据 (留痕 + 每会话限流)."""
-    data = _raw_payload(patient_id)
+def get_raw_patient(
+    request: Request,
+    patient_id: str,
+    tab: str | None = Query(default=None, pattern="^(notes|fees|labs)$"),
+):
+    """加载原始数据；tab 请求最小查询并以 503/404 明确区分。"""
+    try:
+        data = _raw_payload(patient_id, tab=tab)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, dict) else {}
+        _log_raw_access(request, patient_id, source=str(detail.get("code") or exc.status_code))
+        raise
     _log_raw_access(request, patient_id, source=data.get("source", "csv"))
     return data
 
 
-def _raw_payload(patient_id: str) -> dict:
+def _fees_to_list(fees_df) -> list[dict]:
+    if fees_df is None or len(fees_df) == 0:
+        return []
+    keep = [c for c in (
+        "medins_list_name", "spec", "cnt", "pric",
+        "det_item_fee_sumamt", "medins_chrgitm_type", "fee_ocur_time",
+    ) if c in fees_df.columns]
+    records = fees_df[keep].fillna("").astype(str).to_dict("records")
+    for rec in records:
+        rec["fee_date"] = _fmt_fee_date(rec.get("fee_ocur_time", ""))
+    return records
+
+
+def _notes_to_list(notes_df) -> list[dict]:
+    if notes_df is None or len(notes_df) == 0:
+        return []
+    col_map = {
+        "阶段": "section", "子阶段": "subsection", "内容": "content",
+        "事件时间": "ts", "来源文件": "source",
+    }
+    cols_present = {zh: en for zh, en in col_map.items() if zh in notes_df.columns}
+    if not cols_present:
+        return []
+    slim = notes_df[list(cols_present)].fillna("").astype(str).rename(columns=cols_present)
+    records = slim.to_dict("records")
+    for rec in records:
+        name, order = bucket_of(rec.get("section", ""))
+        rec["bucket"] = name
+        rec["bucket_order"] = order
+    records.sort(key=lambda row: (row["bucket_order"], row.get("ts", "")))
+    return records
+
+
+def _raw_unavailable(tab: str, error_code: str) -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail={
+            "code": error_code,
+            "message": "原文数据源暂不可用，请稍后重试。",
+            "retryable": True,
+            "tab": tab,
+        },
+    )
+
+
+def _raw_tab_payload(patient_id: str, tab: str) -> dict:
+    from javert.web.hub_raw_source import RawSourceUnavailable
+
+    source = "csv"
+    try:
+        if tab == "fees":
+            fees_df = _get_loader().get_fees(patient_id)
+            rows = _fees_to_list(fees_df)
+            if not rows and get_config().hub_raw_enabled:
+                source = "hub"
+                rows = _fees_to_list(_get_hub_source().get_tab(patient_id, "fees"))
+            if not rows:
+                raise HTTPException(status_code=404, detail={"code": "RAW_TAB_NOT_FOUND", "tab": tab})
+            return {"patient_id": patient_id, "source": source, "tab": tab,
+                    "fees": rows, "n_fees": len(rows)}
+        if tab == "notes":
+            notes_df = _get_loader().get_notes(patient_id)
+            rows = _notes_to_list(notes_df)
+            if not rows and get_config().hub_raw_enabled:
+                source = "hub"
+                rows = _notes_to_list(_get_hub_source().get_tab(patient_id, "notes"))
+            if not rows:
+                raise HTTPException(status_code=404, detail={"code": "RAW_TAB_NOT_FOUND", "tab": tab})
+            return {"patient_id": patient_id, "source": source, "tab": tab,
+                    "notes": rows, "n_notes": len(rows)}
+        labs = _labs_to_list(patient_id, allow_hub=False)
+        exams = _exams_to_list(patient_id, allow_hub=False)
+        if not labs and not exams and get_config().hub_raw_enabled:
+            source = "hub"
+            bundle = _get_hub_source().get_tab(patient_id, "labs")
+            lab_rows = bundle["labs"].to_dict("records") if len(bundle["labs"]) else []
+            exam_rows = bundle["exams"].to_dict("records") if len(bundle["exams"]) else []
+            labs = _format_lab_rows(lab_rows)
+            exams = _format_exam_rows(exam_rows)
+        if not labs and not exams:
+            raise HTTPException(status_code=404, detail={"code": "RAW_TAB_NOT_FOUND", "tab": tab})
+        return {"patient_id": patient_id, "source": source, "tab": tab,
+                "labs": labs, "exams": exams, "n_labs": len(labs), "n_exams": len(exams)}
+    except RawSourceUnavailable as exc:
+        raise _raw_unavailable(tab, exc.error_code) from exc
+
+
+def _raw_payload(patient_id: str, tab: str | None = None) -> dict:
     """病人 fee + notes 原始数据 (纯数据组装, 无 request 依赖).
 
     实际 CSV 列名:
@@ -564,6 +670,11 @@ def _raw_payload(patient_id: str) -> dict:
       shi_fee.csv:    medins_list_name / spec / cnt / pric / det_item_fee_sumamt /
                        medins_chrgitm_type / fee_ocur_time / bah (英文)
     """
+    if tab is not None:
+        if tab not in {"notes", "fees", "labs"}:
+            raise HTTPException(status_code=422, detail={"code": "INVALID_RAW_TAB"})
+        return _raw_tab_payload(patient_id, tab)
+
     source = "csv"
     loader = _get_loader()
     fees_df = loader.get_fees(patient_id)
@@ -581,45 +692,6 @@ def _raw_payload(patient_id: str) -> dict:
     # 病案首页主诊从 shi_zd.xls 取 (case_notes 没有 main_dx)
     main_dx = _get_main_diagnosis(patient_id)
 
-    def _fees_to_list() -> list[dict]:
-        if fees_df is None or len(fees_df) == 0:
-            return []
-        keep = [c for c in (
-            "medins_list_name", "spec", "cnt", "pric",
-            "det_item_fee_sumamt", "medins_chrgitm_type", "fee_ocur_time",
-        ) if c in fees_df.columns]
-        records = fees_df[keep].fillna("").astype(str).to_dict("records")
-        # 预格式化时间列 (前端时间列前置 + 统一 YYYY/MM/DD, 前端不再各自 parse)
-        for rec in records:
-            rec["fee_date"] = _fmt_fee_date(rec.get("fee_ocur_time", ""))
-        return records
-
-    def _notes_to_list() -> list[dict]:
-        if notes_df is None or len(notes_df) == 0:
-            return []
-        # 中文列 → 友好英文 key (前端不显示原始中文)
-        col_map = {
-            "阶段": "section",
-            "子阶段": "subsection",
-            "内容": "content",
-            "事件时间": "ts",
-            "来源文件": "source",
-        }
-        cols_present = {zh: en for zh, en in col_map.items() if zh in notes_df.columns}
-        if not cols_present:
-            return []
-        slim = notes_df[list(cols_present.keys())].fillna("").astype(str)
-        slim = slim.rename(columns=cols_present)
-        records = slim.to_dict("records")
-        # 临床文书序分桶 (D3): 每条加 bucket(桶名) + bucket_order(排序键),
-        # 输出按 (bucket_order, 事件时间升序) — 前端按 bucket 分组折叠
-        for rec in records:
-            name, order = bucket_of(rec.get("section", ""))
-            rec["bucket"] = name
-            rec["bucket_order"] = order
-        records.sort(key=lambda r: (r["bucket_order"], r.get("ts", "")))
-        return records
-
     labs = _labs_to_list(patient_id)
     exams = _exams_to_list(patient_id)
 
@@ -627,8 +699,8 @@ def _raw_payload(patient_id: str) -> dict:
         "patient_id": patient_id,
         "source": source,
         "main_diagnosis": main_dx,
-        "fees": _fees_to_list(),
-        "notes": _notes_to_list(),
+        "fees": _fees_to_list(fees_df),
+        "notes": _notes_to_list(notes_df),
         "labs": labs,
         "exams": exams,
         "n_fees": len(fees_df) if fees_df is not None else 0,
@@ -638,50 +710,52 @@ def _raw_payload(patient_id: str) -> dict:
     }
 
 
-def _labs_to_list(patient_id: str) -> list[dict]:
+def _format_lab_rows(rows: list[dict]) -> list[dict]:
+    return [{
+        "date": _fmt_fee_date(r.get("report_dt") or ""),
+        "item": r.get("rpt_itemname") or r.get("rpt_itemcode") or "",
+        "inspection": r.get("inspectionName") or "",
+        "result": r.get("result") or "",
+        "unit": r.get("result_unit") or "",
+        "ref": r.get("result_ref") or "",
+        "flag": r.get("result_flag") or "",
+        "department": r.get("department") or "",
+    } for r in rows]
+
+
+def _labs_to_list(patient_id: str, *, allow_hub: bool = True) -> list[dict]:
     """该患者检验/化验报告 (按 report_dt 升序). 文件缺失/加载失败 → 空列表 (不阻断 raw)."""
     try:
         rows = _get_lab_loader().get_lab_results(patient_id)
     except Exception as e:  # noqa: BLE001
         logger.warning("加载检验数据失败 patient=%s: %s", patient_id, e)
         rows = []
-    if not rows and get_config().hub_raw_enabled:
+    if not rows and allow_hub and get_config().hub_raw_enabled:
         rows = _get_hub_source().get_labs(patient_id)
-    out: list[dict] = []
-    for r in rows:
-        out.append({
-            "date": _fmt_fee_date(r.get("report_dt") or ""),
-            "item": r.get("rpt_itemname") or r.get("rpt_itemcode") or "",
-            "inspection": r.get("inspectionName") or "",
-            "result": r.get("result") or "",
-            "unit": r.get("result_unit") or "",
-            "ref": r.get("result_ref") or "",
-            "flag": r.get("result_flag") or "",
-            "department": r.get("department") or "",
-        })
-    return out
+    return _format_lab_rows(rows)
 
 
-def _exams_to_list(patient_id: str) -> list[dict]:
+def _format_exam_rows(rows: list[dict]) -> list[dict]:
+    return [{
+        "date": _fmt_fee_date(r.get("reportDate") or r.get("checkDate") or ""),
+        "check_type": r.get("checkType") or "",
+        "item": r.get("checkItemName") or "",
+        "conclusion": r.get("checkConclusion") or "",
+        "describe": r.get("checkDescribe") or "",
+        "department": r.get("department") or "",
+    } for r in rows]
+
+
+def _exams_to_list(patient_id: str, *, allow_hub: bool = True) -> list[dict]:
     """该患者检查报告 (CT/超声/MRI...). 文件缺失/加载失败 → 空列表 (不阻断 raw)."""
     try:
         rows = _get_exam_loader().get_examinations(patient_id)
     except Exception as e:  # noqa: BLE001
         logger.warning("加载检查数据失败 patient=%s: %s", patient_id, e)
         rows = []
-    if not rows and get_config().hub_raw_enabled:
+    if not rows and allow_hub and get_config().hub_raw_enabled:
         rows = _get_hub_source().get_exams(patient_id)
-    out: list[dict] = []
-    for r in rows:
-        out.append({
-            "date": _fmt_fee_date(r.get("reportDate") or r.get("checkDate") or ""),
-            "check_type": r.get("checkType") or "",
-            "item": r.get("checkItemName") or "",
-            "conclusion": r.get("checkConclusion") or "",
-            "describe": r.get("checkDescribe") or "",
-            "department": r.get("department") or "",
-        })
-    return out
+    return _format_exam_rows(rows)
 
 
 # 病案首页主诊缓存 (shi_zd.xls 全表 10194 行, 进程级 lazy)

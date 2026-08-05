@@ -663,6 +663,45 @@ DRAFT 失败 batch 留存且保持回滚，最终修正版已完成 validate/pre
   `api_version=3.0/status=unknown`；合成 Hub 查无探针为 HTTP 202 且明确 rejected，证明 Hub
   只读连接正常。验收未提交真实患者、未创建审计任务、未写入患者结果。
 
+### 10.12 Promise 门禁、公开解释与原文懒加载（待授权发布）
+
+> 本节是 `add-evolving-promise-harness` 的发布清单，不表示已部署。未获得 62 上线授权前，
+> 不得把本地测试、schema 文件或文档更新冒充生产完成。
+
+发布前在已提交的本地 HEAD 运行：
+
+```bash
+.venv/bin/javert promise validate
+.venv/bin/javert promise run
+.venv/bin/pytest -q
+openspec validate add-evolving-promise-harness --strict
+```
+
+Promise harness 必须离线完成，禁止访问 LLM、网络、SQL Server 或 hub；报告和日志只能记录
+case/Promise 标识、状态、错误码、计数与耗时分桶，不能出现患者号、原始病历、SQL 参数、
+连接信息或完整 Promise facts。
+
+获授权后严格按 §10 的 `production-62` 已提交 HEAD 执行 artifact/install。覆盖代码、配置、
+前端和 SQL schema 后，先运行 `.venv/bin/javert ensure-mssql-schema` 幂等增加可空
+`promise_trace_json`，再重启服务。不得连接或修改只读 `sh_yb_platform` 的 schema；新增列
+只属于 Javert 结果库，旧行保持 `NULL`，不回填、不静默重评。
+
+重启后的生产验收必须同时满足：
+
+1. 本地与 62 `HEAD` 相等、62 受控工作树 clean，systemd active，登录页 HTTP 200；
+2. `/proc/<pid>/environ` 中 SQL、Hub、LLM 和肿瘤开关实值与发布前固化值一致；
+3. SQL/Hub 健康、SQLite/SQL Server 新旧行兼容，Promise trace 可空双写；
+4. v3 空数组 submit 返回 HTTP 202，不存在的去标识号 results 返回 HTTP 200/unknown；
+   BFF 验证 `public_explanation`、可空 `promise` 和 `behavior_code` 只加字段，不改变 card 数、
+   旧字段名或收费行展开；
+5. 用合成、去标识案例验证 Promise 锁命中时为 CLEAN、零 LLM，并验证 near-negative 不被清掉；
+6. 原文链路分别采集 62 回环直连、客户端 `--noproxy` 和浏览器路径的无 PHI 阶段结果；
+   对 notes/fees/labs 各验证成功、真实 404、可重试 503，确认费用跳转不等待其他 tab。
+
+原文诊断只允许记录 `source/tab/outcome/duration_bucket/cache_hit/error_code`。直连成功而浏览器
+失败应归代理路径；直连也失败再查应用 deadline、SQL Server 或 Hub，不以盲目放大超时作为
+默认修复。回滚应用到上一受控 HEAD 后保留新增可空列，不删除历史 trace。
+
 ## 11. 实测性能 (2026-05-21 50 病人 batch)
 
 ```

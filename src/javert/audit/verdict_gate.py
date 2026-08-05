@@ -32,6 +32,7 @@ import yaml
 from javert.config import get_config
 from javert.data.clinical_context import PatientClinicalContext
 from javert.data.fee_netting import NetItem, max_same_day_distinct_items
+from javert.promises.models import PromiseDefinition, PromiseTrace
 
 logger = logging.getLogger("javert.audit.verdict_gate")
 
@@ -193,6 +194,8 @@ def apply_gate(
     gate_cfg: GateConfig,
     clinical_ctx: PatientClinicalContext | None = None,
     fee_df: Any = None,
+    promise_trace: PromiseTrace | dict[str, Any] | None = None,
+    promise_definitions: list[PromiseDefinition] | tuple[PromiseDefinition, ...] = (),
 ) -> GateOutcome:
     """对一条已解析的 verdict 应用确定性闸. 纯函数, 不写库.
 
@@ -212,6 +215,27 @@ def apply_gate(
       ① 旧『仅缺失』兜底 → ② 单次 → ③ conf 底线.
     """
     verdict = str(verdict_data.get("verdict") or "")
+    # 只有能与当前唯一 active 定义逐字段对上的 LOCKED trace 才可绕过普通闸。
+    # 伪造、过期、不完整 trace 全部忽略并继续旧 gate。
+    if promise_trace is not None:
+        try:
+            trace = PromiseTrace.model_validate(promise_trace)
+        except Exception:  # noqa: BLE001 - 非法外部 trace 必须 fail closed
+            trace = None
+        if trace is not None:
+            matches = [
+                definition
+                for definition in promise_definitions
+                if definition.status == "active"
+                and definition.promise_id == trace.promise_id
+                and definition.version == trace.version
+                and definition.kind == trace.kind
+                and definition.finality == trace.finality == "LOCKED"
+                and definition.reason_code == trace.reason_code
+                and definition.guarantee == verdict
+            ]
+            if len(matches) == 1:
+                return GateOutcome(verdict=verdict, changed=False)
     # gate 只作用 VIOLATION (绝不升级 C/I)
     if verdict != VIOLATION:
         return GateOutcome(verdict=verdict, changed=False)

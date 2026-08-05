@@ -1,0 +1,48 @@
+asset_type: promise_definition
+promise_id: PR-D001
+version: 1
+status: active
+phase: decision_pre_llm
+kind: refund-net-single-clean
+scope:
+  rule_ids: [R151]
+  semantic_profile: 同一抗体筛查收费项目退费后净数量不大于一次
+params:
+  target_keywords:
+    - 乙肝表面抗原
+    - 乙肝抗体
+    - HBsAg
+    - HBsAb
+    - HBeAg
+    - HBeAb
+    - HBcAb
+    - 丙肝抗体
+    - 抗 HCV
+  excluded_keywords:
+    - DNA
+    - RNA
+    - 病毒载量
+    - 定量
+  max_net_qty: 1
+source_cases: [DRIFT-REFUND-NET-SINGLE]
+cases:
+  - CASE-D001-POSITIVE-REFUND
+  - CASE-D001-NO-REFUND
+  - CASE-D001-NET-MULTIPLE
+  - CASE-D001-MULTIPLE-GROUPS
+  - CASE-D001-UNPARSEABLE
+  - CASE-D001-DNA-EXCLUDED
+  - CASE-D001-ONCE-VIOLATION
+  - CASE-D001-COMBINATION
+  - CASE-D001-INTERCHANGE
+  - CASE-D001-FICTITIOUS
+  - CASE-D001-LIMITED-PAYMENT
+  - CASE-D001-M1
+guarantee: CLEAN
+finality: LOCKED
+reason_code: REFUND_NET_SINGLE_CLEAN
+confirmation:
+  source_type: rule_contract
+  reference: configs/rules/R151.yaml 的多次抗体筛查边界
+version_note: 首版只锁定 R151 抗体筛查中可解析、唯一目标组的真实退费净量边界。
+content_sha256: sha256:b1098a8e0409a9c0291cc74b1f5c51fcd006618ee35b0ee971735980dc724bc0

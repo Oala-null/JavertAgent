@@ -6,14 +6,20 @@
 """
 from __future__ import annotations
 
+import logging
+import time
+from pathlib import Path
+
 import pandas as pd
 import pytest
 from fastapi import HTTPException
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 import javert.data.hub_source as hs
 import javert.web.api.routes_workbench as rw
 from javert.config import JavertConfig
-from javert.web.hub_raw_source import HubRawSource
+from javert.web.hub_raw_source import HubRawSource, RawSourceUnavailable
 
 
 def _notes_df(pid: str = "211999999") -> pd.DataFrame:
@@ -86,6 +92,65 @@ def test_main_dx_label_format(monkeypatch):
     monkeypatch.setattr(hs, "fetch_exams", lambda cn, pids: pd.DataFrame())
     src = HubRawSource(_StubCfg())
     assert src.get_main_diagnosis("211999999") == "牙髓炎 (K04.0)"
+
+
+def test_success_cache_is_per_patient_and_tab(monkeypatch):
+    calls = {"notes": 0, "fees": 0, "labs": 0, "exams": 0}
+    monkeypatch.setattr(hs, "connect", lambda cfg, database=None, timeout=60: type("C", (), {})())
+    monkeypatch.setattr(hs, "fetch_hospital_map", lambda cn: {})
+    monkeypatch.setattr(hs, "fetch_notes", lambda cn, pids: (calls.__setitem__("notes", calls["notes"] + 1), _notes_df())[1])
+    monkeypatch.setattr(hs, "fetch_fees", lambda cn, pids, m: (calls.__setitem__("fees", calls["fees"] + 1), _fees_df())[1])
+    monkeypatch.setattr(hs, "fetch_labs", lambda cn, pids: (calls.__setitem__("labs", calls["labs"] + 1), pd.DataFrame())[1])
+    monkeypatch.setattr(hs, "fetch_exams", lambda cn, pids: (calls.__setitem__("exams", calls["exams"] + 1), pd.DataFrame())[1])
+    src = HubRawSource(_StubCfg())
+    src.get_tab("211999999", "fees")
+    src.get_tab("211999999", "fees")
+    assert calls == {"notes": 0, "fees": 1, "labs": 0, "exams": 0}
+    src.get_tab("211999999", "notes")
+    assert calls["notes"] == 1
+
+
+def test_timeout_returns_quickly_is_not_cached_and_diagnostics_hide_patient(monkeypatch, caplog):
+    attempts = []
+    monkeypatch.setattr(hs, "connect", lambda cfg, database=None, timeout=60: type("C", (), {})())
+
+    def slow_then_recover(cn, pids):
+        attempts.append(1)
+        if len(attempts) == 1:
+            time.sleep(0.08)
+        return _notes_df()
+
+    monkeypatch.setattr(hs, "fetch_notes", slow_then_recover)
+    src = HubRawSource(_StubCfg(), deadline_seconds=0.01)
+    started = time.monotonic()
+    with caplog.at_level(logging.INFO), pytest.raises(RawSourceUnavailable) as exc:
+        src.get_tab("211999999", "notes")
+    assert exc.value.error_code == "HUB_TIMEOUT"
+    assert time.monotonic() - started < 0.06
+    assert "211999999" not in caplog.text
+    time.sleep(0.09)
+    assert len(src.get_tab("211999999", "notes")) == 1
+    assert len(attempts) == 2
+
+
+def test_disconnect_failure_does_not_poison_tab_cache(monkeypatch):
+    attempts = []
+    monkeypatch.setattr(hs, "connect", lambda cfg, database=None, timeout=60: type("C", (), {})())
+    monkeypatch.setattr(hs, "fetch_hospital_map", lambda cn: {})
+
+    def fetch(cn, pids, mapping):
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise ConnectionError("synthetic disconnect")
+        return _fees_df()
+
+    monkeypatch.setattr(hs, "fetch_fees", fetch)
+    src = HubRawSource(_StubCfg())
+    with pytest.raises(RawSourceUnavailable) as exc:
+        src.get_tab("211999999", "fees")
+    assert exc.value.error_code == "HUB_CONNECTION_ERROR"
+    assert len(src.get_tab("211999999", "fees")) == 1
+    assert len(attempts) == 2
 
 
 # =========================================================
@@ -203,3 +268,81 @@ def test_main_dx_fallback_to_hub(monkeypatch, _route_env):
     monkeypatch.setattr(rw, "_get_hub_source", lambda: _HubStub())
     monkeypatch.setattr(rw, "_zd_cache", {}, raising=False)
     assert rw._get_main_diagnosis("211999999") == "牙髓炎 (K04.0)"
+
+
+def test_tab_fees_does_not_wait_for_notes_or_labs(monkeypatch, _route_env):
+    calls = []
+
+    class _TabHub:
+        def get_tab(self, pid, tab):
+            calls.append(tab)
+            assert tab == "fees"
+            return _fees_df(pid)
+
+    monkeypatch.setattr(rw, "get_config", lambda: _StubCfg())
+    monkeypatch.setattr(rw, "_get_hub_source", lambda: _TabHub())
+    out = rw._raw_payload("211999999", tab="fees")
+    assert out["tab"] == "fees" and out["n_fees"] == 1
+    assert calls == ["fees"]
+
+
+def test_tab_hub_failure_is_retryable_503_not_404(monkeypatch, _route_env):
+    class _UnavailableHub:
+        def get_tab(self, pid, tab):
+            raise RawSourceUnavailable("HUB_TIMEOUT", tab)
+
+    monkeypatch.setattr(rw, "get_config", lambda: _StubCfg())
+    monkeypatch.setattr(rw, "_get_hub_source", lambda: _UnavailableHub())
+    with pytest.raises(HTTPException) as exc:
+        rw._raw_payload("211999999", tab="fees")
+    assert exc.value.status_code == 503
+    assert exc.value.detail == {
+        "code": "HUB_TIMEOUT",
+        "message": "原文数据源暂不可用，请稍后重试。",
+        "retryable": True,
+        "tab": "fees",
+    }
+
+
+def test_tab_true_double_miss_is_404(monkeypatch, _route_env):
+    class _EmptyTabHub:
+        def get_tab(self, pid, tab):
+            return pd.DataFrame()
+
+    monkeypatch.setattr(rw, "get_config", lambda: _StubCfg())
+    monkeypatch.setattr(rw, "_get_hub_source", lambda: _EmptyTabHub())
+    with pytest.raises(HTTPException) as exc:
+        rw._raw_payload("XNOPE", tab="fees")
+    assert exc.value.status_code == 404
+    assert exc.value.detail["code"] == "RAW_TAB_NOT_FOUND"
+
+
+def test_tab_http_contract_distinguishes_503_and_404(monkeypatch, _route_env):
+    class _SwitchingHub:
+        def get_tab(self, pid, tab):
+            if pid == "CASE-UNAVAILABLE":
+                raise RawSourceUnavailable("HUB_QUERY_ERROR", tab)
+            return pd.DataFrame()
+
+    monkeypatch.setattr(rw, "get_config", lambda: _StubCfg())
+    monkeypatch.setattr(rw, "_get_hub_source", lambda: _SwitchingHub())
+    monkeypatch.setattr(rw, "_log_raw_access", lambda *args, **kwargs: None)
+    app = FastAPI()
+    app.include_router(rw.router)
+    client = TestClient(app)
+    unavailable = client.get("/api/patient/CASE-UNAVAILABLE/raw?tab=fees")
+    missing = client.get("/api/patient/CASE-MISSING/raw?tab=fees")
+    assert unavailable.status_code == 503
+    assert unavailable.json()["detail"]["retryable"] is True
+    assert unavailable.json()["detail"]["code"] == "HUB_QUERY_ERROR"
+    assert missing.status_code == 404
+    assert missing.json()["detail"]["code"] == "RAW_TAB_NOT_FOUND"
+
+
+def test_frontend_uses_lazy_tab_requests_and_chinese_failure_states():
+    js = (Path(__file__).parents[1] / "src/javert/web/static/app.js").read_text(encoding="utf-8")
+    assert '"/raw?tab="' in js
+    assert "switchRawTab" in js
+    assert "原文数据源暂不可用，请稍后重试" in js
+    assert "该页签暂无原始数据" in js
+    assert "HTTP 502" not in js

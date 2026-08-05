@@ -26,6 +26,7 @@ from javert.audit.result import AuditResult, Evidence, ToolCall
 from javert.audit.rule import Rule
 from javert.config import PROJECT_ROOT, JavertConfig, get_config
 from javert.oncology.contracts import EligibilityEvaluation
+from javert.promises.models import PromiseTrace
 
 from .models import (
     AuditLogRecord,
@@ -261,6 +262,15 @@ class SqlServerStore:
             if result.eligibility_evaluation is not None
             else None
         )
+        promise_trace_json = (
+            json.dumps(
+                result.promise_trace.model_dump(mode="json"),
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+            if result.promise_trace is not None
+            else None
+        )
         AuditResult.model_validate(result.model_dump())
 
         # rule yaml snapshot: 优先用显式 text, 其次从 rules_dir 读, 退路 model_dump
@@ -309,13 +319,13 @@ class SqlServerStore:
                         INSERT INTO javert_audit_runs (
                             run_id, rule_id, patient_id, verdict, confidence,
                             reasoning, evidence_json, tool_calls_json,
-                            eligibility_json,
+                            eligibility_json, promise_trace_json,
                             duration_ms, model, rule_yaml_snapshot, rule_status,
                             triggered_by, started_at, batch_tag, gate_tag
                         ) VALUES (
                             :run_id, :rule_id, :patient_id, :verdict, :confidence,
                             :reasoning, :evidence_json, :tool_calls_json,
-                            :eligibility_json,
+                            :eligibility_json, :promise_trace_json,
                             :duration_ms, :model, :rule_yaml_snapshot, :rule_status,
                             :triggered_by, :started_at, :batch_tag, :gate_tag
                         )
@@ -331,6 +341,7 @@ class SqlServerStore:
                         "evidence_json": evidence_json,
                         "tool_calls_json": tool_calls_json,
                         "eligibility_json": eligibility_json,
+                        "promise_trace_json": promise_trace_json,
                         "duration_ms": int(result.duration_ms),
                         "model": result.model or "",
                         "rule_yaml_snapshot": snapshot_text,
@@ -343,12 +354,14 @@ class SqlServerStore:
                 )
                 conn.commit()
             logger.info(
-                "142 已归档: run_id=%s rule=%s patient=%s verdict=%s",
-                result.run_id, result.rule_id, result.patient_id, result.verdict,
+                "142 已归档: rule=%s verdict=%s promise=%s",
+                result.rule_id,
+                result.verdict,
+                int(result.promise_trace is not None),
             )
             return True
         except Exception as e:
-            logger.warning("142 写入失败 run_id=%s: %s", result.run_id, e)
+            logger.warning("142 写入失败 error_type=%s", type(e).__name__)
             return False
 
     # =========================================================
@@ -396,7 +409,7 @@ class SqlServerStore:
             return []
 
     def find_audit_by_run_id(self, run_id: str) -> AuditResult | None:
-        """读取完整 SQL Server 归档结果；旧行 eligibility_json=NULL 向后兼容."""
+        """读取完整 SQL Server 归档结果；旧行扩展 JSON 为 NULL 时向后兼容."""
         engine = self.get_engine()
         if engine is None:
             return None
@@ -407,7 +420,7 @@ class SqlServerStore:
                     text(
                         "SELECT run_id, rule_id, patient_id, verdict, confidence, "
                         "reasoning, evidence_json, tool_calls_json, duration_ms, model, "
-                        "started_at, gate_tag, eligibility_json "
+                        "started_at, gate_tag, eligibility_json, promise_trace_json "
                         "FROM javert_audit_runs WHERE run_id = :rid"
                     ),
                     {"rid": run_id},
@@ -417,6 +430,11 @@ class SqlServerStore:
             eligibility = (
                 EligibilityEvaluation.model_validate_json(row[12])
                 if row[12]
+                else None
+            )
+            promise_trace = (
+                PromiseTrace.model_validate_json(row[13])
+                if len(row) > 13 and row[13]
                 else None
             )
             return AuditResult(
@@ -439,6 +457,7 @@ class SqlServerStore:
                 started_at=row[10],
                 gate_tag=row[11] or "",
                 eligibility_evaluation=eligibility,
+                promise_trace=promise_trace,
             )
         except Exception as e:
             logger.warning("find_audit_by_run_id 失败 run_id=%s: %s", run_id, e)
@@ -934,7 +953,7 @@ class SqlServerStore:
             SELECT run_id, rule_id, patient_id, verdict, confidence,
                    reasoning, evidence_json, tool_calls_json,
                    duration_ms, model, started_at, created_at, triggered_by, batch_tag,
-                   gate_tag, eligibility_json
+                   gate_tag, eligibility_json, promise_trace_json
             FROM javert_audit_runs
             WHERE patient_id = :pid
             ORDER BY rule_id ASC, created_at DESC
@@ -1009,6 +1028,11 @@ class SqlServerStore:
                             if len(h) > 15 and h[15]
                             else None
                         ),
+                        promise_trace=(
+                            PromiseTrace.model_validate_json(h[16])
+                            if len(h) > 16 and h[16]
+                            else None
+                        ),
                     )
                 )
             out.append(
@@ -1031,6 +1055,11 @@ class SqlServerStore:
                     eligibility_evaluation=(
                         EligibilityEvaluation.model_validate_json(latest[15])
                         if len(latest) > 15 and latest[15]
+                        else None
+                    ),
+                    promise_trace=(
+                        PromiseTrace.model_validate_json(latest[16])
+                        if len(latest) > 16 and latest[16]
                         else None
                     ),
                     reviews=reviews_by_run.get(latest[0], []),
@@ -1179,7 +1208,7 @@ class SqlServerStore:
                 rows = conn.execute(
                     text(
                         f"SELECT TOP ({limit_int}) run_id, patient_id, rule_id, verdict, "
-                        "confidence, created_at, eligibility_json "
+                        "confidence, created_at, eligibility_json, promise_trace_json "
                         "FROM javert_audit_runs "
                         "WHERE created_at > :last_seen "
                         "ORDER BY created_at ASC"
@@ -1196,6 +1225,9 @@ class SqlServerStore:
                         "created_at": r[5],
                         "eligibility_evaluation": (
                             json.loads(r[6]) if len(r) > 6 and r[6] else None
+                        ),
+                        "promise_trace": (
+                            json.loads(r[7]) if len(r) > 7 and r[7] else None
                         ),
                     }
                     for r in rows
@@ -1252,7 +1284,7 @@ class SqlServerStore:
                 rows = conn.execute(
                     text(
                         f"SELECT TOP ({limit_int}) id, run_id, patient_id, rule_id, "
-                        "verdict, confidence, created_at, eligibility_json "
+                        "verdict, confidence, created_at, eligibility_json, promise_trace_json "
                         "FROM javert_audit_runs "
                         "WHERE id > :last_id "
                         "ORDER BY id ASC"
@@ -1270,6 +1302,9 @@ class SqlServerStore:
                         "created_at": r[6],
                         "eligibility_evaluation": (
                             json.loads(r[7]) if len(r) > 7 and r[7] else None
+                        ),
+                        "promise_trace": (
+                            json.loads(r[8]) if len(r) > 8 and r[8] else None
                         ),
                     }
                     for r in rows

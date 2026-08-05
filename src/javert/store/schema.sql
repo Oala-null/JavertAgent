@@ -1,4 +1,4 @@
--- Javert audit store schema (v6: 加结构化肿瘤资格 JSON)
+-- Javert audit store schema (v7: 加可空 Promise trace JSON)
 -- 一张主表 + 一张元数据表 + 索引
 -- v2 升级: synced_at / sync_attempts / sync_last_error 三列, migration 由 init_schema 兼容处理
 
@@ -26,7 +26,9 @@ CREATE TABLE IF NOT EXISTS audit_runs (
     -- v5 (add-verdict-gate-layer): gate 降级标签 (缺文书 / 单次放过 / 低置信降级 / '')
     gate_tag TEXT,
     -- v6 (strengthen-oncology-drug-eligibility): 可空结构化资格结果
-    eligibility_json TEXT
+    eligibility_json TEXT,
+    -- v7 (add-evolving-promise-harness): 可空、去标识终局 Promise trace
+    promise_trace_json TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_rule_patient ON audit_runs(rule_id, patient_id);
@@ -39,4 +41,4 @@ CREATE TABLE IF NOT EXISTS _meta (
     value TEXT NOT NULL
 );
 
-INSERT OR IGNORE INTO _meta(key, value) VALUES ('schema_version', '6');
+INSERT OR IGNORE INTO _meta(key, value) VALUES ('schema_version', '7');

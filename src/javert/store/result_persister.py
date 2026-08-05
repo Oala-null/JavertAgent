@@ -18,6 +18,7 @@ import logging
 from javert.audit.result import AuditResult
 from javert.audit.rule import Rule
 from javert.config import get_config
+from javert.promises.loader import get_promise_repository
 
 from .audit_store import SqliteStore
 from .sqlserver_store import get_sqlserver_store
@@ -55,6 +56,28 @@ def _apply_drift_guard(result: AuditResult, sqlite_store: SqliteStore, sql_enabl
     prior = sqlite_store.find_by_rule_patient_latest(result.rule_id, result.patient_id)
     if prior is None or prior.verdict != "VIOLATION":
         return
+    if result.promise_trace is not None:
+        trace = result.promise_trace
+        is_active_locked = any(
+            definition.status == "active"
+            and definition.promise_id == trace.promise_id
+            and definition.version == trace.version
+            and definition.kind == trace.kind
+            and definition.finality == trace.finality == "LOCKED"
+            and definition.reason_code == trace.reason_code
+            and definition.guarantee == result.verdict
+            for definition in get_promise_repository().active_definitions
+        )
+        if is_active_locked:
+            result.promise_trace = trace.model_copy(
+                update={"historical_conflict": True}
+            )
+            logger.info(
+                "promise_historical_conflict=1 promise=%s version=%d",
+                trace.promise_id,
+                trace.version,
+            )
+            return
     if _expert_rejected_violation(prior.run_id, sql_enabled):
         return
     result.verdict = "INCONCLUSIVE"

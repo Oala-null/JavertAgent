@@ -55,11 +55,11 @@
         <label class="only-i-toggle" title="只看 AI 判为「不明」的卡片 (前端过滤, 不刷新)">
           <input type="checkbox" onchange="toggleInconclusiveOnly(this)"> 只看不明
         </label>
-        <label class="hide-missing-toggle" title="默认隐藏被 gate 判为「缺文书」的待线下核查项 (前端过滤, 可翻看)">
-          <input type="checkbox" id="hide-missing-doc" checked onchange="toggleHideMissingDoc(this)"> 隐藏缺文书
+        <label class="hide-missing-toggle" title="默认隐藏资料不足、需线下核查的项目">
+          <input type="checkbox" id="hide-missing-doc" checked onchange="toggleHideMissingDoc(this)"> 隐藏待补资料
         </label>
-        <label class="gated-only-toggle" title="只看被确定性 gate 降级的裁决 (单次放过/缺文书/低置信/漂移防护等), 抽查 gate 击杀">
-          <input type="checkbox" id="gated-only" onchange="toggleGatedOnly(this)"> 只看被闸降级
+        <label class="gated-only-toggle" title="只看由系统调整为需复核或未发现违规的项目">
+          <input type="checkbox" id="gated-only" onchange="toggleGatedOnly(this)"> 只看系统调整项
         </label>
       </div>
 
@@ -72,14 +72,13 @@
 
       {% for run in g.runs %}
       {% set meta = _rule_meta.get(run.rule_id) %}
+      {% set public = (public_explanations | default({}, true)).get(run.run_id, {}) %}
       <article id="run_{{ run.run_id }}" class="violation-card verdict-{{ run.verdict | verdict_color }}" data-run-id="{{ run.run_id }}" data-verdict="{{ run.verdict | verdict_color }}" data-gate-tag="{{ run.gate_tag or '' }}">
         <div class="violation-head">
-          <span class="rule-id" title="{{ run.rule_id }}{% if meta %} · {{ meta.subtitle }}{% endif %}">{% if meta %}{{ meta.behavior_name }}{% else %}{{ run.rule_id }}{% endif %}</span>
+          <span class="rule-id">{% if meta %}{{ meta.behavior_name }}{% else %}未分类{% endif %}</span>
           <span class="badge badge-{{ run.verdict | verdict_color }}">{{ run.verdict | verdict_label }}</span>
           <span class="confidence">置信 {{ '%.2f' % (run.confidence or 0.0) }}</span>
-          {% if run.gate_tag %}<span class="gate-badge gate-{{ run.gate_tag }}" title="该裁决被确定性 gate 降级 ({{ run.gate_tag }}) — 详见下方推理">⚙ {{ run.gate_tag }}</span>{% endif %}
-          {% if run.batch_tag %}<span class="batch-badge batch-{{ run.batch_tag }}">{{ run.batch_tag }}</span>{% endif %}
-          {% if run.history %}<span class="history-hint" title="该规则之前跑过 {{ run.history|length }} 次, 末尾可展开看老 verdict + 当时批注">📜 +{{ run.history|length }}</span>{% endif %}
+          {% if run.history %}<span class="history-hint" title="该项目之前审核过 {{ run.history|length }} 次，末尾可展开查看">📜 +{{ run.history|length }}</span>{% endif %}
         </div>
         {% if meta %}
         <div class="rule-question">{{ meta.question }}</div>
@@ -134,12 +133,34 @@
           <button type="button" class="btn-source" onclick="openSourcePanel({tab:'notes'})">📄 查阅文书原文</button>
         </div>
 
-        {# AI 推理 + 证据裸 dump → 默认展开 (专家逐条审核时直接可见, 不用每张卡片点开) #}
-        <details class="evidence-block" open>
-          <summary>🔎 AI 推理过程 + 证据</summary>
-          <div class="reasoning">{{ run.reasoning or '(无 reasoning)' }}</div>
-          {% if run.evidence_json %}<pre>{{ run.evidence_json }}</pre>{% endif %}
-        </details>
+        {# 单一公共 presenter 的结构化输出；不渲染内部 reasoning/evidence JSON。 #}
+        <section class="public-explanation">
+          {% set conclusion = public.get('conclusion', {}) %}
+          <h3>{{ conclusion.get('label', '待人工复核') }}</h3>
+          <p>{{ conclusion.get('summary', '现有资料不足以自动定性。') }}</p>
+          {% if public.get('audit_items') %}
+          <div class="public-section"><strong>核查事项</strong><ul>{% for item in public.audit_items %}<li>{{ item }}</li>{% endfor %}</ul></div>
+          {% endif %}
+          {% if public.get('charge_facts') %}
+          <div class="public-section"><strong>收费事实</strong><ul>
+            {% for fact in public.charge_facts %}
+            <li>
+              {% if fact.get('fact') %}{{ fact.fact }}：{{ fact.value }}{{ fact.unit }}{% if fact.get('refund_count') is not none %}（含 {{ fact.refund_count }} 次退费）{% endif %}
+              {% else %}{{ fact.get('name') or fact.get('matched_charge_name') }}{% if fact.get('code') %}（编码 {{ fact.code }}）{% endif %}{% endif %}
+            </li>
+            {% endfor %}
+          </ul></div>
+          {% endif %}
+          {% if public.get('basis') %}
+          <div class="public-section"><strong>核查依据</strong><ul>{% for item in public.basis %}<li>{{ item }}</li>{% endfor %}</ul></div>
+          {% endif %}
+          {% if public.get('clinical_evidence') %}
+          <div class="public-section"><strong>临床资料</strong><ul>{% for item in public.clinical_evidence %}<li>{{ item.type }}：{{ item.name }}</li>{% endfor %}</ul></div>
+          {% endif %}
+          {% if public.get('review_needs') %}
+          <div class="public-section public-review-needs"><strong>需人工核对</strong><ul>{% for item in public.review_needs %}<li>{{ item }}</li>{% endfor %}</ul></div>
+          {% endif %}
+        </section>
 
         {# 肿瘤靶向药用药方案合理性 — 绑在 reasoning 之后的 follow-up, 默认折叠, 点开看逐条医保限定核对 #}
         {% if run.eligibility_evaluation %}
@@ -181,6 +202,8 @@
                   {% else %}？ 待补或复核{% endif %}
                 </span>
               </h4>
+            {% elif scope_ee.policy_scope_display_label %}
+              <h4>{{ scope_ee.policy_scope_display_label }}</h4>
             {% endif %}
             {% if scope_ee.temporal_warning %}
             <div class="onco-date-warn">
@@ -241,26 +264,6 @@
             {% if scope_ee.data_quality_flags %}
             <div class="onco-flags">{% for flag in scope_ee.data_quality_flags %}<span>⚠ {{ flag | quality_flag_zh }}</span>{% endfor %}</div>
             {% endif %}
-            {# 专业平台: 尽量把可核查的元数据都摊开 #}
-            <dl class="onco-meta">
-              {% if scope_ee.release_id %}<dt>KB release</dt><dd><code>{{ scope_ee.release_id }}</code></dd>{% endif %}
-              {% if scope_ee.rule_revision_id %}<dt>知识修订</dt><dd><code>{{ scope_ee.rule_revision_id }}</code></dd>{% endif %}
-              {% if scope_ee.drug_concept_id %}<dt>药品 concept</dt><dd><code>{{ scope_ee.drug_concept_id }}</code></dd>{% endif %}
-              {% if scope_ee.policy_scope %}<dt>政策范围</dt><dd>{{ scope_ee.policy_scope_display_label or scope_ee.policy_scope }} <code>{{ scope_ee.policy_scope }}</code></dd>{% endif %}
-              {% if scope_ee.indication_branch_id %}<dt>资格分支</dt><dd><code>{{ scope_ee.indication_branch_id }}</code></dd>{% endif %}
-              {% if scope_ee.rule_version %}<dt>规则版本</dt><dd>{{ scope_ee.rule_version }}</dd>{% endif %}
-              {% if scope_ee.rule_effective_from %}<dt>限定声明生效期</dt><dd>{{ scope_ee.rule_effective_from }} ~ {{ scope_ee.rule_effective_to or '长期' }}</dd>{% endif %}
-              {% if scope_ee.evaluated_service_date %}<dt>本次就诊/收费日期</dt><dd>{{ scope_ee.evaluated_service_date }}</dd>{% endif %}
-              {% if _ta %}<dt>时间适用性</dt><dd><code>{{ _ta }}</code></dd>{% endif %}
-              <dt>生效期处理</dt><dd>{% if _ta == 'AFTER_EFFECTIVE_WINDOW' %}窗口后 fail-closed，转人工复核{% elif _ta == 'BEFORE_EFFECTIVE_WINDOW' %}窗口前回溯应用最早已批准版本{% elif scope_ee.effective_date_enforced %}已启用（仅审窗口内就诊）{% else %}已关闭（不分时间全部生效，见上方核查提示）{% endif %}</dd>
-              {% if scope_ee.source_document_ids %}<dt>来源文档 ID</dt><dd>{{ scope_ee.source_document_ids | join('；') }}</dd>{% endif %}
-              {% if scope_ee.source_fragment_ids %}<dt>来源片段 ID</dt><dd>{{ scope_ee.source_fragment_ids | join('；') }}</dd>{% endif %}
-              {% if scope_ee.source_versions %}<dt>依据来源版本</dt><dd>{{ scope_ee.source_versions | join('；') }}</dd>{% endif %}
-            </dl>
-            <details class="onco-proof">
-              <summary>结构化证明树（开发者视图）</summary>
-              <pre>{{ scope_ee.proof_tree.model_dump(mode='json') | tojson }}</pre>
-            </details>
             {% if ee.scope_evaluations %}</section>{% endif %}
             {% endfor %}
           </div>
@@ -319,15 +322,14 @@
         {# v0.7: 历史 (老 v1.0 verdict + 当时批注) #}
         {% if run.history %}
         <details class="history-runs">
-          <summary>📜 历史 {{ run.history|length }} 次 (含老 verdict + 当时专家批注 — latest 是上方的 {{ run.batch_tag or 'v1.0' }} 那条)</summary>
+          <summary>📜 历史 {{ run.history|length }} 次审核记录</summary>
           {% for h in run.history %}
           <div class="history-run">
             <div class="history-head">
               <span class="badge badge-{{ h.verdict | verdict_color }}">{{ h.verdict | verdict_label }}</span>
-              <span class="confidence">conf {{ '%.2f' % h.confidence }}</span>
-              <span class="muted">{{ h.batch_tag or 'v1.0' }} · {{ h.created_at | humanize_since }}</span>
+              <span class="confidence">置信 {{ '%.2f' % h.confidence }}</span>
+              <span class="muted">{{ h.created_at | humanize_since }}</span>
             </div>
-            <div class="history-reasoning">{{ (h.reasoning or '(无 reasoning)')[:400] }}{% if h.reasoning and h.reasoning|length > 400 %}…{% endif %}</div>
             {% if h.reviews %}
             <div class="history-reviews">
               <div style="font-weight:600; color:var(--text); margin:4px 0;">当时的专家批注:</div>

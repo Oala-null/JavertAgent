@@ -135,6 +135,15 @@ v2 结果按当前 `attempt_id + run_id` 增量复用已生成 cards。HTTP 请�
     "code": "T380601",
     "title": "超范围支付"
   },
+  "public_explanation": {
+    "conclusion": {"label": "未发现违规", "summary": "现有结构化事实未支持违规结论。"},
+    "audit_items": ["申请医保支付的肿瘤药，超出医保药品目录限定支付范围。"],
+    "charge_facts": [],
+    "basis": [],
+    "clinical_evidence": [],
+    "review_needs": []
+  },
+  "promise": null,
   "rule": {
     "id": "RD04",
     "name": "超医保限定支付适应症用药",
@@ -213,11 +222,17 @@ v2 结果按当前 `attempt_id + run_id` 增量复用已生成 cards。HTTP 请�
 | `verdict_label` | 普通 CLEAN 为“合规”；规则不适用的 CLEAN 为“不适用” |
 | `applicability` | `APPLICABLE / NOT_APPLICABLE`；不改变既有三态 verdict |
 | `applicability_label` | `适用 / 不适用` |
-| `reasoning` | 可展示的中文推理；v2 清除“暂未描述”占位短语 |
+| `reasoning` | 兼容中文摘要；v2 清除“暂未描述”占位短语，新医生界面优先展示 `public_explanation` |
 | `matched_items` | 费用/药品命中关联的唯一真相源 |
 | `hits` | Web 命中块所需的完整解析结果，含 fee/drug/note/lab/exam 及定位锚点 |
 | `evidence` | 模型裁决引用的证据摘要 |
 | `eligibility_evaluation` | RD04 完整肿瘤资格结构；非 RD04 或历史空行返回 `null` |
+| `public_explanation` | 固定六段的医生可读结构化解释；只投影有确定来源的事实，不从 reasoning 猜测 |
+| `promise` | 可空公开摘要；仅含 `locked/historical_conflict`，不暴露内部 Promise 标识、原因码或 facts |
+
+`public_explanation` 与 `promise` 是 additive 字段。v2 既有字段名、每条规则一张 card、三态
+结果和 `matched_items` 对齐语义不变；下游 BFF 应优先展示公开解释，但不得删除或改写旧字段。
+公开 fee/drug hit 必须关联患者实际净正收费行，无实际收费的搜索词不再生成假命中。
 
 ## 5. code/name/time 一一对应标准
 

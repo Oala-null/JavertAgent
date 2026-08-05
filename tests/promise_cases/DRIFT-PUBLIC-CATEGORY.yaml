@@ -1,0 +1,12 @@
+asset_type: drift_case
+case_id: DRIFT-PUBLIC-CATEGORY
+status: confirmed
+title: 同一公开行为认定类别重复分组
+observed_behavior: 内部违规类型差异导致相同 H/I pair 被拆分。
+expected_behavior: 公开类别以行为认定编码与名称二元组聚合。
+facts:
+  public_pair_count: 1
+  internal_type_count: 2
+confirmation:
+  source_type: source_workbook
+  reference: 两库汇总 H/I 列的公开行为认定映射

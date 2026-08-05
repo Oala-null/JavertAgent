@@ -76,6 +76,7 @@
       "run_id": "aud_Ab3xY9kQw2Lm",
       "rule_id": "R191",
       "rule_name": "重复收费-静脉输液",
+      "behavior_code": "T380301",
       "behavior_name": "重复收费",
       "verdict": "VIOLATION",
       "verdict_label": "违规",
@@ -98,6 +99,15 @@
           "review_note": ""
         }
       ],
+      "public_explanation": {
+        "conclusion": {"label": "发现需核查行为", "summary": "现有结构化事实支持该项进入医保合规复核。"},
+        "audit_items": ["核查同一收费项目是否重复计费。"],
+        "charge_facts": [],
+        "basis": [],
+        "clinical_evidence": [],
+        "review_needs": ["当前缺少可公开投影的结构化事实，请查阅原始资料确认。"]
+      },
+      "promise": null,
       "finished_at": "2026-07-15T08:12:30+08:00"
     }
   ]
@@ -115,9 +125,10 @@
 | error | (可选, 仅异常时出现) 脱敏的审计中断简述；不得只看 HTTP 200 或 results 是否为空 |
 | summary | 三档裁决计数 |
 | results[].verdict | **`VIOLATION`(违规) / `INCONCLUSIVE`(待人工复核) / `CLEAN`(合规)** |
+| results[].behavior_code | 行为认定编码；与 `behavior_name` 组成公开类别键。显式例外可为空，不得据内部类型臆造编码 |
 | results[].behavior_name | **行为认定名称** (监管规则框架总表口径, 如"重复收费"/"超范围支付"), 前端展示用这个, 可不显示 rule_id |
 | results[].confidence | 0~1 置信度 |
-| results[].reasoning | 裁决理由, **全中文自然语言** (无工具名/规则代号/英文判定词, 可直接展示给审核员) |
+| results[].reasoning | 兼容裁决摘要；新建医生界面应优先展示 `public_explanation`，不要从本字段反解析结构化事实 |
 | results[].diagnostic_code | 规则级诊断码；正常为空，格式异常为 `LLM_OUTPUT_MALFORMED`，长度截断为 `LLM_OUTPUT_TRUNCATED` |
 | results[].retryable | 当前规则是否适合重试；模型格式/截断失败为 `true` |
 | results[].eligibility_evaluation | 可空。RD04 肿瘤医保资格 v2 的双轴结果、条件证明和文书建议；其他规则及历史旧行是 `null` |
@@ -125,7 +136,20 @@
 | results[].hit_codes | 命中项目编码扁平数组 (国家医保码优先, 缺则院内码; 仅 V/I 非空), 直接挂明细用 |
 | results[].hit_names | 命中项目名称扁平数组 (费用明细原始项目名; 与 hit_codes 同源去重) |
 | results[].hits | 命中项目明细数组 (含编码/名称/限定/复核提示): 仅 V/I 有值, CLEAN 恒 `[]`。见下表 |
+| results[].public_explanation | 医生可读结构化投影，固定含 `conclusion/audit_items/charge_facts/basis/clinical_evidence/review_needs`；只使用有确定来源的事实 |
+| results[].promise | 可空公开摘要；有 trace 时仅含 `locked` 与 `historical_conflict`，不公开 Promise ID、kind、reason code 或 facts |
 | results[].run_id | 审计运行 ID, 疑议追溯用 |
+
+### 公开解释的兼容边界
+
+`public_explanation`、`promise` 和 `behavior_code` 均为 additive 字段；既有 `rule_id`、
+`reasoning`、`evidence`、`hits` 等字段不删、不改名。新建医生界面应优先展示
+`public_explanation`，不要把旧 `reasoning/evidence` 反解析为结构化事实，也不要默认展示
+内部规则号、工具名、gate/run 术语、英文 verdict 或原始 evidence JSON。
+
+公开 fee/drug 命中只表示已关联到患者实际净正收费行；检索词、未命中 locator 和患者无对应
+收费行的名称不能作为“命中项目”。这会让部分旧卡片的公开 hits 变少，但不改变单规则结果数、
+三态 verdict 或内部追溯字段。
 
 ### eligibility_evaluation（RD04，可空）
 

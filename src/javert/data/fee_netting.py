@@ -40,6 +40,7 @@ class NetItem:
     distinct_billing_dates: int
     has_refund: bool
     refund_count: int = field(default=0)  # 负 cnt 行数 (4.3 脚注「含 N 次退费」用)
+    quantity_parseable: bool = True
 
     @property
     def is_full_refund(self) -> bool:
@@ -55,11 +56,15 @@ def fee_group_key(code: str | None, name: str | None) -> str:
     return (name or "").strip()
 
 
-def _safe_float(v) -> float:
+def _parse_float(v) -> tuple[float, bool]:
     try:
-        return float(v)
+        return float(v), True
     except (ValueError, TypeError):
-        return 0.0
+        return 0.0, False
+
+
+def _safe_float(v) -> float:
+    return _parse_float(v)[0]
 
 
 def _date_part(v) -> str:
@@ -95,14 +100,22 @@ def net_fee_items(fee_df: pd.DataFrame | None) -> dict[str, NetItem]:
         key = fee_group_key(code, name)
         if not key:
             continue
-        cnt = _safe_float(r.get(CNT_COL))
+        cnt, parseable = _parse_float(r.get(CNT_COL))
         g = groups.get(key)
         if g is None:
-            g = {"name": name, "code": code, "net": 0.0, "dates": set(), "refunds": 0}
+            g = {
+                "name": name,
+                "code": code,
+                "net": 0.0,
+                "dates": set(),
+                "refunds": 0,
+                "parseable": True,
+            }
             groups[key] = g
         elif cnt > 0 and not g["name"]:
             g["name"] = name  # 用净正收费行的名字补全
         g["net"] += cnt
+        g["parseable"] = g["parseable"] and parseable
         if cnt < 0:
             g["refunds"] += 1
         elif cnt > 0 and has_date:
@@ -118,6 +131,7 @@ def net_fee_items(fee_df: pd.DataFrame | None) -> dict[str, NetItem]:
             distinct_billing_dates=len(g["dates"]),
             has_refund=g["refunds"] > 0,
             refund_count=g["refunds"],
+            quantity_parseable=g["parseable"],
         )
     return out
 

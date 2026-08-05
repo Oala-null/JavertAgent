@@ -721,24 +721,7 @@ def resolve_hits_from_json(
             name, patient_fee_df, is_drug=(kind == "drug"), kb_code_set=kb_code_set
         )
         if not rows:
-            # 无 fee 匹配: 仍出一条 (drug 带限定); 锚点用命中名做模糊 query (D1, 不再 unresolved)
-            restriction, review = (
-                _enrich_restriction(
-                    name, drug_rule_type, kb_drugs, "",
-                    evidence_basis=evidence_basis,
-                )
-                if kind == "drug"
-                else ("", "")
-            )
-            anchor = _resolve_fee_anchor("", name)
-            item = HitItem(
-                source=kind, name=name, restriction=restriction,
-                review_note=review, anchor=anchor,
-            )
-            key = (kind, name, "", "")
-            if key not in seen:
-                seen.add(key)
-                hits.append(item)
+            # 公开费用/药品命中必须关联患者实际净正收费组；搜索词和 locator 只留内部追溯。
             continue
         for row in rows:
             restriction, review = (

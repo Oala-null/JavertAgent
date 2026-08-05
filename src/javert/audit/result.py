@@ -9,6 +9,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, model_validator
 
 from javert.oncology.contracts import EligibilityEvaluation
+from javert.promises.models import PromiseTrace
 
 Verdict = Literal["VIOLATION", "CLEAN", "INCONCLUSIVE"]
 
@@ -62,6 +63,8 @@ class AuditResult(BaseModel):
     precheck_tag: str = Field(default="")
     # strengthen-oncology-drug-eligibility: 旧规则保持 None；结构化肿瘤审核带完整双轴结果.
     eligibility_evaluation: EligibilityEvaluation | None = None
+    # add-evolving-promise-harness: 仅命中终局 Promise 时写最小、去标识 trace。
+    promise_trace: PromiseTrace | None = None
 
     @model_validator(mode="after")
     def _validate_eligibility_projection(self) -> "AuditResult":

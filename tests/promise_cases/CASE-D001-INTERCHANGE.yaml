@@ -1,0 +1,10 @@
+asset_type: promise_case
+case_id: CASE-D001-INTERCHANGE
+promise_id: PR-D001
+promise_version: 1
+case_type: near_negative
+rule_id: R014
+facts:
+  fee_items:
+    - {name: 去标识串换项目, code: SYNTH-SWAP, net_qty: 1, has_refund: true, refund_count: 1, quantity_parseable: true}
+expected: {outcome: NOT_APPLICABLE}

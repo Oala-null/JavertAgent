@@ -1,0 +1,12 @@
+asset_type: drift_case
+case_id: DRIFT-REFUND-NET-SINGLE
+status: promoted
+title: 退费后净数量为一次仍进入疑似裁决
+observed_behavior: 正收费日期数触发普通裁决，未锁定退费后的净数量边界。
+expected_behavior: 唯一抗体收费组退费后净数量不大于一次时，确定性锁定为 CLEAN。
+facts:
+  net_qty: 1
+  refund_count: 1
+confirmation:
+  source_type: test_reproduction
+  reference: tests/test_promise_drift_baseline.py 的去标识失败基线

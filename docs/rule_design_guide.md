@@ -153,3 +153,20 @@ precheck:
 `oncology=true AND source_type=insurance` 的确定性医保资格链，不由
 `scripts/init_drug_rules.py` 生成，也不能用通用 M8 重渲染覆盖。现行所有权和上线模式见
 `docs/oncology/operations.md`。
+
+## 已确认漂移何时进入 Promise
+
+Rule YAML 仍是规则定义的唯一位置。Promise 只保护一个已经复现、确认且能写成确定性事实的
+窄边界，不用于补写完整规则，也不接受任意表达式或代码。处理顺序是：
+
+1. 用语义化、去标识事实登记 `tests/promise_cases/DRIFT-*.yaml`，不得保存患者号、run ID、
+   原始病历、连接信息或凭据。
+2. 逐条核对当前 ready 规则，显式列出适用 scope；同一公开行为类别不能代替规则语义核实。
+3. 为 `configs/promises/PR-*.yaml` 同时提供 positive 与最相邻 near-negative。一次即可违规、
+   组合项目、串换、虚构、限定支付等边界必须明确排除，不能被宽泛 CLEAN Promise 清掉。
+4. active 内容不可就地修改；边界变化必须增加版本并显式 `supersedes`。
+5. 提交前运行 `.venv/bin/javert promise validate` 和 `.venv/bin/javert promise run`。
+
+若修改规则状态、`trigger_keywords`、模板渲染结果或 M8，还要按既有流程重建并核对 Router
+index；若修改会改变既有 Promise 的 scope 或 near-negative，应在同一 change 更新 Promise
+资产，不能让旧 Promise 静默扩大解释范围。

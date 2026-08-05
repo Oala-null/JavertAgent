@@ -13,6 +13,7 @@ from pathlib import Path
 
 from javert.audit.result import AuditResult, Evidence, ToolCall
 from javert.oncology.contracts import EligibilityEvaluation
+from javert.promises.models import PromiseTrace
 
 logger = logging.getLogger("javert.store.audit_store")
 
@@ -66,7 +67,7 @@ class AuditStore(ABC):
 class SqliteStore(AuditStore):
     """SQLite 实现."""
 
-    SCHEMA_VERSION = 6
+    SCHEMA_VERSION = 7
 
     def __init__(self, db_path: Path):
         self.db_path = db_path
@@ -102,7 +103,7 @@ class SqliteStore(AuditStore):
         logger.info("audit_store schema 已初始化 (v%d): %s", self.SCHEMA_VERSION, self.db_path)
 
     def _ensure_v2_columns(self) -> None:
-        """累积 migration: 给 audit_runs 幂等补齐 v2-v6 可空列.
+        """累积 migration: 给 audit_runs 幂等补齐 v2-v7 可空列.
 
         幂等. 老库 (v1) 缺这三列 → ALTER TABLE 补; 新库 (v2) 已含 → 跳过.
         最后无条件 CREATE INDEX IF NOT EXISTS idx_audit_unsynced.
@@ -129,6 +130,9 @@ class SqliteStore(AuditStore):
         # v6 (strengthen-oncology-drug-eligibility): 单一可空 JSON 扩展
         if "eligibility_json" not in existing_cols:
             migrations.append("ALTER TABLE audit_runs ADD COLUMN eligibility_json TEXT")
+        # v7 (add-evolving-promise-harness): 可空、去标识的终局 trace
+        if "promise_trace_json" not in existing_cols:
+            migrations.append("ALTER TABLE audit_runs ADD COLUMN promise_trace_json TEXT")
 
         with self.conn as c:
             for sql in migrations:
@@ -164,6 +168,15 @@ class SqliteStore(AuditStore):
             if result.eligibility_evaluation is not None
             else None
         )
+        promise_trace_json = (
+            json.dumps(
+                result.promise_trace.model_dump(mode="json"),
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+            if result.promise_trace is not None
+            else None
+        )
         # 防止调用方在构造后就地改 verdict/eligibility，写入前再次验证投影.
         AuditResult.model_validate(result.model_dump())
         with self._write_lock, self.conn as c:
@@ -173,8 +186,8 @@ class SqliteStore(AuditStore):
                     run_id, rule_id, patient_id, verdict, confidence,
                     reasoning, evidence_json, tool_calls_json,
                     duration_ms, model, started_at, batch_tag, gate_tag,
-                    eligibility_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    eligibility_json, promise_trace_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     result.run_id,
@@ -191,6 +204,7 @@ class SqliteStore(AuditStore):
                     batch_tag,
                     result.gate_tag or "",
                     eligibility_json,
+                    promise_trace_json,
                 ),
             )
 
@@ -204,6 +218,9 @@ class SqliteStore(AuditStore):
         eligibility = None
         if "eligibility_json" in cols and row["eligibility_json"]:
             eligibility = EligibilityEvaluation.model_validate_json(row["eligibility_json"])
+        promise_trace = None
+        if "promise_trace_json" in cols and row["promise_trace_json"]:
+            promise_trace = PromiseTrace.model_validate_json(row["promise_trace_json"])
         return AuditResult(
             run_id=row["run_id"],
             rule_id=row["rule_id"],
@@ -218,6 +235,7 @@ class SqliteStore(AuditStore):
             started_at=started_at,
             gate_tag=gate_tag,
             eligibility_evaluation=eligibility,
+            promise_trace=promise_trace,
         )
 
     def find_by_run_id(self, run_id: str) -> AuditResult | None:

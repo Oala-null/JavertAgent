@@ -4,11 +4,23 @@
 
 **当前库存**: 运行 `.venv/bin/javert list` 获取实时口径，不要从历史实测报告反推规则数。
 当前 authoring change 已将 RD10-RD37 后退为 `drafting/migration-pending`，
-但不改变 5 条 production-ready bulk 入口。
+默认执行集仍须以该命令的实时状态为准。
 
 **data-hub (2026-07-03)**: 🟢 **数据中台三链打通** — 对接 `Scriv/Data_Hub` 46 张国标 TB_* 表: **回填** (`scripts/build_data_hub_filled.py`, sy 3309 + szx 全量 4701 患者 → 23 表 631 万记录, 含 通用文书/费用医保分解/手术医保双码 3 张扩展表) → **推送** (`scripts/push_data_hub_filled.py` → 142 `TP_data_hub` 库) → **反向取数** (`scripts/etl_from_data_hub.py`, 流B, zadig_agent 零改动). 双链路对照 J66252 裁决 16/18 一致无 V 级差异. 交接文档 `Scriv/data_hub_filled/_report.md`, 接入指引 `docs/数据接入清单.md` §四.
 
 **2C 对接 v3**：新接入使用 `/api/audit/v3/submit` 与 `/api/audit/v3/results/{SYXH}`；在完整规则卡片上按实际收费明细行返回数量、单价、开单科室编码/名称和开单医生工号/名称。`status=running` 时 cards 只是增量结果，必须轮询到 `done`。详见 `docs/2c对接_javert审计服务_v3.md`。
+
+**确定性 Promise 门禁**：已确认的漂移先沉淀为去标识 `DriftCase`，再提炼为带正例、
+相邻反例和显式规则 scope 的版本化 Promise。`decision_pre_llm` Promise 可在模型前给出
+终局锁定裁决；普通 verdict gate 和历史漂移防护不得改写合法的 `LOCKED` 结果。提交前运行：
+
+```bash
+.venv/bin/javert promise validate
+.venv/bin/javert promise run
+```
+
+两条命令均离线执行，不访问 LLM、网络、SQL Server 或 hub。Promise 只保护已确认的最小
+边界，不替代 Rule YAML、precheck、verdict gate 或肿瘤资格条件树。
 
 **62 当前运行口径（2026-08-04）**：Javert 使用 30000 上的
 `Qwen/Qwen3.6-35B-A3B-FP8`；W2 试验服务 30002 与 OCR 30001 已停。62 的 Javert 目录为
@@ -55,26 +67,27 @@
 
 dry-run → 看 trace → 改 yaml → 再 dry-run; 成熟后 `mark ready` / `validated`, 不成熟 `mark abandoned`.
 
-## 八大模板 (M1-M7 骗保类覆盖 109 Y 中 101 条 92.7% + M8 药品类 bulk)
+## 八大模板
 
-| 模板 | 模式 | ready | 原型 | 设计文档 |
-|------|------|-------|------|---------|
-| **M1 重复收费** | A+B 两笔费用并存 + 文书反证 | 22 | R191 | `docs/templates/模板1_重复收费.md` |
-| **M2 过度检查** | fee 命中 + 诊断无指征 | 22 | R151 | `docs/templates/模板2_过度检查.md` |
-| **M3 口腔串换** | 诊断仅 trivial + fee 见大手术 | 17 | R245 | `docs/templates/模板3_口腔串换.md` |
-| **M4 超标准收费** | 实际计价方式 ≠ 诊疗目录条款 | 13 | R193 | `docs/templates/模板4_超标准收费.md` |
-| **M5 虚构服务** | fee 见 X / 文书无 X | 10 | R203 / R317 / R318 | `docs/templates/模板5_虚构医药服务.md` |
-| **M6 过度诊疗** | treatment + 排除指征 / 限制超 | 9 | R310 | `docs/templates/模板6_过度诊疗.md` |
-| **M7 项目身份串换** | 做 X (低价) 收 Y (高价) | 20 | R083 | `docs/templates/模板7_串换收费.md` |
-| **M8 药品适应症/限定** | 药品 fee 命中 KB + 诊断∉依据 (禁忌 反向) | 5 | RD04 + R007 + RD01-03 | (`scripts/init_drug_rules.py` 维护通用 bulk；RD04 独立维护) |
-| **合计 production-ready** | | **118** | | |
+下表说明模板语义和维护入口，不作为当前 ready 库存。执行集与各模板实时数量统一以
+`.venv/bin/javert list` 和 `.venv/bin/javert template list` 为准。
+
+| 模板 | 模式 | 原型/维护入口 | 设计文档 |
+|------|------|---------------|----------|
+| **M1 重复收费** | A+B 两笔费用并存 + 文书反证 | R191 | `docs/templates/模板1_重复收费.md` |
+| **M2 过度检查** | fee 命中 + 诊断无指征 | R151 | `docs/templates/模板2_过度检查.md` |
+| **M3 口腔串换** | 诊断仅 trivial + fee 见大手术 | R245 | `docs/templates/模板3_口腔串换.md` |
+| **M4 超标准收费** | 实际计价方式 ≠ 诊疗目录条款 | R193 | `docs/templates/模板4_超标准收费.md` |
+| **M5 虚构服务** | fee 见 X / 文书无 X | R203 / R317 / R318 | `docs/templates/模板5_虚构医药服务.md` |
+| **M6 过度诊疗** | treatment + 排除指征 / 限制超 | R310 | `docs/templates/模板6_过度诊疗.md` |
+| **M7 项目身份串换** | 做 X (低价) 收 Y (高价) | R083 | `docs/templates/模板7_串换收费.md` |
+| **M8 药品适应症/限定** | 药品 fee 命中 KB + 诊断∉依据（禁忌反向） | `scripts/init_drug_rules.py`；RD04 独立维护 | 见肿瘤运维文档 |
 
 每份模板文档含: master prompt 骨架 + 一条 reference yaml + 所有规则的 personalized 字段填充表.
 
-Y 装载: **101/109 = 92.7% ready** (M1-M7 骗保类; 剩 8 条等外部数据/工具, 详见 `docs/y_rules_status_v0_4.md`).
-药品类: **M8 当前 5 条 production-ready bulk** (`RD04/R007/RD01-03`)；`RD04` 是结构化
-肿瘤医保限定入口，`RD10-RD37` 在本地 authoring change 中为
-`drafting/migration-pending`，避免与 bulk 重复裁决。
+历史 v0.4 装载快照为 **101/109 = 92.7% ready**，仅用于说明当时的 rollout，详见
+`docs/y_rules_status_v0_4.md`。药品类当前仍由 `RD04/R007/RD01-03` 分工维护；是否进入
+执行集以及 `RD10-RD37` 的实时状态统一查 `.venv/bin/javert list`，不要从本文推断库存。
 v0.8 历史验收见 `docs/sample_drug_audit.md`，当前所有权、专家维护与启用流程见
 `docs/oncology/operations.md`。
 
@@ -171,10 +184,10 @@ uv run python scripts/test_router_smoke.py
 | `/account/password` | 自助改密 (旧 + 新 + 确认), 改完强制重登 |
 | `/workbench` | sidebar 100+ 病人 (V/I/C 计数 + 已审 N/M 进度 + **v0.9 主诊/¥金额/更新时间富卡片**), filter 4 档, **v0.9 facet (tag/费用区间/主诊关键词/更新时间, 纯前端叠加)**, welcome banner |
 | `/workbench/{pid}` | 病案概览 (主诊/手术/费用结构/科室/医师) + 违规卡 + 三态决策 form + 其他专家行 (**v0.9 长评语 hover 全文**) + 原始病历 modal |
-| **v0.9 命中项目块** | 违规卡渲「命中项目」(`编码·名称`, 药品规则附「医保限定」), 由确定性 `hit_resolver` 从 evidence+fee+drug_kb 解析 |
-| **v0.9 原文对照面板** | 点命中项目 → 右侧 **parallel 滑出**原文 (非弹窗, 收起左 sidebar, 违规卡保留可左右比对), 自动切 tab + 滚到 + 黄标高亮命中片段 |
+| **公开解释与命中项目** | 默认展示医生可读的结论、核查项目、收费事实、依据、临床证据和复核事项；费用/药品命中必须关联患者实际净正收费行，不展示内部规则号或原始 evidence JSON |
+| **原文对照面板** | 点命中项目后先按锚点懒加载文书/费用/检验目标页签，再定位高亮；源暂不可用可重试，真实无数据与定位失效分别提示 |
 | **v0.9 费用类别展开** | 费用类别表手风琴, 点类别就地展开明细 (编码·名称·次数·金额) |
-| 原始病历 modal | 2 tab (文书 / 费用) + Ctrl+F 搜索 + 高亮跳转 (全量浏览入口, 保留) |
+| 原始病历 modal | 文书 / 费用 / 检验记录按页签加载，支持 Ctrl+F 搜索与高亮跳转 |
 | `/review` | POST 提交批复 (V/I/C + 评语), insert-only + is_latest, 事务 |
 | `/sse/reviews` | EventSource 长连接, 推 `review_submitted` (同事提交) + `new_audit_run` (新 audit 实时) |
 | `/dashboard` | 总进度 + Javert/专家 一致率 + reviewer leaderboard + 规则维度表 |
@@ -283,6 +296,10 @@ uv run javert report                                      # 全规则汇总
 uv run javert report --rule R191 --since 2026-05-01       # 限定汇总
 uv run javert show aud_a1b2c3d4e5f6                       # run_id 反查
 uv run javert show R191 --patient J66252                  # 取最新一次跑的 trace
+
+# 确定性 Promise 提交门禁（离线、零 LLM/网络/生产数据库）
+.venv/bin/javert promise validate
+.venv/bin/javert promise run
 
 # 模板套填 (rule-templating capability)
 uv run javert template list                                                     # 看 M1-M8 状态

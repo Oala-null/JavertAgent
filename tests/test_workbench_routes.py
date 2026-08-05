@@ -61,9 +61,9 @@ def test_group_runs_orders_v_before_i_and_counts():
         _mkrun("R3", "VIOLATION"),
     ]
     meta = {
-        "R1": {"violation_type": "过度检查"},
-        "R2": {"violation_type": "过度检查"},
-        "R3": {"violation_type": "重复收费"},
+        "R1": {"violation_type": "过度检查", "behavior_code": "T380202", "behavior_name": "过度检查"},
+        "R2": {"violation_type": "过度检查", "behavior_code": "T380202", "behavior_name": "过度检查"},
+        "R3": {"violation_type": "重复收费", "behavior_code": "T380301", "behavior_name": "重复收费"},
     }
     groups = _group_runs_by_violation_type(runs, meta)
     assert len(groups) == 2
@@ -89,7 +89,11 @@ def test_group_runs_missing_meta_falls_to_unclassified():
 
 def test_group_runs_alias_compresses_long_violation_type():
     runs = [_mkrun("R1", "VIOLATION")]
-    meta = {"R1": {"violation_type": "虚构医药服务项目或以骗保为目的串换项目"}}
+    meta = {"R1": {
+        "violation_type": "虚构医药服务项目或以骗保为目的串换项目",
+        "behavior_code": "T380206",
+        "behavior_name": "提供不必要的医药服务",
+    }}
     groups = _group_runs_by_violation_type(runs, meta)
     # behavior-naming: 展示名 = 行为认定名称 (behavior_names.yaml), 不再是压缩短词
     assert groups[0]["alias"] == "提供不必要的医药服务"

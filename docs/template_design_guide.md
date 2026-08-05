@@ -220,3 +220,22 @@ M5 的 10 条由原 8 条虚构服务规则加 R317（溶栓术配套）和 R318
 - ❌ enum 写错 options 值 — vars_validator 拒绝, exit 1
 - ❌ `--auto` 后没看输出就回车 `y` — Qwen 起草质量参差, 必须 review
 - ❌ 模板 fields 加得过细 (>30 个) — 操作者会写错; 拆模板比加字段好
+
+---
+
+## 9. 模板变化与 Promise 回归
+
+模板负责生成规则提示词，不负责定义确定性终局 Promise。只有已确认漂移能够收敛为最小、
+可执行事实，并具备 positive 与 near-negative，才进入 `configs/promises/`；不要把模板变量、
+Jinja 条件或 LLM 散文复制成另一套 Promise DSL。
+
+模板渲染可能改变规则含义或 Promise scope，因此模板 change 的门禁顺序是：
+
+1. `javert template validate <M*>` 和 reference rule round-trip；
+2. 重建并核对 Router index；
+3. 检查受影响规则是否被 active Promise 显式纳入，必要时用新版本替代，不就地改 active；
+4. 运行 `.venv/bin/javert promise validate` 与 `.venv/bin/javert promise run`；
+5. 再做规则定向和患者级回归。
+
+当前模板与 ready 规则数量会变化，维护时以 `.venv/bin/javert template list` 和
+`.venv/bin/javert list` 的实时输出为准，不从本文历史表格推断执行集。

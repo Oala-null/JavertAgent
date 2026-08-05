@@ -279,6 +279,29 @@ def template_validate_cmd(template_id: str) -> None:
     sys.exit(run_template_validate(template_id))
 
 
+@main.group("promise")
+def promise_group() -> None:
+    """版本化 Promise 资产校验与离线回归。"""
+
+
+@promise_group.command("validate")
+@click.option("--json", "json_output", is_flag=True, help="输出稳定 JSON 报告")
+def promise_validate_cmd(json_output: bool) -> None:
+    """校验 schema、scope、版本链、案例与 H/I 映射。"""
+    from .commands.promise import run_promise_validate
+
+    sys.exit(run_promise_validate(json_output=json_output))
+
+
+@promise_group.command("run")
+@click.option("--json", "json_output", is_flag=True, help="输出稳定 JSON 报告")
+def promise_run_cmd(json_output: bool) -> None:
+    """离线重复执行全部 Promise 案例。"""
+    from .commands.promise import run_promise_harness
+
+    sys.exit(run_promise_harness(json_output=json_output))
+
+
 @main.command("ensure-mssql-schema")
 @click.option("--drop-first", is_flag=True,
               help="先 DROP 再 CREATE (需 JAVERT_ALLOW_DROP=1, 不可逆)")

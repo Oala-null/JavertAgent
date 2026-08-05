@@ -24,4 +24,9 @@ mappings:
   虚构医药服务: {code: T380206, name: 提供不必要的医药服务}
   虚构医药服务项目或以骗保为目的串换项目: {code: T380206, name: 提供不必要的医药服务}
   # 串换保持独立；正式行为认定编码尚未提供，不臆造编码。
-  串换项目: {code: '', name: 串换药品、医用耗材、诊疗项目和服务设施}
+  串换项目:
+    code: ''
+    name: 串换药品、医用耗材、诊疗项目和服务设施
+    exception: true
+    exception_key: interchange-explicit-unmapped
+    source_ref: 两库汇总 H/I 未提供正式行为认定编码
