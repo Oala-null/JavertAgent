@@ -10,9 +10,9 @@
 - 最终幂等 DDL 连续执行两次成功；实际核验为 3 个 schema、25 张 KB 表、6 个中文审核视图、
   129 个约束、44 个索引和 23 个必需触发器（含
   `tr_curated_atom_target_authority`）。
-- 当前账号具备 SELECT/INSERT/UPDATE/ALTER，但为 `db_owner`，不是最小权限 principal；最近
-  可见 full backup 为 2026-06-03，当前备份策略与恢复演练没有得到证明。因此 OpenSpec 9.3
-  和 9.10 仍未完成。
+- 当前账号具备 SELECT/INSERT/UPDATE/ALTER，但为 `db_owner`，不是最小权限 principal；截至
+  快照日可见的最新 full backup 为 2026-06-03，当前备份策略与恢复演练没有得到证明。因此
+  OpenSpec 9.3 和 9.10 仍未完成。
 - 两次旧探针 materialize 都由同一事务完整回滚，FAILED staging/history 未删除或改写。
   用户重新授权后，最终两份 DRAFT 均已上传并物化；当前 `review_event=0`、
   `knowledge_release=0`，未产生任何专家批准或发布。

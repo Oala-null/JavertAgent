@@ -137,6 +137,7 @@ v2 结果按当前 `attempt_id + run_id` 增量复用已生成 cards。HTTP 请�
   },
   "public_explanation": {
     "conclusion": {"label": "未发现违规", "summary": "现有结构化事实未支持违规结论。"},
+    "narrative": "经核对收费事实、诊断与现有文书，保留完整的中文审核说明。",
     "audit_items": ["申请医保支付的肿瘤药，超出医保药品目录限定支付范围。"],
     "charge_facts": [],
     "basis": [],
@@ -227,12 +228,14 @@ v2 结果按当前 `attempt_id + run_id` 增量复用已生成 cards。HTTP 请�
 | `hits` | Web 命中块所需的完整解析结果，含 fee/drug/note/lab/exam 及定位锚点 |
 | `evidence` | 模型裁决引用的证据摘要 |
 | `eligibility_evaluation` | RD04 完整肿瘤资格结构；非 RD04 或历史空行返回 `null` |
-| `public_explanation` | 固定六段的医生可读结构化解释；只投影有确定来源的事实，不从 reasoning 猜测 |
+| `public_explanation` | 固定含 7 个字段：`conclusion/narrative/audit_items/charge_facts/basis/clinical_evidence/review_needs`；`narrative` 保留持久化 reasoning 的完整中文化摘要，其余字段只投影有确定来源的事实 |
 | `promise` | 可空公开摘要；仅含 `locked/historical_conflict`，不暴露内部 Promise 标识、原因码或 facts |
 
-`public_explanation` 与 `promise` 是 additive 字段。v2 既有字段名、每条规则一张 card、三态
-结果和 `matched_items` 对齐语义不变；下游 BFF 应优先展示公开解释，但不得删除或改写旧字段。
-公开 fee/drug hit 必须关联患者实际净正收费行，无实际收费的搜索词不再生成假命中。
+`public_explanation` 与 `promise` 是 additive 字段，`narrative` 相对最初六字段公开解释也属于
+只加字段。v2 既有字段名、每条规则一张 card、三态结果和 `matched_items` 对齐语义不变；
+下游 BFF 应优先展示公开解释，但不得删除或改写旧字段，严格 DTO 应把 `narrative` 建模为可选
+并允许未知字段。公开 fee/drug hit 必须关联患者实际净正收费行，无实际收费的搜索词不再生成
+假命中。
 
 ## 5. code/name/time 一一对应标准
 
@@ -387,4 +390,4 @@ curl --http1.1 \
 4. 按 `category.code + category.title` 分组；串换 code 为空时以 title 为稳定键。
 5. 命中项目以 `matched_items[]` 为准；三个兼容数组只用于现有模型快速接入。
 6. RD04 展开区直接读取 `eligibility_evaluation`，不要从大篇幅 reasoning 反解析限定条件。
-7. 忽略未知字段，以便 v2 后续继续只增不删。
+7. 忽略未知字段；若使用严格 DTO，将 `narrative` 建模为可选字段，以便 v2 后续继续只增不删。

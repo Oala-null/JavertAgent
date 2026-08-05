@@ -8,7 +8,7 @@
 
 **data-hub (2026-07-03)**: 🟢 **数据中台三链打通** — 对接 `Scriv/Data_Hub` 46 张国标 TB_* 表: **回填** (`scripts/build_data_hub_filled.py`, sy 3309 + szx 全量 4701 患者 → 23 表 631 万记录, 含 通用文书/费用医保分解/手术医保双码 3 张扩展表) → **推送** (`scripts/push_data_hub_filled.py` → 142 `TP_data_hub` 库) → **反向取数** (`scripts/etl_from_data_hub.py`, 流B, zadig_agent 零改动). 双链路对照 J66252 裁决 16/18 一致无 V 级差异. 交接文档 `Scriv/data_hub_filled/_report.md`, 接入指引 `docs/数据接入清单.md` §四.
 
-**2C 对接 v3**：新接入使用 `/api/audit/v3/submit` 与 `/api/audit/v3/results/{SYXH}`；在完整规则卡片上按实际收费明细行返回数量、单价、开单科室编码/名称和开单医生工号/名称。`status=running` 时 cards 只是增量结果，必须轮询到 `done`。详见 `docs/2c对接_javert审计服务_v3.md`。
+**2C 对接 v3**：新接入使用 `/api/audit/v3/submit` 与 `/api/audit/v3/results/{SYXH}`；在完整规则卡片上按实际收费明细行返回数量、单价、开单科室编码/名称和开单医生工号/名称。`public_explanation.narrative` 是保留持久化 reasoning 语义的只加字段，严格客户端须允许可选/未知字段。`status=running` 时 cards 只是增量结果，必须轮询到 `done`。详见 `docs/2c对接_javert审计服务_v3.md`。
 
 **确定性 Promise 门禁**：已确认的漂移先沉淀为去标识 `DriftCase`，再提炼为带正例、
 相邻反例和显式规则 scope 的版本化 Promise。`decision_pre_llm` Promise 可在模型前给出
@@ -22,7 +22,7 @@
 两条命令均离线执行，不访问 LLM、网络、SQL Server 或 hub。Promise 只保护已确认的最小
 边界，不替代 Rule YAML、precheck、verdict gate 或肿瘤资格条件树。
 
-**62 当前运行口径（2026-08-04）**：Javert 使用 30000 上的
+**62 当前运行口径（2026-08-05）**：Javert 使用 30000 上的
 `Qwen/Qwen3.6-35B-A3B-FP8`；W2 试验服务 30002 与 OCR 30001 已停。62 的 Javert 目录为
 `production-62` 稀疏 Git 工作树，提交后用 `scripts/deployment_sync.py check` 核验本地与
 62 的 HEAD 相等且远端受控工作树 clean；发布步骤见 `docs/deployment_192_62.md` §10。
@@ -184,7 +184,7 @@ uv run python scripts/test_router_smoke.py
 | `/account/password` | 自助改密 (旧 + 新 + 确认), 改完强制重登 |
 | `/workbench` | sidebar 100+ 病人 (V/I/C 计数 + 已审 N/M 进度 + **v0.9 主诊/¥金额/更新时间富卡片**), filter 4 档, **v0.9 facet (tag/费用区间/主诊关键词/更新时间, 纯前端叠加)**, welcome banner |
 | `/workbench/{pid}` | 病案概览 (主诊/手术/费用结构/科室/医师) + 违规卡 + 三态决策 form + 其他专家行 (**v0.9 长评语 hover 全文**) + 原始病历 modal |
-| **公开解释与命中项目** | 默认展示医生可读的结论、核查项目、收费事实、依据、临床证据和复核事项；费用/药品命中必须关联患者实际净正收费行，不展示内部规则号或原始 evidence JSON |
+| **公开解释与命中项目** | 默认展示完整中文化“审核说明”（保留持久化 reasoning 语义）以及结论、核查项目、收费事实、依据、临床证据和复核事项；结构化事实不从说明反解析，费用/药品命中必须关联患者实际净正收费行，不展示内部规则号或原始 evidence JSON |
 | **原文对照面板** | 点命中项目后先按锚点懒加载文书/费用/检验目标页签，再定位高亮；源暂不可用可重试，真实无数据与定位失效分别提示 |
 | **v0.9 费用类别展开** | 费用类别表手风琴, 点类别就地展开明细 (编码·名称·次数·金额) |
 | 原始病历 modal | 文书 / 费用 / 检验记录按页签加载，支持 Ctrl+F 搜索与高亮跳转 |
@@ -414,9 +414,10 @@ abandoned (任意状态可达, 无需 force)
 uv run pytest tests/ -v
 ```
 
-2026-07-22 记录的完整套件为 `1040 collected / 1039 passed / 1 skipped /
-0 failed / 0 errors`。唯一 skip 是已有不可达 `for-else` 分支契约；精确命令、SQL/oncology
-分组计数和外部门禁见 `docs/oncology/qa_report.md`。
+2026-08-05 记录的完整套件为 `1104 collected / 1103 passed / 1 skipped /
+0 failed / 0 errors`。唯一 skip 是已有不可达 `for-else` 分支契约；本轮公开说明与 Promise
+门禁见 `docs/CHANGES.md` 和 `openspec/changes/add-evolving-promise-harness/verification.md`，
+oncology 历史分组计数与外部门禁见 `docs/oncology/qa_report.md`。
 
 ## 与 zadig_agent 的关系
 

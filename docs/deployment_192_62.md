@@ -692,8 +692,8 @@ case/Promise 标识、状态、错误码、计数与耗时分桶，不能出现�
 2. `/proc/<pid>/environ` 中 SQL、Hub、LLM 和肿瘤开关实值与发布前固化值一致；
 3. SQL/Hub 健康、SQLite/SQL Server 新旧行兼容，Promise trace 可空双写；
 4. v3 空数组 submit 返回 HTTP 202，不存在的去标识号 results 返回 HTTP 200/unknown；
-   BFF 验证 `public_explanation`、可空 `promise` 和 `behavior_code` 只加字段，不改变 card 数、
-   旧字段名或收费行展开；
+   BFF 验证 `public_explanation.narrative`、可空 `promise` 和 `behavior_code` 只加字段，严格
+   DTO 允许可选/未知字段，且不改变 card 数、旧字段名或收费行展开；
 5. 用合成、去标识案例验证 Promise 锁命中时为 CLEAN、零 LLM，并验证 near-negative 不被清掉；
 6. 原文链路分别采集 62 回环直连、客户端 `--noproxy` 和浏览器路径的无 PHI 阶段结果；
    对 notes/fees/labs 各验证成功、真实 404、可重试 503，确认费用跳转不等待其他 tab。

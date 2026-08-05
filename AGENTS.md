@@ -69,8 +69,8 @@ Javert 用规则 YAML、确定性预检/后置闸和本地 LLM，审计国家医
   `data/router/javert_rules_index.json` 状态一致。
 - `--rules` 会显式纳入 abandoned 规则；默认批跑不能依赖这一行为。
 - `precheck` 只处理声明过的确定性费用形态；`verdict_gate` 只对 VIOLATION 生效且只降不升。
-- 修改 SSE/2C 返回字段时保持“只加不删不改名”，同步
-  `docs/2c对接_javert审计服务.md`，并检查下游 BFF 契约。
+- 修改 SSE/2C 返回字段时保持“只加不删不改名”，同步所有暴露该字段的
+  `docs/2c对接_javert审计服务*.md`，并检查下游 BFF 契约；严格 DTO 必须允许新增/未知字段。
 - 2C 生产对接固定使用最新 v3：`POST /api/audit/v3/submit` 与
   `GET /api/audit/v3/results/{SYXH}`；v1/v2 只做兼容。62 每次覆盖 Web 源码或重启后，必须
   用空数组 submit 验证 HTTP 202，并用不存在的去标识号验证 results 返回 HTTP 200/unknown，
@@ -182,7 +182,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/build_oncology_regimen_kb.py
 | `README.md` | 新人入口、命令和当前能力 |
 | `docs/how_javert_works.md` | 面向管理层/信息科的当前架构 |
 | `docs/数据接入清单.md` | 医院数据接入 |
-| `docs/2c对接_javert审计服务.md` | 2C API 契约 |
+| `docs/2c对接_javert审计服务*.md` | 2C v1/v2/v3 API 契约 |
 | `docs/deployment_192_62.md` | 62 运维 runbook |
 | `docs/review_workbench_user_guide.md` | 专家工作台使用 |
 | `docs/rule_design_guide.md` | Rule YAML 设计 |
