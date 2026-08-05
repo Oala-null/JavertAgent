@@ -110,3 +110,12 @@ notes/fees/labs 三页签均成功，合成不存在号返回 `RAW_TAB_NOT_FOUND
   组合门禁为 82 passed，Promise validate 为 issues=0，Promise run 为 15/15，完整套件为
   1104 collected / 1103 passed / 1 skipped / 0 failed / 0 errors，`git diff --check` 与
   `openspec validate add-evolving-promise-harness --strict` 均通过。
+- 用户明确授权后从已提交功能 HEAD `e6b05abdf050` 构建 442 个受控 blob 的最小部署物并安装
+  到 62 `production-62`；安装备份位于 `javert-git-20260805-165027-3015633`，schema 幂等通过，
+  Web 进程重拉后 systemd active、登录页和 health HTTP 200、SQL 142 健康。
+- 安装前后 27 个 `JAVERT_*` 进程环境逐值无差异；v3 空数组 submit 为 HTTP 202，去标识
+  unknown results 为 HTTP 200/unknown。62 上合成 reasoning 验证业务语义全部保留、内部词为
+  0、结构化数组未从散文猜测。
+- 浏览器真实详情页抽样于 2026-08-05：22 个审核说明区块均默认可见，最长 399 字，至少一项超过
+  100 字；内部工具/英文裁决词为 0，旧 `.evidence-block` 与原始 JSON `<pre>` 均为 0。功能
+  HEAD 与 62 一致且远端受控工作树 clean。

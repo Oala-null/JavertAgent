@@ -712,6 +712,13 @@ results 200，客户端 `--noproxy` 健康，浏览器去标识 notes/fees/labs 
 工作簿不能成为产品依赖；最终部署范围加入 `tests/promise_cases`，H/I 门禁改用带源文件摘要的
 `configs/behavior_source_pairs.yaml` 版本化最小快照，随后从最终提交完整重装并复验。
 
+**2026-08-05 公开审核说明纠偏记录**：数据库旧 reasoning 未改写，功能 HEAD
+`e6b05abdf050` 只新增 `public_explanation.narrative` 并在工作台默认渲染“审核说明”；结构化
+数组仍不从散文猜测，原始 evidence JSON 继续隐藏。受控 artifact/install、schema、进程重拉
+后，两端 HEAD 一致且远端 clean，27 个 `JAVERT_*` 进程环境无差异，systemd/登录/health/SQL
+和 v3 submit/results 冒烟通过。浏览器真实详情页抽样 22 个说明区块，最长 399 字，内部工具/
+英文裁决词和旧 evidence JSON 区块均为 0。
+
 ## 11. 实测性能 (2026-05-21 50 病人 batch)
 
 ```

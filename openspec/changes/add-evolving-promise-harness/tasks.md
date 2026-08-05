@@ -64,4 +64,4 @@
 - [x] 8.5 运行 `openspec validate add-evolving-promise-harness --strict`，逐条核对 tasks、spec 场景与真实测试结果，未完成的生产诊断或发布项不得勾选完成。
 - [x] 8.6 在获得 62 上线授权后按 `production-62` 受控 HEAD artifact/install→schema→restart 流程发布，并验证两端 HEAD、工作树 clean、systemd、登录页、关键环境实值、SQL/Hub、2C v3、Promise 锁与原文三段路径；未获授权时保持此任务 pending，不用本地结果冒充上线完成。
 - [x] 8.7 为 `narrative` 补 presenter、模板、2C additive 契约与去标识回归测试，更新工作台/2C 文档和验证记录，运行相关 Web 组合测试、Promise 门禁与严格 OpenSpec 校验。
-- [ ] 8.8 提交纠偏代码后按受控 artifact/install 发布 62，并以去标识页面断言确认长审核说明默认可见、内部术语/原始 JSON 不可见，同时复验服务、HEAD 与工作树 clean。
+- [x] 8.8 提交纠偏代码后按受控 artifact/install 发布 62，并以去标识页面断言确认长审核说明默认可见、内部术语/原始 JSON 不可见，同时复验服务、HEAD 与工作树 clean。
