@@ -3,7 +3,7 @@
 - [x] 1.1 用去标识 fixtures 为四个已知漂移建立先失败的回归测试：退费净数量为 1 仍被判疑似、无收费行却出现“定位”命中、同一 H/I 类别重复分组、工作台直接展示内部 rule ID/原始 evidence JSON；保存修复前断言而不写入患者原文。
 - [x] 1.2 运行 `.venv/bin/javert list` 和当前 ready 规则解析，逐条核实哪些规则的违规成立条件确为“同一目标收费项目净数量 > 1”，形成 `PR-D001` 的显式 scope；一次即违规、组合项目、串换、虚构、限定支付和 M1 主附项目规则必须进入排除说明或 near-negative。
 - [x] 1.3 定位工作区内被 Git 忽略的“两库汇总”静态参考工作簿，程序化读取 H/I 列并固化带来源摘要的版本化最小快照，再与 `configs/behavior_names.yaml` 当前 ready 规则映射对账；记录正常 pair、重复内部类型和显式例外，不在文档中手抄会漂移的库存数量。
-- [ ] 1.4 在不改生产状态的前提下建立原文跳转故障基线：用本地故障注入复现慢/断 hub，并在获准访问 62 时分别采集回环、`--noproxy`、浏览器路径与无 PHI 阶段时间，明确 502 是应用、SQL 还是代理分支后再选择修复点。
+- [x] 1.4 在不改生产状态的前提下建立原文跳转故障基线：用本地故障注入复现慢/断 hub，并在获准访问 62 时分别采集回环、`--noproxy`、浏览器路径与无 PHI 阶段时间，明确 502 是应用、SQL 还是代理分支后再选择修复点。
 
 ## 2. Promise 资产模型与治理校验
 
@@ -61,4 +61,4 @@
 - [x] 8.3 先运行 Promise 定向测试与 `javert promise validate/run`，再运行 audit/gate/store/workbench/2C/raw-source 受影响模块组合测试和一个去标识端到端命令；原样记录 collected/pass/skip/fail/error 及既有债务排除项。
 - [x] 8.4 若实现中改变规则状态、关键词、模板渲染或 M8，运行 `scripts/build_rule_mapping.py` 并验证 YAML 与 router index 一致；未改变时在验证记录中明确标为不适用。
 - [x] 8.5 运行 `openspec validate add-evolving-promise-harness --strict`，逐条核对 tasks、spec 场景与真实测试结果，未完成的生产诊断或发布项不得勾选完成。
-- [ ] 8.6 在获得 62 上线授权后按 `production-62` 受控 HEAD artifact/install→schema→restart 流程发布，并验证两端 HEAD、工作树 clean、systemd、登录页、关键环境实值、SQL/Hub、2C v3、Promise 锁与原文三段路径；未获授权时保持此任务 pending，不用本地结果冒充上线完成。
+- [x] 8.6 在获得 62 上线授权后按 `production-62` 受控 HEAD artifact/install→schema→restart 流程发布，并验证两端 HEAD、工作树 clean、systemd、登录页、关键环境实值、SQL/Hub、2C v3、Promise 锁与原文三段路径；未获授权时保持此任务 pending，不用本地结果冒充上线完成。

@@ -1,6 +1,6 @@
 # 验证记录
 
-日期：2026-08-04
+日期：2026-08-05
 
 ## 失败基线与范围
 
@@ -13,16 +13,17 @@
   H/I 列，将带来源摘要的最小 pair 快照固化为 `configs/behavior_source_pairs.yaml`，再对账
   `configs/behavior_names.yaml`。生产 harness 仅依赖该版本化快照；当前 ready 映射均有正式
   pair 或合法显式例外，串换使用 `interchange-explicit-unmapped` 例外键并保留来源说明。
-- 本地慢查询、断连接、失败不缓存和恢复重试故障注入已通过；62 回环、`--noproxy` 与浏览器
-  三段采集未获授权，任务 1.4 保持 pending。
+- 本地慢查询、断连接、失败不缓存和恢复重试故障注入已通过；获授权后完成 62 回环、客户端
+  `--noproxy` 与浏览器三段采集。三条路径均可到达服务，未复现代理 502；真实 404 与合成
+  Hub 不可用的可重试 503 可明确区分，未通过放大 SQL 或代理 timeout 掩盖问题。
 
 ## 定向门禁
 
 ```text
 .venv/bin/pytest -q tests/test_promises.py tests/test_promise_runtime.py \
   tests/test_promise_drift_baseline.py tests/test_public_presenter.py \
-  tests/test_hub_raw_source.py
-48 passed / 0 skipped / 0 failed / 0 errors
+  tests/test_hub_raw_source.py tests/test_deployment_sync.py
+53 passed / 0 skipped / 0 failed / 0 errors
 
 .venv/bin/javert promise validate
 definitions=1 / drift_cases=4 / cases=12 / explicit_exceptions=1 / issues=0
@@ -60,7 +61,7 @@ Runner 结构下不可达；未排除测试文件，也没有新增债务排除�
 
 ```text
 .venv/bin/pytest -q
-1101 collected / 1100 passed / 1 skipped / 0 failed / 0 errors
+1103 collected / 1102 passed / 1 skipped / 0 failed / 0 errors
 
 node --check src/javert/web/static/app.js
 passed
@@ -78,7 +79,21 @@ passed
 
 ## 发布状态
 
-本地实现、文档、契约与测试门禁已完成。没有连接或写入 142 `sh_yb_platform`，没有执行 62
-artifact/install、schema、restart 或生产冒烟。任务 8.6 保持 pending；获得上线授权后必须按
-`docs/deployment_192_62.md` §10.12 完成受控 HEAD、schema、重启、2C v3、Promise 锁和原文
-三段路径验收。
+用户明确授权后按 §10.12 完成受控发布，功能运行基线提交为
+`ec90ce0f1baafe2c355f8b86251b6b6a3ed15da1`：本地与 62 HEAD 相等，远端分支
+`production-62`、受控工作树 clean；systemd `active/running`、登录页 HTTP 200，连续检查
+restart 计数稳定。安装前后 27 个 `JAVERT_*` 进程环境逐值一致，SQL/Hub/肿瘤关键开关符合
+既有生产口径。
+
+schema 先于重启幂等执行，`zadig.javert_audit_runs.promise_trace_json` 为可空列且既有 null 行
+仍存在；SQL 健康、同步线程和只读 `sh_yb_platform` `SELECT 1` 均通过，没有修改 Hub schema
+或患者数据。生产 `promise validate` 为 definitions=1、drift_cases=4、cases=12、issues=0，
+`promise run` 为 15/15；positive 得到锁定 CLEAN，全部 near-negative 保持不适用。
+
+62 回环 v3 空数组 submit 返回 HTTP 202，不存在的去标识号 results 返回 HTTP 200/unknown；
+客户端 `--noproxy` 的登录、健康和 v3 路径均成功。浏览器现有登录态下，去标识测试号的
+notes/fees/labs 三页签均成功，合成不存在号返回 `RAW_TAB_NOT_FOUND`；62 已安装代码的独立
+进程故障注入返回 HTTP 503、`retryable=true`，未修改在线进程、数据库或 Hub。部署过程中
+生产 Promise 验证先暴露稀疏范围漏带案例及本机工作簿不可版本化两个缺口；最终以部署
+`tests/promise_cases` 和带来源摘要的 `configs/behavior_source_pairs.yaml` 修复，并在最终 HEAD
+重新完成全部验收，未把中间失败冒充成功。

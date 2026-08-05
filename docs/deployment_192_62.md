@@ -663,10 +663,10 @@ DRAFT 失败 batch 留存且保持回滚，最终修正版已完成 validate/pre
   `api_version=3.0/status=unknown`；合成 Hub 查无探针为 HTTP 202 且明确 rejected，证明 Hub
   只读连接正常。验收未提交真实患者、未创建审计任务、未写入患者结果。
 
-### 10.12 Promise 门禁、公开解释与原文懒加载（待授权发布）
+### 10.12 Promise 门禁、公开解释与原文懒加载（2026-08-05 已部署）
 
-> 本节是 `add-evolving-promise-harness` 的发布清单，不表示已部署。未获得 62 上线授权前，
-> 不得把本地测试、schema 文件或文档更新冒充生产完成。
+> 本节既是 `add-evolving-promise-harness` 的发布清单，也记录 2026-08-05 的生产验收。
+> 后续发布仍须逐项重跑，不能沿用本次结果冒充新的生产完成。
 
 发布前在已提交的本地 HEAD 运行：
 
@@ -701,6 +701,16 @@ case/Promise 标识、状态、错误码、计数与耗时分桶，不能出现�
 原文诊断只允许记录 `source/tab/outcome/duration_bucket/cache_hit/error_code`。直连成功而浏览器
 失败应归代理路径；直连也失败再查应用 deadline、SQL Server 或 Hub，不以盲目放大超时作为
 默认修复。回滚应用到上一受控 HEAD 后保留新增可空列，不删除历史 trace。
+
+**2026-08-05 生产记录**：功能运行基线 HEAD `ec90ce0f1baa`，62 分支 `production-62`，两端
+HEAD 相等且远端受控工作树 clean。schema 在重启前幂等完成，systemd `active/running`、登录页
+HTTP 200，安装前后全部 `JAVERT_*` 进程环境一致；SQL、同步线程和只读 Hub 健康，新列可空且
+旧 null 行未回填。生产 Promise validate 无 issue、run 15/15；v3 回环空数组 202、unknown
+results 200，客户端 `--noproxy` 健康，浏览器去标识 notes/fees/labs 成功且真实缺失返回 404。
+可重试 503 通过 62 已安装代码的独立进程内存故障注入验证，没有中断在线 Hub 或修改患者数据。
+首次候选部署由生产 validate 发现稀疏范围缺少去标识案例，第二次发现被 Git 忽略的本机参考
+工作簿不能成为产品依赖；最终部署范围加入 `tests/promise_cases`，H/I 门禁改用带源文件摘要的
+`configs/behavior_source_pairs.yaml` 版本化最小快照，随后从最终提交完整重装并复验。
 
 ## 11. 实测性能 (2026-05-21 50 病人 batch)
 
