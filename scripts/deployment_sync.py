@@ -39,6 +39,9 @@ DEPLOY_SCOPES = (
     "src",
     "configs",
     "data/router",
+    # Promise 运行时会 fail closed 校验去标识案例及 H/I 源表；二者不是普通测试/文档附件。
+    "tests/promise_cases",
+    "docs/templates/260611医保基金监管规则框架总表.xlsx",
     "scripts",
     "pyproject.toml",
     "uv.lock",
