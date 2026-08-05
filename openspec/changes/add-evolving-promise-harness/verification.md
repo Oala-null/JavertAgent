@@ -9,9 +9,10 @@
 - 运行 `.venv/bin/javert list` 并逐条核对当前 ready 规则后，`PR-D001` 仅显式纳入 R151 的
   抗体类重复检查边界；一次即违规、组合项目、串换、虚构、限定支付和 M1 主附项目均由
   near-negative 保护。本文不复制当前规则库存数量。
-- 程序化读取 `docs/templates/260611医保基金监管规则框架总表.xlsx` 的“两库汇总”H/I 列并
-  对账 `configs/behavior_names.yaml`。当前 ready 映射均有正式 pair 或合法显式例外；串换使用
-  `interchange-explicit-unmapped` 例外键并保留来源说明。未在代码中复制 H/I 库存。
+- 程序化读取本机静态参考 `docs/templates/260611医保基金监管规则框架总表.xlsx` 的“两库汇总”
+  H/I 列，将带来源摘要的最小 pair 快照固化为 `configs/behavior_source_pairs.yaml`，再对账
+  `configs/behavior_names.yaml`。生产 harness 仅依赖该版本化快照；当前 ready 映射均有正式
+  pair 或合法显式例外，串换使用 `interchange-explicit-unmapped` 例外键并保留来源说明。
 - 本地慢查询、断连接、失败不缓存和恢复重试故障注入已通过；62 回环、`--noproxy` 与浏览器
   三段采集未获授权，任务 1.4 保持 pending。
 

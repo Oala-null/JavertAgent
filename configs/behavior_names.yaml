@@ -1,7 +1,8 @@
 # 行为认定名称映射 — 对外展示统一口径 (2C 出参 + 工作台)
 #
 # 来源: docs/templates/260611医保基金监管规则框架总表.xlsx sheet「两库汇总」I 列 行为认定名称
-#       (行为认定编码取 H 列); 虚构类按已确认口径归入 T380206，串换保持独立名称.
+#       (行为认定编码取 H 列); 运行时对照 configs/behavior_source_pairs.yaml 的版本化最小快照；
+#       虚构类按已确认口径归入 T380206，串换保持独立名称.
 # 左侧 key = 规则 yaml 的 violation_type 原词; 不在表内的细类 → 展示时回退 violation_type 原样.
 # 改这里即全局生效 (rule_meta 进程内缓存, 重启/reset 后加载).
 mappings:

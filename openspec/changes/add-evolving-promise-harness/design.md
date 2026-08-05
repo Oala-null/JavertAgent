@@ -132,7 +132,7 @@ Evaluator 统一返回 `NOT_APPLICABLE` 或 `PromiseMatch`：`promise_id/version
 
 ### D8 — 行为类别以公开键分组并做源表门禁
 
-`configs/behavior_names.yaml` 继续作为运行时映射，但 harness 读取仓库内“两库汇总”H/I 列核对所有 ready 规则：正常映射的 `(code,name)` 必须存在于源表；未映射不得回退内部 `violation_type` 进入客户界面。串换当前无正式 I 列编码，保留为带 `exception=true/source_ref` 的显式例外，不能与普通映射混在一起。
+`configs/behavior_names.yaml` 继续作为运行时映射；本机静态参考工作簿不进入 Git 或产品依赖，维护时程序化读取“两库汇总”H/I 列并更新带来源摘要的 `configs/behavior_source_pairs.yaml` 版本化最小快照。harness 只读取该仓库资产核对所有 ready 规则，保证本地、CI 与稀疏生产部署确定一致：正常映射的 `(code,name)` 必须存在于源快照；未映射不得回退内部 `violation_type` 进入客户界面。串换当前无正式 I 列编码，保留为带 `exception=true/source_ref` 的显式例外，不能与普通映射混在一起。
 
 工作台组/chip 的业务键改为 `(behavior_code, behavior_name)`；空编码特例用稳定 exception key。同一公开键只出现一个组，组内保留多条规则卡片。2C 单规则卡片仍逐条返回，不把业务不同的规则结果合并成一张卡。
 
@@ -160,7 +160,7 @@ Evaluator 统一返回 `NOT_APPLICABLE` 或 `PromiseMatch`：`promise_id/version
 - [“不可变”文件仍可被 Git 修改] → 版本文件名 + supersedes 链 + 落库内容版本/摘要；代码评审和 harness 禁止 active 内容无版本升级变化，历史文件永不删除。
 - [公开结构化解释缺字段] → 缺事实就留空并进入 `review_needs`，绝不让 LLM 散文伪造结构；legacy reasoning 兼容保留。
 - [收紧 hit 使历史卡片看起来少了项目] → 这是消除假命中的预期变化；内部 evidence 仍可追溯，真实收费行命中不丢。
-- [行为源工作簿未来更新] → 映射与工作簿变更必须同一 change 更新并过 harness；不在代码里手抄另一套库存。
+- [行为源工作簿未来更新] → 程序化读取工作簿并在同一 change 更新带来源摘要的 H/I 最小快照与映射；harness 只消费版本化快照，不把被 Git 忽略的本机资料变成产品依赖。
 - [tab 懒加载增加前端状态复杂度] → 复用同一 fetch/cache 模块，旧全量入口保留；错误状态显式建模并做模板/JS 测试。
 - [502 来自客户端代理而非应用] → 直连/`--noproxy`/浏览器三段冒烟先定位；不以加大 SQL/代理 timeout 作为默认修复。
 - [新增 SQL 字段影响双写] → 单一可空 JSON 字段、幂等迁移、旧行 null、SQLite/SQL Server 兼容测试；部署先 schema 后服务。

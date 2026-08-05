@@ -25,6 +25,7 @@ DEFAULT_DEFINITIONS_DIR = PROJECT_ROOT / "configs" / "promises"
 DEFAULT_CASES_DIR = PROJECT_ROOT / "tests" / "promise_cases"
 DEFAULT_RULES_DIR = PROJECT_ROOT / "configs" / "rules"
 DEFAULT_BEHAVIOR_MAP = PROJECT_ROOT / "configs" / "behavior_names.yaml"
+DEFAULT_BEHAVIOR_SOURCE = PROJECT_ROOT / "configs" / "behavior_source_pairs.yaml"
 DEFAULT_SOURCE_WORKBOOK = (
     PROJECT_ROOT / "docs" / "templates" / "260611医保基金监管规则框架总表.xlsx"
 )
@@ -293,17 +294,52 @@ def _source_behavior_pairs(workbook: Path) -> set[tuple[str, str]]:
         return pairs
 
 
+def _versioned_behavior_pairs(source_path: Path) -> set[tuple[str, str]]:
+    raw = yaml.safe_load(source_path.read_text(encoding="utf-8")) or {}
+    source = raw.get("source")
+    source_valid = all(
+        (
+            isinstance(source, dict),
+            isinstance(source, dict)
+            and set(source) == {"reference", "sheet", "columns", "sha256"},
+            isinstance(source, dict) and source.get("sheet") == "两库汇总",
+            isinstance(source, dict) and source.get("columns") == ["H", "I"],
+            isinstance(source, dict)
+            and bool(re.fullmatch(r"[0-9a-f]{64}", str(source.get("sha256", "")))),
+        )
+    )
+    if (
+        raw.get("schema_version") != 1
+        or not source_valid
+        or not isinstance(raw.get("pairs"), list)
+    ):
+        raise ValueError("BEHAVIOR_SOURCE_SCHEMA_INVALID")
+    pairs: set[tuple[str, str]] = set()
+    for entry in raw["pairs"]:
+        if not isinstance(entry, dict) or set(entry) != {"code", "name"}:
+            raise ValueError("BEHAVIOR_SOURCE_SCHEMA_INVALID")
+        if not isinstance(entry["code"], str) or not isinstance(entry["name"], str):
+            raise ValueError("BEHAVIOR_SOURCE_SCHEMA_INVALID")
+        pair = (entry["code"].strip(), entry["name"].strip())
+        if not all(pair) or pair in pairs:
+            raise ValueError("BEHAVIOR_SOURCE_SCHEMA_INVALID")
+        pairs.add(pair)
+    if not pairs:
+        raise ValueError("BEHAVIOR_SOURCE_SCHEMA_INVALID")
+    return pairs
+
+
 def validate_behavior_mapping(
     rules_dir: Path = DEFAULT_RULES_DIR,
     behavior_map_path: Path = DEFAULT_BEHAVIOR_MAP,
-    workbook_path: Path = DEFAULT_SOURCE_WORKBOOK,
+    source_path: Path = DEFAULT_BEHAVIOR_SOURCE,
 ) -> list[ValidationIssue]:
     issues: list[ValidationIssue] = []
     try:
         rules = load_all(rules_dir)
         raw = yaml.safe_load(behavior_map_path.read_text(encoding="utf-8")) or {}
         mappings = raw.get("mappings", {})
-        source_pairs = _source_behavior_pairs(workbook_path)
+        source_pairs = _versioned_behavior_pairs(source_path)
     except Exception:
         return [ValidationIssue("BEHAVIOR_SOURCE_UNAVAILABLE", "behavior_mapping")]
     for rule in rules.values():

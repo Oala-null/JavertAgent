@@ -1,0 +1,16 @@
+schema_version: 1
+source:
+  reference: docs/templates/260611医保基金监管规则框架总表.xlsx
+  sheet: 两库汇总
+  columns: [H, I]
+  sha256: beff9ca4184127f7b6e61e9d2e208b8ce05ed9c4024b5fb7d4b62a3fd17a7cf5
+pairs:
+  - {code: T380201, name: 过度诊疗}
+  - {code: T380202, name: 过度检查}
+  - {code: T380204, name: 超量开药}
+  - {code: T380205, name: 重复开药}
+  - {code: T380206, name: 提供不必要的医药服务}
+  - {code: T380301, name: 重复收费}
+  - {code: T380302, name: 超标准收费}
+  - {code: T380303, name: 分解项目收费}
+  - {code: T380601, name: 超范围支付}

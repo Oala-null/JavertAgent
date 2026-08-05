@@ -157,6 +157,13 @@ def test_repository_and_behavior_source_mapping_validate():
     assert validate_behavior_mapping() == []
 
 
+def test_behavior_source_snapshot_fails_closed_when_unavailable(tmp_path):
+    issues = validate_behavior_mapping(source_path=tmp_path / "missing.yaml")
+    assert [(issue.code, issue.asset_id) for issue in issues] == [
+        ("BEHAVIOR_SOURCE_UNAVAILABLE", "behavior_mapping")
+    ]
+
+
 def test_harness_is_repeatable_and_offline():
     first = run_harness(load_repository())
     second = run_harness(load_repository())

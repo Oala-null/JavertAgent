@@ -47,7 +47,7 @@
 - **AND** 缓存不得绕过真实收费事实约束
 
 ### Requirement: 行为类别必须按 2C H/I 公开口径唯一分组
-系统 MUST 以 `(behavior_code, behavior_name)` 作为工作台类别组和 chip 的业务键，并 MUST 使用仓库内“两库汇总”H/I 列验证所有 ready 规则的公开映射；同一公开键在患者视图中 MUST 只出现一个组，组内可以保留多条规则结果。
+系统 MUST 以 `(behavior_code, behavior_name)` 作为工作台类别组和 chip 的业务键，并 MUST 使用由“两库汇总”H/I 列程序化提取、带来源摘要且纳入 Git 的最小快照验证所有 ready 规则的公开映射；同一公开键在患者视图中 MUST 只出现一个组，组内可以保留多条规则结果。本机参考工作簿 MUST NOT 成为运行时或生产部署的未版本化依赖。
 
 #### Scenario: 多个内部类型映射到同一公开类别
 - **WHEN** 两条结果的内部 `violation_type` 不同，但公开 `(behavior_code, behavior_name)` 相同
