@@ -138,6 +138,9 @@
           {% set conclusion = public.get('conclusion', {}) %}
           <h3>{{ conclusion.get('label', '待人工复核') }}</h3>
           <p>{{ conclusion.get('summary', '现有资料不足以自动定性。') }}</p>
+          {% if public.get('narrative') %}
+          <div class="public-section public-narrative"><strong>审核说明</strong><div class="reasoning">{{ public.narrative }}</div></div>
+          {% endif %}
           {% if public.get('audit_items') %}
           <div class="public-section"><strong>核查事项</strong><ul>{% for item in public.audit_items %}<li>{{ item }}</li>{% endfor %}</ul></div>
           {% endif %}

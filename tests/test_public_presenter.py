@@ -78,6 +78,29 @@ def test_presenter_uses_actual_charge_hit_and_does_not_guess_from_reasoning():
     assert "R151" not in json.dumps(public, ensure_ascii=False)
 
 
+def test_presenter_keeps_humanized_narrative_without_guessing_structured_facts():
+    result = _locked_result().model_copy(update={
+        "promise_trace": None,
+        "verdict": "INCONCLUSIVE",
+        "reasoning": (
+            "根据规则 R040，search_fees 发现合成收费项目；诊断只支持合成疾病甲，"
+            "关键手术记录缺失（ETL_GAP），无法核实实际术式，故判 INCONCLUSIVE。"
+        ),
+    })
+
+    public = present_public_explanation(result, {}, [])
+
+    assert "合成收费项目" in public["narrative"]
+    assert "诊断只支持合成疾病甲" in public["narrative"]
+    assert "关键手术记录缺失" in public["narrative"]
+    assert "无法核实实际术式" in public["narrative"]
+    for forbidden in ("R040", "search_fees", "ETL_GAP", "INCONCLUSIVE"):
+        assert forbidden not in public["narrative"]
+    assert public["charge_facts"] == []
+    assert public["basis"] == []
+    assert public["clinical_evidence"] == []
+
+
 def test_public_sanitizer_removes_internal_ids_tools_verdicts_and_reason_codes():
     text = sanitize_public_text(
         "根据规则 RD04，search_fees 与 gate 得出 VIOLATION，原因 PROMISE_CONFLICT。"
@@ -94,5 +117,6 @@ def test_sse_result_payload_adds_public_fields_without_removing_legacy_fields():
     ):
         assert legacy in payload
     assert payload["public_explanation"]["charge_facts"][0]["value"] == 1
+    assert payload["public_explanation"]["narrative"]
     assert payload["promise"] == {"locked": True, "historical_conflict": False}
     assert public_promise_summary(None) is None

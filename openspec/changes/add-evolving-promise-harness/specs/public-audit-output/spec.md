@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: 工作台与 2C 必须共享同一公开解释投影
-系统 MUST 通过同一确定性 presenter 生成 `public_explanation`，至少包含 `conclusion`、`audit_items`、`charge_facts`、`basis`、`clinical_evidence` 和 `review_needs`；工作台与 2C v1/v2/v3 对同一持久化结果 MUST 使用相同语义投影。
+系统 MUST 通过同一确定性 presenter 生成 `public_explanation`，至少包含 `conclusion`、`narrative`、`audit_items`、`charge_facts`、`basis`、`clinical_evidence` 和 `review_needs`；工作台与 2C v1/v2/v3 对同一持久化结果 MUST 使用相同语义投影。
 
 #### Scenario: 展示 Promise 锁定的 CLEAN
 - **WHEN** 审计结果由退费净数量 Promise 锁定为 CLEAN
@@ -14,6 +14,12 @@
 - **THEN** 对应数组为空或将缺口写入 `review_needs`
 - **AND** presenter 不从 LLM 散文猜测或补造字段
 
+#### Scenario: 旧行只有完整 reasoning 而结构化事实不足
+- **WHEN** 迁移前结果的 reasoning 包含收费事实、诊断依据、证据缺口和降级理由，但缺少足够结构化字段
+- **THEN** `narrative` 以中文化兼容摘要完整保留这些语义
+- **AND** 工作台默认展示该摘要，不得只剩泛化结论和“请人工核对”模板话
+- **AND** presenter 不把摘要拆词后填入 `charge_facts`、`basis` 或 `clinical_evidence`
+
 ### Requirement: 公开解释不得暴露内部工程术语或原始 JSON
 公开结构和工作台默认视图 MUST NOT 展示内部 rule ID（如 R/RD 编号）、tool 名、gate、run/ownership ID、英文 verdict、内部 reason code 或原始 `evidence_json`；历史 `reasoning/evidence/rule_id` API 字段 MAY 为兼容保留，但新增/修改字段 MUST 遵守只加不删不改名约束。
 
@@ -22,6 +28,7 @@
 - **THEN** 工作台默认解释不原样展示该内容
 - **AND** 兼容摘要先经过公共化处理
 - **AND** `public_explanation` 不含该内部编号
+- **AND** 清洗后的 `narrative` 仍保留收费、诊断、证据缺口和裁决理由等业务语义
 
 #### Scenario: Evidence 是 JSON 字符串
 - **WHEN** 旧行仅有原始 evidence JSON

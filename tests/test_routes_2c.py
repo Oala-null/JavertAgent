@@ -357,7 +357,7 @@ def test_results_done_with_runs(client):
     assert item["rule_name"]  # R191 yaml 存在 → violation_type 非空
     assert item["behavior_code"] == "T380301"
     assert set(item["public_explanation"]) == {
-        "conclusion", "audit_items", "charge_facts", "basis", "clinical_evidence", "review_needs",
+        "conclusion", "narrative", "audit_items", "charge_facts", "basis", "clinical_evidence", "review_needs",
     }
     assert "promise" in item
     # hits: V 结果 join 患者费用行出编码 (2C 侧凭 code_nat/matched_fee_name 对明细)
@@ -441,7 +441,8 @@ def test_v2_multiple_hits_keep_code_name_time_aligned(client):
     (card,) = body["cards"]
     assert card["category"] == {"code": "T380301", "title": "重复收费"}
     assert set(card["public_explanation"]) == {
-        "conclusion", "audit_items", "charge_facts", "basis", "clinical_evidence", "review_needs",
+        "conclusion", "narrative", "audit_items", "charge_facts", "basis",
+        "clinical_evidence", "review_needs",
     }
     assert "promise" in card
     assert len(card["matched_items"]) == 3

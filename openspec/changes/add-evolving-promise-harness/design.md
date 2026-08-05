@@ -114,6 +114,7 @@ Evaluator 统一返回 `NOT_APPLICABLE` 或 `PromiseMatch`：`promise_id/version
 ```json
 {
   "conclusion": {"label": "合规", "summary": "退费抵消后净数量未超过一次。"},
+  "narrative": "经核对收费、诊断与现有文书，未发现支持违规的事实。",
   "audit_items": [],
   "charge_facts": [],
   "basis": [],
@@ -122,7 +123,7 @@ Evaluator 统一返回 `NOT_APPLICABLE` 或 `PromiseMatch`：`promise_id/version
 }
 ```
 
-字段只填有确定来源的事实，不把 LLM 散文拆词后冒充结构化事实。旧 `reasoning/evidence/rule_id` 等 API 字段继续保留；v1/v2/v3 只追加 `public_explanation` 与可选 `promise` 摘要，工作台默认只渲新结构。legacy reasoning 继续经过 `humanize_reasoning` 作为兼容摘要，但不得在公开结构中出现 R/RD 代号、tool 名、gate、run ID、英文 verdict 或原始 evidence JSON。
+结构化数组只填有确定来源的事实，不把 LLM 散文拆词后冒充结构化事实。为避免迁移前旧行只剩泛化空态，`narrative` 单独承载已持久化 `reasoning` 的完整兼容摘要：只做确定性的中文化和内部术语清洗，不从中反解析或补造结构化事实，工作台默认可见。旧 `reasoning/evidence/rule_id` 等 API 字段继续保留；v1/v2/v3 只追加 `public_explanation` 与可选 `promise` 摘要。公开内容不得出现 R/RD 代号、tool 名、gate、run ID、英文 verdict、内部 reason code 或原始 evidence JSON。
 
 ### D7 — “命中项目”只表示已关联的患者实际事实
 
@@ -158,7 +159,7 @@ Evaluator 统一返回 `NOT_APPLICABLE` 或 `PromiseMatch`：`promise_id/version
 - [Promise scope 过宽会制造确定性假阴性] → active scope 显式列规则/稳定 profile，强制 near-negative；模糊目标直接 NOT_APPLICABLE，禁止按行为大类推断。
 - [Promise 数量增长后互相冲突] → typed kind、版本链与全案例冲突门禁；运行时冲突 fail-closed 为 INCONCLUSIVE，不按加载顺序裁决。
 - [“不可变”文件仍可被 Git 修改] → 版本文件名 + supersedes 链 + 落库内容版本/摘要；代码评审和 harness 禁止 active 内容无版本升级变化，历史文件永不删除。
-- [公开结构化解释缺字段] → 缺事实就留空并进入 `review_needs`，绝不让 LLM 散文伪造结构；legacy reasoning 兼容保留。
+- [公开结构化解释缺字段] → 缺事实就留空并进入 `review_needs`，绝不让 LLM 散文伪造结构；同时把已持久化 reasoning 作为中文化 `narrative` 完整保留，避免医生丢失收费、诊断、证据缺口和降级理由。
 - [收紧 hit 使历史卡片看起来少了项目] → 这是消除假命中的预期变化；内部 evidence 仍可追溯，真实收费行命中不丢。
 - [行为源工作簿未来更新] → 程序化读取工作簿并在同一 change 更新带来源摘要的 H/I 最小快照与映射；harness 只消费版本化快照，不把被 Git 忽略的本机资料变成产品依赖。
 - [tab 懒加载增加前端状态复杂度] → 复用同一 fetch/cache 模块，旧全量入口保留；错误状态显式建模并做模板/JS 测试。

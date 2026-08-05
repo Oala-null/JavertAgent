@@ -97,3 +97,16 @@ notes/fees/labs 三页签均成功，合成不存在号返回 `RAW_TAB_NOT_FOUND
 生产 Promise 验证先暴露稀疏范围漏带案例及本机工作簿不可版本化两个缺口；最终以部署
 `tests/promise_cases` 和带来源摘要的 `configs/behavior_source_pairs.yaml` 修复，并在最终 HEAD
 重新完成全部验收，未把中间失败冒充成功。
+
+## 公开审核说明语义保真纠偏（2026-08-05）
+
+- 62 生产反馈显示：数据库旧行 reasoning 仍完整，但工作台只渲染结构化空态，丢失收费、诊断、
+  证据缺口和降级理由。只读对比确认问题位于展示投影，未修改或回填数据库 reasoning。
+- 新增去标识失败基线，修复前在缺少 `public_explanation.narrative` 处失败；修复后 presenter 将
+  reasoning 仅做中文化和内部术语清洗，并保持结构化数组不从散文猜测。
+- 工作台默认展开“审核说明”；2C v1/v2/v3 以 additive 字段共享同一 `narrative`，既有字段名和
+  原始 evidence JSON 的隐藏边界不变。
+- 修复前定向测试在 `public_explanation.narrative` 缺失处 1 failed；修复后 Web/2C/presenter
+  组合门禁为 82 passed，Promise validate 为 issues=0，Promise run 为 15/15，完整套件为
+  1104 collected / 1103 passed / 1 skipped / 0 failed / 0 errors，`git diff --check` 与
+  `openspec validate add-evolving-promise-harness --strict` 均通过。

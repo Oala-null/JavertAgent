@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""医院公开解释的单一确定性投影；不读取或猜测 LLM 散文。"""
+"""医院公开解释投影；结构化事实不猜散文，兼容摘要保留 reasoning 语义。"""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from typing import Any, Iterable
 from collections.abc import Mapping
 
 from javert.promises.models import PromiseTrace
+from javert.web.reasoning_zh import humanize_reasoning
 
 _INTERNAL_PATTERNS = (
     re.compile(r"(?<![A-Za-z0-9])RD?\d{2,3}(?![A-Za-z0-9])", re.IGNORECASE),
@@ -22,6 +23,16 @@ def sanitize_public_text(value: str | None) -> str:
     for pattern in _INTERNAL_PATTERNS:
         text = pattern.sub("", text)
     return re.sub(r"\s{2,}", " ", text).strip(" ，,；;：:")
+
+
+def public_reasoning_narrative(value: str | None) -> str:
+    """完整保留 reasoning 业务语义，只清洗内部术语且不反解析结构化事实。"""
+    text = humanize_reasoning(value)
+    for pattern in _INTERNAL_PATTERNS:
+        text = pattern.sub("", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    text = re.sub(r" *\n *", "\n", text)
+    return text.strip(" ，,；;：:\n")
 
 
 def public_promise_summary(trace: PromiseTrace | dict[str, Any] | None) -> dict[str, Any] | None:
@@ -50,7 +61,7 @@ def present_public_explanation(
     meta: dict[str, Any] | None = None,
     hits: Iterable[Any] = (),
 ) -> dict[str, Any]:
-    """只从持久化结构字段、真实 hit 和最小 Promise trace 投影医生解释。"""
+    """投影确定性结构字段，并单独提供经清洗的完整 reasoning 兼容摘要。"""
 
     meta = meta or {}
     hit_items = list(hits)
@@ -140,6 +151,7 @@ def present_public_explanation(
 
     return {
         "conclusion": conclusion,
+        "narrative": public_reasoning_narrative(_get(run, "reasoning", "")),
         "audit_items": audit_items,
         "charge_facts": charge_facts,
         "basis": basis,

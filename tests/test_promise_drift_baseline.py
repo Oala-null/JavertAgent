@@ -151,6 +151,7 @@ def test_workbench_default_card_hides_internal_rule_id_and_raw_evidence():
     )
     public_explanation = {
         "conclusion": {"label": "待人工复核", "summary": "现有资料不足。"},
+        "narrative": "费用明细未找到目标项目，确定性复核后转人工复核。",
         "audit_items": [],
         "charge_facts": [],
         "basis": [],
@@ -186,3 +187,4 @@ def test_workbench_default_card_hides_internal_rule_id_and_raw_evidence():
     assert "规则 R191" not in html
     assert run.evidence_json not in html
     assert "现有资料不足" in html
+    assert "费用明细未找到目标项目，确定性复核后转人工复核。" in html

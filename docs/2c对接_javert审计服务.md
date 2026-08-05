@@ -101,6 +101,7 @@
       ],
       "public_explanation": {
         "conclusion": {"label": "发现需核查行为", "summary": "现有结构化事实支持该项进入医保合规复核。"},
+        "narrative": "经核对收费事实、诊断与现有文书，保留完整的中文审核说明。",
         "audit_items": ["核查同一收费项目是否重复计费。"],
         "charge_facts": [],
         "basis": [],
@@ -136,7 +137,7 @@
 | results[].hit_codes | 命中项目编码扁平数组 (国家医保码优先, 缺则院内码; 仅 V/I 非空), 直接挂明细用 |
 | results[].hit_names | 命中项目名称扁平数组 (费用明细原始项目名; 与 hit_codes 同源去重) |
 | results[].hits | 命中项目明细数组 (含编码/名称/限定/复核提示): 仅 V/I 有值, CLEAN 恒 `[]`。见下表 |
-| results[].public_explanation | 医生可读结构化投影，固定含 `conclusion/audit_items/charge_facts/basis/clinical_evidence/review_needs`；只使用有确定来源的事实 |
+| results[].public_explanation | 医生可读公开投影，固定含 `conclusion/narrative/audit_items/charge_facts/basis/clinical_evidence/review_needs`；`narrative` 是已持久化 reasoning 的完整中文化兼容摘要，其余结构化字段只使用有确定来源的事实 |
 | results[].promise | 可空公开摘要；有 trace 时仅含 `locked` 与 `historical_conflict`，不公开 Promise ID、kind、reason code 或 facts |
 | results[].run_id | 审计运行 ID, 疑议追溯用 |
 
@@ -144,8 +145,9 @@
 
 `public_explanation`、`promise` 和 `behavior_code` 均为 additive 字段；既有 `rule_id`、
 `reasoning`、`evidence`、`hits` 等字段不删、不改名。新建医生界面应优先展示
-`public_explanation`，不要把旧 `reasoning/evidence` 反解析为结构化事实，也不要默认展示
-内部规则号、工具名、gate/run 术语、英文 verdict 或原始 evidence JSON。
+`public_explanation`：默认展示 `narrative` 以保留收费、诊断、证据缺口和裁决理由，但不要把
+`narrative` 或旧 `reasoning/evidence` 反解析为结构化事实，也不要默认展示内部规则号、
+工具名、gate/run 术语、英文 verdict、内部 reason code 或原始 evidence JSON。
 
 公开 fee/drug 命中只表示已关联到患者实际净正收费行；检索词、未命中 locator 和患者无对应
 收费行的名称不能作为“命中项目”。这会让部分旧卡片的公开 hits 变少，但不改变单规则结果数、

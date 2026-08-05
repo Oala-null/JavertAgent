@@ -45,6 +45,7 @@
 - [x] 6.5 将 public presenter 接入工作台详情、SSE 和相关模板/JS，添加结构化区块、空态和复核提示；保证内部调试数据不进入医院默认页面。
 - [x] 6.6 以 additive 方式把 `public_explanation` 和可选 Promise 摘要接入 2C v1/v2/v3，保持既有字段名、单规则卡片数量与 v3 收费行展开语义；同步 BFF contract tests。
 - [x] 6.7 增加 presenter/hit/category/workbench/2C 的单元、路由、模板和序列化测试，覆盖旧行、CLEAN 空 hits、真实收费 hit、类别合组、内部术语清洗与字段只加不删不改名。
+- [x] 6.8 根据 62 医生反馈修复公开解释过度压缩：新增默认可见的中文化 `narrative`，完整保留已持久化 reasoning 中的收费、诊断、证据缺口和降级理由；结构化数组仍不得从散文猜测，原始 evidence JSON 与内部术语仍不展示。
 
 ## 7. 原文跳转可靠性与诊断
 
@@ -62,3 +63,5 @@
 - [x] 8.4 若实现中改变规则状态、关键词、模板渲染或 M8，运行 `scripts/build_rule_mapping.py` 并验证 YAML 与 router index 一致；未改变时在验证记录中明确标为不适用。
 - [x] 8.5 运行 `openspec validate add-evolving-promise-harness --strict`，逐条核对 tasks、spec 场景与真实测试结果，未完成的生产诊断或发布项不得勾选完成。
 - [x] 8.6 在获得 62 上线授权后按 `production-62` 受控 HEAD artifact/install→schema→restart 流程发布，并验证两端 HEAD、工作树 clean、systemd、登录页、关键环境实值、SQL/Hub、2C v3、Promise 锁与原文三段路径；未获授权时保持此任务 pending，不用本地结果冒充上线完成。
+- [x] 8.7 为 `narrative` 补 presenter、模板、2C additive 契约与去标识回归测试，更新工作台/2C 文档和验证记录，运行相关 Web 组合测试、Promise 门禁与严格 OpenSpec 校验。
+- [ ] 8.8 提交纠偏代码后按受控 artifact/install 发布 62，并以去标识页面断言确认长审核说明默认可见、内部术语/原始 JSON 不可见，同时复验服务、HEAD 与工作树 clean。
