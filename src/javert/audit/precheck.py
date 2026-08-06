@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""precheck — M1 重复收费的确定性事实预检 (pilot-deterministic-precheck).
+"""precheck — 声明式费用形态的确定性事实预检.
 
 M1 判定 = 「主项 A ∩ 附属 B 并存 + 文书无反证」。前半是一条查询能确定的事实,
 本模块从规则声明的 A/B 项目集 (`Rule.precheck`) + 患者退费净额后的费用, 确定性判:
@@ -7,8 +7,8 @@ M1 判定 = 「主项 A ∩ 附属 B 并存 + 文书无反证」。前半是一�
   - A、B 都命中     → outcome=`facts` (事实成立, 给 LLM 窄问题 + 费用行锚点).
   - 费用数据不可用   → outcome=`skip` (fail-open, 走原 LLM 路径, 绝不误 CLEAN).
 
-只认「A∩B 费用并存缺失」这一条最安全的短路 (设计 D2); 诊断指征/类别仍在
-背景 prompt_addon 里由 LLM 兜底。匹配前先剔除完全充退项 (`fully_refunded_keys`)。
+只认规则明确声明的费用存在/并存/配套形态；诊断指征/类别仍在背景 prompt_addon
+里由 LLM 兜底。匹配前先剔除完全充退项 (`fully_refunded_keys`)。
 
 纯函数 (吃已切片 fee_df), 不调 LLM / 不写库。
 
@@ -38,6 +38,7 @@ SKIP = "skip"
 
 COEXIST = "coexist"
 COMPANION = "companion"
+PRESENCE = "presence"
 
 
 @dataclass
@@ -151,6 +152,18 @@ def _build_companion_fact_block(a_hits: list[FeeHit], b_items: list[str]) -> str
     return "\n".join(lines)
 
 
+def _build_presence_fact_block(a_hits: list[FeeHit]) -> str:
+    """presence 模式事实块：目标收费存在，交给 LLM 只核实业务反证。"""
+    lines = ["【系统预检费用事实 (确定性, 已净退费)】"]
+    lines += _fact_lines("目标收费命中", a_hits)
+    lines += [
+        "以上由系统按规则声明的目标项目名对费用表做确定性子串匹配所得。",
+        "目标收费已经确认存在；请按规则调用 search_notes / note_diagnosis 等工具核实"
+        "适用指征或反证，通常不必再调 search_fees。",
+    ]
+    return "\n".join(lines)
+
+
 def _hits_to_evidence(hits: list[FeeHit]) -> list[Evidence]:
     """命中费用行 → Evidence(source=search_fees, locator=项目名); hit_resolver 据此 join 码+锚点."""
     out: list[Evidence] = []
@@ -240,18 +253,38 @@ def _companion_result(
     )
 
 
+def _presence_result(a_hits: list[FeeHit]) -> PrecheckResult:
+    """presence 语义：目标收费缺失即不适用；存在则给 LLM 费用事实与锚点。"""
+    if not a_hits:
+        return PrecheckResult(
+            outcome=CLEAN,
+            precheck_tag="无目标收费",
+            reason="预检: 未见目标费用命中, 规则不适用 → CLEAN",
+        )
+    return PrecheckResult(
+        outcome=FACTS,
+        precheck_tag="目标收费存在待核反证",
+        reason="预检: 目标费用存在, 交 LLM 核实适用指征或反证",
+        a_hits=a_hits,
+        fact_block=_build_presence_fact_block(a_hits),
+        evidence=_hits_to_evidence(a_hits),
+    )
+
+
 def run_precheck(spec: PrecheckSpec, fee_df: pd.DataFrame | None) -> PrecheckResult:
     """对一条规则的 A/B 项目集 + 患者费用做确定性预检. 纯函数.
 
     mode=coexist (M1 重复收费, 缺省): A∩B 并存缺失 → clean, 并存 → facts.
     mode=companion (术式↔配套): A 无 → clean, A 有 B 无 → facts, 双有 → skip.
+    mode=presence (目标收费存在性): A 无 → clean, A 有 → facts.
 
     Args:
-        spec: 规则的 PrecheckSpec (a_items / b_items / mode).
+        spec: 规则的 PrecheckSpec (a_items / b_items / mode；presence 可省略 B).
         fee_df: 该患者全量费用切片; None/空/缺列 → skip (fail-open).
     """
-    if not spec.a_items or not spec.b_items:
-        # 迁移不全的规则 (缺 A 或 B 集) → 无法预检, 走原路径
+    mode = (spec.mode or COEXIST).lower()
+    if not spec.a_items or (mode != PRESENCE and not spec.b_items):
+        # 迁移不全的规则 → 无法预检, 走原路径
         return PrecheckResult(outcome=SKIP, reason="precheck spec 缺 A 或 B 项目集")
 
     if fee_df is None or len(fee_df) == 0 or NAME_COL not in fee_df.columns:
@@ -259,8 +292,11 @@ def run_precheck(spec: PrecheckSpec, fee_df: pd.DataFrame | None) -> PrecheckRes
 
     rows = _extract_rows(fee_df)
     a_hits = _match_hits(spec.a_items, rows)
+    if mode == PRESENCE:
+        return _presence_result(a_hits)
+
     b_hits = _match_hits(spec.b_items, rows)
 
-    if (spec.mode or COEXIST).lower() == COMPANION:
+    if mode == COMPANION:
         return _companion_result(a_hits, b_hits, spec.b_items)
     return _coexist_result(a_hits, b_hits)

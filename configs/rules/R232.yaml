@@ -61,3 +61,12 @@ expected_signal: |
   典型 INCONCLUSIVE: 诊断含血液病但文书无粒缺记录.
 notes: ''
 derived_from_template: M7
+precheck:
+  mode: presence
+  a_items:
+    - 层流洁净病房
+    - 层流床位
+    - 百级病房
+    - 无菌病房
+    - 洁净病房
+  b_items: []

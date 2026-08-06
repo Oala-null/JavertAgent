@@ -140,6 +140,50 @@ def test_default_mode_is_coexist_byte_identical():
     assert [(e.source, e.locator) for e in d.evidence] == [(e.source, e.locator) for e in c.evidence]
 
 
+# ========== presence 模式 (R232 目标收费存在性) ==========
+_SPEC_PRESENCE = PrecheckSpec(
+    a_items=["层流洁净病房", "百级病房"], mode="presence"
+)
+
+
+def test_presence_no_target_fee_clean():
+    """presence: Router 误召回但无目标收费时确定性 CLEAN。"""
+    df = _fee_df([
+        {"medins_list_name": "普通病房床位费", "cnt": 1, "det_item_fee_sumamt": 80},
+    ])
+    r = run_precheck(_SPEC_PRESENCE, df)
+    assert r.outcome == CLEAN
+    assert r.precheck_tag == "无目标收费"
+
+
+def test_presence_target_fee_facts_with_anchor():
+    """presence: 有净正目标收费才进入 LLM，并携带费用锚点。"""
+    df = _fee_df([{
+        "medins_list_name": "层流洁净病房床位费",
+        "cnt": 1,
+        "det_item_fee_sumamt": 800,
+        "fee_ocur_time": "2026-08-01 00:00:00",
+    }])
+    r = run_precheck(_SPEC_PRESENCE, df)
+    assert r.outcome == FACTS
+    assert r.precheck_tag == "目标收费存在待核反证"
+    assert "通常不必再调 search_fees" in r.fact_block
+    assert [(e.source, e.locator) for e in r.evidence] == [
+        ("search_fees", "层流洁净病房床位费")
+    ]
+
+
+def test_presence_fully_refunded_target_fee_clean():
+    """presence: 目标收费被完全充退后仍视为不存在。"""
+    df = _fee_df([
+        {"medins_list_name": "层流洁净病房床位费", "med_list_codg": "BED-1", "cnt": 1,
+         "det_item_fee_sumamt": 800, "fee_ocur_time": "2026-08-01 00:00:00"},
+        {"medins_list_name": "层流洁净病房床位费", "med_list_codg": "BED-1", "cnt": -1,
+         "det_item_fee_sumamt": -800, "fee_ocur_time": "2026-08-02 00:00:00"},
+    ])
+    assert run_precheck(_SPEC_PRESENCE, df).outcome == CLEAN
+
+
 # ========== 迁移解析 (Task 4.2) ==========
 _R191_ADDON = (
     "本规则关注: ...\n"

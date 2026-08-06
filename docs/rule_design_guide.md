@@ -24,7 +24,7 @@ notes: ""                              # 设计 / 取舍 / 已知失败情况
 derived_from_template: null            # M1-M8 模板来源; 手写规则可空
 drug_rule_type: null                   # (v0.8) M8 药品规则填: 限适应症/超说明书/限二线/禁忌症; 非药品规则 null
 render_hash: null                      # prompt-fit 最近渲染 hash; 覆盖手工改动的护栏
-precheck: null                         # 可选: {a_items: [], b_items: [], mode: coexist|companion}
+precheck: null                         # 可选: {a_items: [], b_items: [], mode: coexist|companion|presence}
 
 # (v0.5 router B 新增, 全部 optional, 缺省即不限制 — yaml 缺这些字段 router 视为"不限")
 applicable_visit_type: []              # ["ipt", "opt"] — 仅住院/门诊适用
@@ -66,7 +66,7 @@ applicable_departments: []             # ["骨科", "肿瘤内科"] — 仅这�
 | `derived_from_template` | 最近一次模板来源，如 `M1`/`M8`；不是模板生成的规则可空。 |
 | `drug_rule_type` | M8 的 `限适应症/超说明书/限二线/禁忌症`；非药品规则为空。 |
 | `render_hash` | `prompt-fit` 最近渲染产物 hash，用于发现模板渲染后又被手工改过。 |
-| `precheck` | 确定性 A/B 项目集。`coexist` 用于 M1 并存判据；`companion` 用于主术式与必备配套缺失。无预检则为空。 |
+| `precheck` | 确定性费用项目集。`coexist` 用于 M1 并存判据；`companion` 用于主术式与必备配套缺失；`presence` 用于目标收费不存在时直接判规则不适用。无预检则为空。 |
 | `applicable_visit_type` | (v0.5) optional, 例 `["ipt"]` 表示仅住院适用. router 在 patient visit_type 不匹配时直接 prune. yaml 缺省 = 不限制. |
 | `applicable_gender` | (v0.5) optional, `"F"` 或 `"M"`. router prune 不符病人. |
 | `applicable_age_min` / `applicable_age_max` | (v0.5) optional, int 年龄区间. 用于"限儿童 / 限老年人"类规则. |

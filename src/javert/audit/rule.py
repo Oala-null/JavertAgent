@@ -12,18 +12,18 @@ Priority = Literal["P0", "P1", "P2", "P3"]
 
 
 class PrecheckSpec(BaseModel):
-    """确定性预检的结构化 A/B 项目集 (pilot-deterministic-precheck).
+    """确定性预检的结构化费用项目集.
 
     a_items/b_items = 主项/附属项目名列表, precheck 按项目名子串匹配患者费用。
-    只 M1 (重复收费) 规则填充; 迁移脚本从 prompt_addon 抽取生成。
+    presence 只使用 a_items；coexist/companion 使用 A/B 两组。
     """
 
     a_items: list[str] = Field(default_factory=list, description="主项 (A 类) 项目名列表")
     b_items: list[str] = Field(default_factory=list, description="附属 (B 类) 项目名列表")
     mode: str = Field(
         default="coexist",
-        description="coexist=M1 重复收费 (A∩B 并存→facts); companion=术式↔配套 (A 有 B 无→facts). "
-        "缺省 coexist, 既有 M1 规则行为逐字不变",
+        description="coexist=M1 重复收费 (A∩B 并存→facts); companion=术式↔配套 (A 有 B 无→facts); "
+        "presence=目标收费存在性 (A 无→clean, A 有→facts). 缺省 coexist, 既有 M1 规则行为逐字不变",
     )
 
 
@@ -72,7 +72,7 @@ class Rule(BaseModel):
     )
     precheck: PrecheckSpec | None = Field(
         default=None,
-        description="确定性预检 A/B 项目集 (pilot-deterministic-precheck); 只 M1 规则填, 空=无预检",
+        description="确定性费用形态预检；空=无预检",
     )
 
 
