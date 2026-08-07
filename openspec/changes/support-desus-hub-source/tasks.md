@@ -29,4 +29,4 @@
 - [x] 5.1 用 62 真实 raw API 复现 desus 的 fees/notes/labs 均为 404
 - [x] 5.2 新增安全的 batch tag→Hub profile 配置与 latest tag 查询
 - [x] 5.3 原文、概览与主诊回退按患者选择 profile，并证明其他患者仍走默认 Hub
-- [ ] 5.4 配置 62 desus profile，验证三页签、费用锚点、服务与发布门禁
+- [x] 5.4 配置 62 desus profile，验证三页签、费用锚点、服务与发布门禁
