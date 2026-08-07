@@ -6,7 +6,7 @@
 当前 authoring change 已将 RD10-RD37 后退为 `drafting/migration-pending`，
 默认执行集仍须以该命令的实时状态为准。
 
-**data-hub (2026-07-03)**: 🟢 **数据中台三链打通** — 对接 `Scriv/Data_Hub` 46 张国标 TB_* 表: **回填** (`scripts/build_data_hub_filled.py`, sy 3309 + szx 全量 4701 患者 → 23 表 631 万记录, 含 通用文书/费用医保分解/手术医保双码 3 张扩展表) → **推送** (`scripts/push_data_hub_filled.py` → 142 `TP_data_hub` 库) → **反向取数** (`scripts/etl_from_data_hub.py`, 流B, zadig_agent 零改动). 双链路对照 J66252 裁决 16/18 一致无 V 级差异. 同库隔离表族可用 `JAVERT_HUB_TABLE_PREFIX`（如 `desus_`）选择，默认空值仍读 `TB_*`。交接文档 `Scriv/data_hub_filled/_report.md`, 接入指引 `docs/数据接入清单.md` §四.
+**data-hub (2026-07-03)**: 🟢 **数据中台三链打通** — 对接 `Scriv/Data_Hub` 46 张国标 TB_* 表: **回填** (`scripts/build_data_hub_filled.py`, sy 3309 + szx 全量 4701 患者 → 23 表 631 万记录, 含 通用文书/费用医保分解/手术医保双码 3 张扩展表) → **推送** (`scripts/push_data_hub_filled.py` → 142 `TP_data_hub` 库) → **反向取数** (`scripts/etl_from_data_hub.py`, 流B, zadig_agent 零改动). 双链路对照 J66252 裁决 16/18 一致无 V 级差异. 同库隔离表族可用 `JAVERT_HUB_TABLE_PREFIX`（如 `desus_`）选择，默认空值仍读 `TB_*`；混合 workbench 用 `JAVERT_HUB_RAW_PROFILES` 按 latest batch tag 选择独立只读源，不全局切源。交接文档 `Scriv/data_hub_filled/_report.md`, 接入指引 `docs/数据接入清单.md` §四.
 
 **2C 对接 v3**：新接入使用 `/api/audit/v3/submit` 与 `/api/audit/v3/results/{SYXH}`；在完整规则卡片上按实际收费明细行返回数量、单价、开单科室编码/名称和开单医生工号/名称。`public_explanation.narrative` 是保留持久化 reasoning 语义的只加字段，严格客户端须允许可选/未知字段。`status=running` 时 cards 只是增量结果，必须轮询到 `done`。详见 `docs/2c对接_javert审计服务_v3.md`。
 

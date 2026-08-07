@@ -348,12 +348,18 @@ JAVERT_HUB_RAW_ENABLED=true
 JAVERT_HUB_DATABASE=sh_yb_platform
 # 同库隔离表族才设置，例如 desus_TB_* 使用 desus_；生产默认留空读取 TB_*。
 JAVERT_HUB_TABLE_PREFIX=
+# 混合工作台按患者 latest batch tag 选隔离源；JSON 单引号必须保留。
+JAVERT_HUB_RAW_PROFILES='{"desus":{"database":"TP_data_hub","table_prefix":"desus_"}}'
 # 重拉后生效；回滚 = RAW_ENABLED 改 false + 再重拉，一步回纯 CSV。
 ```
 
 不加开关部署 = 行为与升级前完全一致 (开关默认 false，表名前缀默认空)。前缀值只允许
 字母、数字和下划线且须以字母或下划线开头；非法值会在服务配置加载时失败，缺前缀表不会
 静默回退无前缀表。
+
+`JAVERT_HUB_RAW_PROFILES` 只在 CSV miss 且患者 latest tag 命中时生效，每个 profile 使用
+独立 HubRawSource 连接与缓存；database/table prefix 均须为安全单段标识符。删除该变量即
+回到单一默认 Hub，不需要改结果库。
 
 **② TP_data_hub 索引（2026-07-06 历史开发库步骤）** — `scripts/sql/create_data_hub_indexes.sql` (9 个: 5 表 JZLSH + fee⋈EXT + LIS join + 2 RIS). 实测索引后单患者首查 2.44s → 0.31s。开发库重建后用 `sqlcmd <连接参数> -d TP_data_hub -v HUB_DATABASE=TP_data_hub -b -i scripts/sql/create_data_hub_indexes.sql`；脚本会在首条 DDL 前核对当前库。142 当前读取源 `sh_yb_platform` 由 DE 维护，Javert 侧不得直接执行 DDL，生产索引需求须交 DE/DBA 走变更。
 

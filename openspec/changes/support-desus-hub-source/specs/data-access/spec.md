@@ -46,3 +46,25 @@ Hub 数据访问层 SHALL 支持通过单一配置为所有固定 `TB_*` 基表�
 
 - **WHEN** 对 `batch_tag=desus` 且 manifest 唯一患者的既有 run 使用同一 `desus` 收费切片执行确定性回填
 - **THEN** 只更新该患者该 tag 的 `anchors_json`，不调用 LLM、不增删 run、不修改 verdict、review 或其他患者结果
+
+### Requirement: 混合工作台按批次选择原文 Hub profile
+
+工作台 SHALL 支持通过显式配置把 `batch_tag` 映射到只读 Hub database/table prefix profile。
+当 CSV 无该患者数据时，系统 MUST 只对 latest batch tag 命中 profile 的患者使用对应 Hub 源；
+未命中 profile 的患者 MUST 继续使用默认 Hub 源。profile 的 database 与 table prefix MUST 经过
+安全标识符校验，且 profile 不得改变审计结果、全局默认 Hub 配置或其他患者取数。
+
+#### Scenario: desus 原文页签从隔离表族加载
+
+- **WHEN** 患者 latest batch tag 为 `desus`，profile 映射到 `TP_data_hub/desus_`，且 CSV 无该患者
+- **THEN** 费用、文书、检验/检查页签从 `desus_TB_*` 返回数据，命中费用锚点可在右侧面板定位
+
+#### Scenario: 其他患者保持默认 Hub
+
+- **WHEN** 患者 latest batch tag 没有配置 profile
+- **THEN** CSV miss 后仍使用既有 `JAVERT_HUB_DATABASE/JAVERT_HUB_TABLE_PREFIX`，不得查询 `desus_` profile
+
+#### Scenario: profile 配置非法时拒绝启动
+
+- **WHEN** profile database 或 table prefix 包含分号、点号、引号、空白或 SQL 片段
+- **THEN** 配置加载在创建 Hub 连接或执行查询前失败

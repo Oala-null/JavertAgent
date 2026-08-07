@@ -207,6 +207,15 @@ class _HubStub:
     def get_main_diagnosis(self, pid):
         return "牙髓炎 (K04.0)"
 
+    def get_tab(self, pid, tab):
+        if tab == "notes":
+            return self.get_notes(pid)
+        if tab == "fees":
+            return self.get_fees(pid)
+        if tab == "labs":
+            return {"labs": pd.DataFrame(self.get_labs(pid)), "exams": pd.DataFrame()}
+        raise AssertionError(f"unexpected tab: {tab}")
+
 
 @pytest.fixture
 def _route_env(monkeypatch):
@@ -304,6 +313,74 @@ def test_tab_fees_does_not_wait_for_notes_or_labs(monkeypatch, _route_env):
     out = rw._raw_payload("211999999", tab="fees")
     assert out["tab"] == "fees" and out["n_fees"] == 1
     assert calls == ["fees"]
+
+
+def test_tab_selects_profile_from_latest_batch_tag(monkeypatch, _route_env):
+    class _TaggedStore:
+        def latest_batch_tag_for_patient(self, _pid):
+            return "desus"
+
+    cfg = _StubCfg(
+        hub_raw_profiles={
+            "desus": {"database": "TP_data_hub", "table_prefix": "desus_"}
+        }
+    )
+    monkeypatch.setattr(rw, "get_config", lambda: cfg)
+    monkeypatch.setattr(rw, "get_sqlserver_store", lambda: _TaggedStore())
+    monkeypatch.setattr(rw, "_get_hub_source", lambda: _HubSentinel())
+    monkeypatch.setattr(rw, "_get_hub_profile_source", lambda tag: _HubStub())
+
+    out = rw._raw_payload("211999999", tab="fees")
+    assert out["source"] == "hub"
+    assert out["n_fees"] == 1
+
+
+def test_profile_source_uses_isolated_database_and_prefix(monkeypatch):
+    import javert.web.hub_raw_source as hub_module
+
+    captured = []
+    cfg = _StubCfg(
+        hub_database="sh_yb_platform",
+        hub_table_prefix="",
+        hub_raw_profiles={
+            "desus": {"database": "TP_data_hub", "table_prefix": "desus_"}
+        },
+    )
+
+    class _CapturedSource:
+        def __init__(self, source_cfg):
+            captured.append((source_cfg.hub_database, source_cfg.hub_table_prefix))
+
+    monkeypatch.setattr(rw, "get_config", lambda: cfg)
+    monkeypatch.setattr(hub_module, "HubRawSource", _CapturedSource)
+    monkeypatch.setattr(rw, "_hub_profile_source_singletons", {})
+
+    first = rw._get_hub_profile_source("desus")
+    second = rw._get_hub_profile_source("desus")
+    assert first is second
+    assert captured == [("TP_data_hub", "desus_")]
+    assert cfg.hub_database == "sh_yb_platform"
+    assert cfg.hub_table_prefix == ""
+
+
+def test_tab_without_matching_profile_keeps_default_hub(monkeypatch, _route_env):
+    class _TaggedStore:
+        def latest_batch_tag_for_patient(self, _pid):
+            return "ordinary"
+
+    cfg = _StubCfg(
+        hub_raw_profiles={
+            "desus": {"database": "TP_data_hub", "table_prefix": "desus_"}
+        }
+    )
+    monkeypatch.setattr(rw, "get_config", lambda: cfg)
+    monkeypatch.setattr(rw, "get_sqlserver_store", lambda: _TaggedStore())
+    monkeypatch.setattr(rw, "_get_hub_source", lambda: _HubStub())
+    monkeypatch.setattr(rw, "_get_hub_profile_source", lambda tag: None)
+
+    out = rw._raw_payload("211999999", tab="notes")
+    assert out["source"] == "hub"
+    assert out["n_notes"] == 1
 
 
 def test_tab_hub_failure_is_retryable_503_not_404(monkeypatch, _route_env):

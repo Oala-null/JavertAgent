@@ -40,6 +40,9 @@ sql_pool_timeout: 30
 # Hub 只读源：同库隔离表族前缀；默认空值读 TB_*，desus_TB_* 可设为 "desus_"。
 # 环境变量 JAVERT_HUB_TABLE_PREFIX 优先覆盖；库名仍由 JAVERT_HUB_DATABASE 独立配置。
 hub_table_prefix: ""
+# 混合 workbench 可按 latest batch_tag 选择独立只读源；环境用 JSON 覆盖，仓库默认不指向环境库。
+# 例: JAVERT_HUB_RAW_PROFILES='{"desus":{"database":"TP_data_hub","table_prefix":"desus_"}}'
+hub_raw_profiles: {}
 
 # Web 服务 (javert web 子命令)
 web_host: "127.0.0.1"

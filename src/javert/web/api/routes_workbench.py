@@ -140,7 +140,7 @@ def _resolve_hits_for_runs(
             try:
                 fee_df = _get_loader().get_fees(patient_id)
                 if (fee_df is None or len(fee_df) == 0) and get_config().hub_raw_enabled:
-                    fee_df = _get_hub_source().get_fees(patient_id)  # hub 患者命中项目 join
+                    fee_df = _get_hub_source_for_patient(patient_id).get_fees(patient_id)
             except Exception as e:  # noqa: BLE001
                 logger.warning("_resolve_hits_for_runs 取 fee 失败 patient=%s: %s", patient_id, e)
                 fee_df = None
@@ -316,7 +316,7 @@ def workbench_patient(
         _f = ov_loader.get_fees(patient_id)
         if ((_n is None or len(_n) == 0) and (_f is None or len(_f) == 0)
                 and get_config().hub_raw_enabled):
-            ov_loader = _get_hub_source()
+            ov_loader = _get_hub_source_for_patient(patient_id)
         overview = build_overview(patient_id, ov_loader)
     except Exception as e:  # noqa: BLE001
         logger.warning("build_overview 失败 patient=%s: %s", patient_id, e)
@@ -463,15 +463,18 @@ def _get_loader() -> CsvLoader:
 def reset_loader() -> None:
     """重置工作台 loader 单例 — onboarding 载入新数据后调, 让 data_import 叠加层立即生效.
     含 lab/exam loader (它们也叠加 data_import 的 lab_results/examinations.csv) 与 hub 源缓存."""
-    global _loader_singleton, _lab_loader_singleton, _exam_loader_singleton, _hub_source_singleton
+    global _loader_singleton, _lab_loader_singleton, _exam_loader_singleton
+    global _hub_source_singleton, _hub_profile_source_singletons
     _loader_singleton = None
     _lab_loader_singleton = None
     _exam_loader_singleton = None
     _hub_source_singleton = None
+    _hub_profile_source_singletons = {}
 
 
 # hub 原文源单例 (add-workbench-sql-raw-source: CSV 双 miss 时按患者号查 hub, 开关默认关)
 _hub_source_singleton = None
+_hub_profile_source_singletons: dict[tuple[str, str, str], Any] = {}
 
 
 def _get_hub_source():
@@ -480,6 +483,40 @@ def _get_hub_source():
         from javert.web.hub_raw_source import HubRawSource
         _hub_source_singleton = HubRawSource(get_config())
     return _hub_source_singleton
+
+
+def _get_hub_profile_source(batch_tag: str):
+    """按显式 tag profile 返回隔离 HubRawSource；无映射时返回 None。"""
+    cfg = get_config()
+    profile = cfg.hub_raw_profiles.get(batch_tag)
+    if profile is None:
+        return None
+    key = (batch_tag, profile.database, profile.table_prefix)
+    source = _hub_profile_source_singletons.get(key)
+    if source is None:
+        from javert.web.hub_raw_source import HubRawSource
+
+        profile_cfg = cfg.model_copy(
+            update={
+                "hub_database": profile.database,
+                "hub_table_prefix": profile.table_prefix,
+            }
+        )
+        source = HubRawSource(profile_cfg)
+        _hub_profile_source_singletons[key] = source
+    return source
+
+
+def _get_hub_source_for_patient(patient_id: str):
+    """只在患者 latest batch tag 命中显式 profile 时切隔离源；否则走默认 Hub。"""
+    cfg = get_config()
+    if cfg.hub_raw_profiles:
+        tag = get_sqlserver_store().latest_batch_tag_for_patient(patient_id)
+        if tag:
+            profile_source = _get_hub_profile_source(tag)
+            if profile_source is not None:
+                return profile_source
+    return _get_hub_source()
 
 
 # 检验/检查 loader 单例 (索引一次性构建后进程缓存; 检验文件大, 首次 raw 取数稍慢)
@@ -641,7 +678,9 @@ def _raw_tab_payload(patient_id: str, tab: str) -> dict:
             rows = _fees_to_list(fees_df)
             if not rows and get_config().hub_raw_enabled:
                 source = "hub"
-                rows = _fees_to_list(_get_hub_source().get_tab(patient_id, "fees"))
+                rows = _fees_to_list(
+                    _get_hub_source_for_patient(patient_id).get_tab(patient_id, "fees")
+                )
             if not rows:
                 raise HTTPException(status_code=404, detail={"code": "RAW_TAB_NOT_FOUND", "tab": tab})
             return {"patient_id": patient_id, "source": source, "tab": tab,
@@ -651,7 +690,9 @@ def _raw_tab_payload(patient_id: str, tab: str) -> dict:
             rows = _notes_to_list(notes_df)
             if not rows and get_config().hub_raw_enabled:
                 source = "hub"
-                rows = _notes_to_list(_get_hub_source().get_tab(patient_id, "notes"))
+                rows = _notes_to_list(
+                    _get_hub_source_for_patient(patient_id).get_tab(patient_id, "notes")
+                )
             if not rows:
                 raise HTTPException(status_code=404, detail={"code": "RAW_TAB_NOT_FOUND", "tab": tab})
             return {"patient_id": patient_id, "source": source, "tab": tab,
@@ -660,7 +701,7 @@ def _raw_tab_payload(patient_id: str, tab: str) -> dict:
         exams = _exams_to_list(patient_id, allow_hub=False)
         if not labs and not exams and get_config().hub_raw_enabled:
             source = "hub"
-            bundle = _get_hub_source().get_tab(patient_id, "labs")
+            bundle = _get_hub_source_for_patient(patient_id).get_tab(patient_id, "labs")
             lab_rows = bundle["labs"].to_dict("records") if len(bundle["labs"]) else []
             exam_rows = bundle["exams"].to_dict("records") if len(bundle["exams"]) else []
             labs = _format_lab_rows(lab_rows)
@@ -693,7 +734,7 @@ def _raw_payload(patient_id: str, tab: str | None = None) -> dict:
     if (fees_df is None or len(fees_df) == 0) and (notes_df is None or len(notes_df) == 0):
         # CSV 双 miss → hub SQL 链式回退 (开关关闭时直接 404, 行为与从前一致)
         if get_config().hub_raw_enabled:
-            hub = _get_hub_source()
+            hub = _get_hub_source_for_patient(patient_id)
             fees_df = hub.get_fees(patient_id)
             notes_df = hub.get_notes(patient_id)
             source = "hub"
@@ -742,7 +783,7 @@ def _labs_to_list(patient_id: str, *, allow_hub: bool = True) -> list[dict]:
         logger.warning("加载检验数据失败 patient=%s: %s", patient_id, e)
         rows = []
     if not rows and allow_hub and get_config().hub_raw_enabled:
-        rows = _get_hub_source().get_labs(patient_id)
+        rows = _get_hub_source_for_patient(patient_id).get_labs(patient_id)
     return _format_lab_rows(rows)
 
 
@@ -765,7 +806,7 @@ def _exams_to_list(patient_id: str, *, allow_hub: bool = True) -> list[dict]:
         logger.warning("加载检查数据失败 patient=%s: %s", patient_id, e)
         rows = []
     if not rows and allow_hub and get_config().hub_raw_enabled:
-        rows = _get_hub_source().get_exams(patient_id)
+        rows = _get_hub_source_for_patient(patient_id).get_exams(patient_id)
     return _format_exam_rows(rows)
 
 
@@ -776,7 +817,7 @@ _zd_cache: dict[str, str] | None = None
 def _hub_main_dx(patient_id: str) -> str | None:
     """hub 主诊回退 (开关关 → None); _get_main_diagnosis 所有 miss 出口共用."""
     if get_config().hub_raw_enabled:
-        return _get_hub_source().get_main_diagnosis(patient_id)
+        return _get_hub_source_for_patient(patient_id).get_main_diagnosis(patient_id)
     return None
 
 

@@ -23,3 +23,10 @@
 - [x] 4.3 workbench 直接复用已验证收费缓存，旧缓存继续重验，并补充回归测试
 - [x] 4.4 为 backfill 增加患者与 batch tag 定向范围，使用 desus 快照回填现有 43 条 run
 - [x] 4.5 验证命中数量、费用定位、tag、裁决和其他患者零改动，更新文档与严格门禁
+
+## 5. 原文对照隔离源修复
+
+- [x] 5.1 用 62 真实 raw API 复现 desus 的 fees/notes/labs 均为 404
+- [x] 5.2 新增安全的 batch tag→Hub profile 配置与 latest tag 查询
+- [x] 5.3 原文、概览与主诊回退按患者选择 profile，并证明其他患者仍走默认 Hub
+- [ ] 5.4 配置 62 desus profile，验证三页签、费用锚点、服务与发布门禁

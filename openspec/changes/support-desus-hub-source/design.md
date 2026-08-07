@@ -24,6 +24,7 @@
 3. 所有 `fetch_*` 保留默认空前缀参数，已有调用方和离线测试不传参时行为不变；知道配置的入口显式传入 `cfg.hub_table_prefix`。
 4. 单病人运行通过只读 `desus_patient_manifest` 核对患者集合，再用带前缀 ETL 生成受限权限的临时六文件目录；审计进程显式设置 `JAVERT_BATCH_TAG=desus`，直接走既有持久化链路，不执行全量 pending 同步。
 5. `anchors_json` 新写入采用版本化 envelope，只有由持久化入口使用本次审计 loader 的患者收费切片生成时才标记 `verified_fee_snapshot=true`。workbench 可直接复用这种缓存；历史 list 格式仍视为未验证并重新关联实时净正收费。选择自包含缓存而不是按 `batch_tag` 动态切换全局 Hub，是为了避免一个 desus 患者让同进程其他患者错误切源。
+6. 原文数据不能随命中缓存完整持久化，因此另加 `hub_raw_profiles` 显式映射：key 是 batch tag，value 是只读 database/table prefix。工作台仅在 CSV miss 后读取患者最新 tag，命中 profile 才创建独立 `HubRawSource` 单例；未命中走原默认 Hub。profile 是每请求选择、每 profile 独立连接与缓存，不修改全局 config，也不会让 `desus` 患者切走其他患者的数据源。
 
 ## Risks / Trade-offs
 
@@ -32,6 +33,7 @@
 - [脱敏表缺少某个运行时必需表] → 运行前核对所需表清单，真实单患者 ETL 作为端到端门禁；失败不回退无前缀表，避免混源。
 - [结果错误关联其他患者或历史 pending] → 从 manifest 精确得到唯一患者号，只运行该患者；使用现有逐条双写，不调用无范围的 pending 同步。
 - [缓存把检索词冒充收费项目] → verified envelope 只能由 `resolve_hits` 对本次患者实际净正收费切片生成；legacy/损坏 envelope 继续 fail closed 并重算。
+- [tag profile 串源或连接串注入] → 只按 SQL Server latest tag 精确选择；database/table prefix 都限制为单段安全标识符，profile 连接与缓存相互隔离。
 
 ## Migration Plan
 
@@ -39,7 +41,8 @@
 2. 仅在本次进程设置 `JAVERT_HUB_DATABASE=TP_data_hub`、`JAVERT_HUB_TABLE_PREFIX=desus_` 和 `JAVERT_BATCH_TAG=desus`。
 3. 先取数并核对六个数据域只含 manifest 中的唯一患者，再运行单患者审计并检查 SQLite/SQL Server latest rows 的 tag。
 4. 对已存在的 `desus` run 用同一私密收费快照按患者和 batch tag 定向回填 verified anchors，核对卡片命中与费用定位。
-5. 回滚时移除 `JAVERT_HUB_TABLE_PREFIX`；verified envelope 仍可被旧代码视为 cache miss 并安全回退，无需数据库迁移。
+5. 62 显式设置 `JAVERT_HUB_RAW_PROFILES={"desus":{"database":"TP_data_hub","table_prefix":"desus_"}}`，重启后用真实 raw API 验证三个页签。
+6. 回滚时移除 `JAVERT_HUB_TABLE_PREFIX`/`JAVERT_HUB_RAW_PROFILES`；verified envelope 仍可被旧代码视为 cache miss 并安全回退，无需数据库迁移。
 
 ## Open Questions
 

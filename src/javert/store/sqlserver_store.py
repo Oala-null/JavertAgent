@@ -935,6 +935,30 @@ class SqlServerStore:
             return []
         return [(r[0], r[1], r[2]) for r in rows]
 
+    def latest_batch_tag_for_patient(self, patient_id: str) -> str | None:
+        """返回患者最新 audit run 的 batch_tag；查询失败/无行/NULL 均返回 None。"""
+        engine = self.get_engine()
+        if engine is None:
+            return None
+        from sqlalchemy import text
+        try:
+            with engine.connect() as conn:
+                row = conn.execute(
+                    text(
+                        "SELECT TOP (1) batch_tag FROM javert_audit_runs "
+                        "WHERE patient_id = :pid ORDER BY created_at DESC, run_id DESC"
+                    ),
+                    {"pid": patient_id},
+                ).fetchone()
+            return str(row[0]) if row is not None and row[0] else None
+        except Exception as exc:  # noqa: BLE001 — 原文 profile 是可选回退，不阻断默认源
+            logger.warning(
+                "latest_batch_tag_for_patient 失败 patient=%s error_type=%s",
+                patient_id,
+                type(exc).__name__,
+            )
+            return None
+
     def list_runs_for_patient(
         self,
         patient_id: str,

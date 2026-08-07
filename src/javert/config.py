@@ -3,17 +3,33 @@
 
 from __future__ import annotations
 
+import json
 import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+class HubRawProfile(BaseModel):
+    """按 batch tag 选择的只读 Hub 原文源；字段只允许单段安全标识符。"""
+
+    database: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,127}$",
+    )
+    table_prefix: str = Field(
+        default="",
+        max_length=64,
+        pattern=r"^(?:[A-Za-z_][A-Za-z0-9_]{0,63})?$",
+    )
 
 
 class JavertConfig(BaseSettings):
@@ -109,6 +125,9 @@ class JavertConfig(BaseSettings):
         max_length=64,
         pattern=r"^(?:[A-Za-z_][A-Za-z0-9_]{0,63})?$",
     )
+    # CSV miss 时按患者 latest batch_tag 选择隔离只读源；默认空映射保持单 Hub 行为。
+    # env 使用 JSON，例如 {"desus":{"database":"TP_data_hub","table_prefix":"desus_"}}。
+    hub_raw_profiles: dict[str, HubRawProfile] = Field(default_factory=dict)
     sql_driver: str = "ODBC Driver 18 for SQL Server"
     sql_pool_size: int = 5
     sql_max_overflow: int = 5
@@ -130,6 +149,20 @@ class JavertConfig(BaseSettings):
     # 注册开关 (env: JAVERT_ALLOW_REGISTER) — 默认关; 运维走 `javert mssql-user`
     # 或 SSMS 直接 INSERT
     allow_register: bool = False
+
+    @field_validator("hub_raw_profiles", mode="before")
+    @classmethod
+    def _parse_hub_raw_profiles(cls, value):
+        if isinstance(value, str):
+            value = json.loads(value)
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise ValueError("hub_raw_profiles 必须是 batch_tag → Hub profile mapping")
+        for tag in value:
+            if not isinstance(tag, str) or not tag.strip() or tag != tag.strip() or len(tag) > 128:
+                raise ValueError("hub_raw_profiles 的 batch_tag 必须是非空、无首尾空白的短字符串")
+        return value
 
     # harden-onsite-redlines: /api/patient/{pid}/raw 每会话限流档位 (slowapi 语法).
     # 30/min 不影响专家逐个点开病历; 现场误伤时 env JAVERT_RAW_RATE_LIMIT 一行可调.

@@ -80,6 +80,7 @@ def test_hub_raw_defaults():
     assert cfg.hub_raw_enabled is False
     assert cfg.hub_database == "sh_yb_platform"
     assert cfg.hub_table_prefix == ""
+    assert cfg.hub_raw_profiles == {}
 
 
 def test_hub_raw_env_override(monkeypatch):
@@ -90,6 +91,30 @@ def test_hub_raw_env_override(monkeypatch):
     assert cfg.hub_raw_enabled is True
     assert cfg.hub_database == "TP_other"
     assert cfg.hub_table_prefix == "desus_"
+
+
+def test_hub_raw_profiles_env_json(monkeypatch, tmp_path):
+    monkeypatch.setenv(
+        "JAVERT_HUB_RAW_PROFILES",
+        '{"desus":{"database":"TP_data_hub","table_prefix":"desus_"}}',
+    )
+    cfg = load_config(tmp_path / "missing.yaml")
+    assert cfg.hub_raw_profiles["desus"].database == "TP_data_hub"
+    assert cfg.hub_raw_profiles["desus"].table_prefix == "desus_"
+
+
+@pytest.mark.parametrize(
+    "profiles",
+    [
+        '{"desus":{"database":"TP_data_hub;DROP","table_prefix":"desus_"}}',
+        '{"desus":{"database":"TP_data_hub","table_prefix":"dbo."}}',
+        '{" desus":{"database":"TP_data_hub","table_prefix":"desus_"}}',
+    ],
+)
+def test_hub_raw_profiles_reject_unsafe_values(monkeypatch, tmp_path, profiles):
+    monkeypatch.setenv("JAVERT_HUB_RAW_PROFILES", profiles)
+    with pytest.raises(ValueError):
+        load_config(tmp_path / "missing.yaml")
 
 
 @pytest.mark.parametrize("prefix", ["dbo.", "desus-", "desus ", "x;DROP", "1desus_"])
