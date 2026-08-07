@@ -78,7 +78,7 @@ def batch_client(monkeypatch):
 
 
 def test_persist_failure_emits_fail_without_result(batch_client, monkeypatch):
-    def _boom(result, rule, triggered_by):
+    def _boom(result, rule, triggered_by, **_kwargs):
         raise RuntimeError("sqlite locked")
 
     monkeypatch.setattr(ra, "persist_one", _boom)
@@ -98,7 +98,7 @@ def test_persist_failure_emits_fail_without_result(batch_client, monkeypatch):
 
 def test_unknown_rule_gets_explicit_fail(batch_client, monkeypatch):
     monkeypatch.setattr(ra, "persist_one",
-                        lambda result, rule, triggered_by: {"sync_state": "synced"})
+                        lambda result, rule, triggered_by, **_kwargs: {"sync_state": "synced"})
     r = batch_client.post("/api/audit/run-batch",
                           json={"patient_id": "JT001", "rules": ["R191", "R999"]})
     events = _parse_sse(r.text)
@@ -118,7 +118,7 @@ def test_normal_path_result_payload_keeps_legacy_fields_and_adds_public_projecti
     batch_client, monkeypatch,
 ):
     monkeypatch.setattr(ra, "persist_one",
-                        lambda result, rule, triggered_by: {"sync_state": "synced"})
+                        lambda result, rule, triggered_by, **_kwargs: {"sync_state": "synced"})
     r = batch_client.post("/api/audit/run-batch",
                           json={"patient_id": "JT001", "rules": ["R191"]})
     events = _parse_sse(r.text)

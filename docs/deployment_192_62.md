@@ -147,6 +147,20 @@ uv run python scripts/backfill_anchors.py --target mssql --dry-run   # 看量
 uv run python scripts/backfill_anchors.py --target mssql             # 全量回填 anchors_json
 ```
 
+隔离表族（如 `desus_`）的既有 run 不得依赖工作台当前默认 Hub 回查。应使用审计时的同一
+收费快照，按患者与批次精确回填 v2 已验证缓存；`--verified-fee-snapshot` 缺任一范围参数会
+直接拒绝执行：
+
+```bash
+uv run python scripts/backfill_anchors.py --target mssql --dry-run \
+  --patient-id <去标识患者号> --batch-tag desus --verified-fee-snapshot
+uv run python scripts/backfill_anchors.py --target mssql \
+  --patient-id <去标识患者号> --batch-tag desus --verified-fee-snapshot
+```
+
+新版审计会直接用当次 loader 的收费切片生成该缓存；旧 list 格式缓存仍由工作台关联当前
+净正收费重验，不会因历史缓存而绕过收费真实性约束。
+
 **肿瘤资格 v2 迁移**: 同一命令会幂等增加
 `javert_audit_runs.eligibility_json NVARCHAR(MAX) NULL`；SQLite 启动时自动增加
 `audit_runs.eligibility_json TEXT NULL`。旧行保持 `NULL`，无需回填。运行模式、RD04/R007
@@ -332,10 +346,14 @@ scp "data/sy_检验.csv" "data/sy_patient_examination.csv" admin2@192.168.31.62:
 # 编辑 /home/admin2/javert/.env，避免 echo 重复键
 JAVERT_HUB_RAW_ENABLED=true
 JAVERT_HUB_DATABASE=sh_yb_platform
+# 同库隔离表族才设置，例如 desus_TB_* 使用 desus_；生产默认留空读取 TB_*。
+JAVERT_HUB_TABLE_PREFIX=
 # 重拉后生效；回滚 = RAW_ENABLED 改 false + 再重拉，一步回纯 CSV。
 ```
 
-不加开关部署 = 行为与升级前完全一致 (开关默认 false).
+不加开关部署 = 行为与升级前完全一致 (开关默认 false，表名前缀默认空)。前缀值只允许
+字母、数字和下划线且须以字母或下划线开头；非法值会在服务配置加载时失败，缺前缀表不会
+静默回退无前缀表。
 
 **② TP_data_hub 索引（2026-07-06 历史开发库步骤）** — `scripts/sql/create_data_hub_indexes.sql` (9 个: 5 表 JZLSH + fee⋈EXT + LIS join + 2 RIS). 实测索引后单患者首查 2.44s → 0.31s。开发库重建后用 `sqlcmd <连接参数> -d TP_data_hub -v HUB_DATABASE=TP_data_hub -b -i scripts/sql/create_data_hub_indexes.sql`；脚本会在首条 DDL 前核对当前库。142 当前读取源 `sh_yb_platform` 由 DE 维护，Javert 侧不得直接执行 DDL，生产索引需求须交 DE/DBA 走变更。
 

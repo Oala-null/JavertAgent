@@ -65,6 +65,8 @@ class AuditResult(BaseModel):
     eligibility_evaluation: EligibilityEvaluation | None = None
     # add-evolving-promise-harness: 仅命中终局 Promise 时写最小、去标识 trace。
     promise_trace: PromiseTrace | None = None
+    # 内部持久化缓存：由本次审计实际收费切片确定性解析；不进入对外 API payload。
+    anchors_json: str | None = Field(default=None, exclude=True)
 
     @model_validator(mode="after")
     def _validate_eligibility_projection(self) -> "AuditResult":

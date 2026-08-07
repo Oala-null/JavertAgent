@@ -176,7 +176,7 @@ def test_mark_synced_then_failed_then_synced(store: SqliteStore):
 
 
 def test_write_and_round_trip(store: SqliteStore):
-    r = _make_result()
+    r = _make_result(anchors_json='{"items":[],"schema_version":2,"verified_fee_snapshot":true}')
     store.write(r)
     again = store.find_by_run_id(r.run_id)
     assert again is not None
@@ -184,6 +184,15 @@ def test_write_and_round_trip(store: SqliteStore):
     assert again.verdict == "VIOLATION"
     assert again.evidence[0].text == "甲状腺乳头状癌"
     assert again.tool_calls[0].tool_name == "search_notes"
+    assert again.anchors_json == r.anchors_json
+
+
+def test_find_unsynced_preserves_anchors_cache(store: SqliteStore):
+    r = _make_result(anchors_json='{"items":[],"schema_version":2,"verified_fee_snapshot":true}')
+    store.write(r)
+    pending = store.find_unsynced()
+    assert len(pending) == 1
+    assert pending[0].anchors_json == r.anchors_json
 
 
 def test_two_writes_same_rule_patient_kept(store: SqliteStore):

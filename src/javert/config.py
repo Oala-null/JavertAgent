@@ -102,6 +102,13 @@ class JavertConfig(BaseSettings):
     # JAVERT_HUB_DATABASE). 默认关 = 纯 CSV 行为不变; 开启后 CSV 双 miss 时按患者号查 hub.
     hub_raw_enabled: bool = False
     hub_database: str = "sh_yb_platform"
+    # support-desus-hub-source: 同库隔离表族前缀，如 desus_TB_* 使用 "desus_"。
+    # 默认空串保持既有 TB_*；只允许单段 SQL 标识符字符，禁止 schema/引号/空白。
+    hub_table_prefix: str = Field(
+        default="",
+        max_length=64,
+        pattern=r"^(?:[A-Za-z_][A-Za-z0-9_]{0,63})?$",
+    )
     sql_driver: str = "ODBC Driver 18 for SQL Server"
     sql_pool_size: int = 5
     sql_max_overflow: int = 5

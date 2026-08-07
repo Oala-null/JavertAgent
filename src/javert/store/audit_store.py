@@ -186,8 +186,8 @@ class SqliteStore(AuditStore):
                     run_id, rule_id, patient_id, verdict, confidence,
                     reasoning, evidence_json, tool_calls_json,
                     duration_ms, model, started_at, batch_tag, gate_tag,
-                    eligibility_json, promise_trace_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    eligibility_json, promise_trace_json, anchors_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     result.run_id,
@@ -205,6 +205,7 @@ class SqliteStore(AuditStore):
                     result.gate_tag or "",
                     eligibility_json,
                     promise_trace_json,
+                    result.anchors_json,
                 ),
             )
 
@@ -236,6 +237,7 @@ class SqliteStore(AuditStore):
             gate_tag=gate_tag,
             eligibility_evaluation=eligibility,
             promise_trace=promise_trace,
+            anchors_json=(row["anchors_json"] if "anchors_json" in cols else None),
         )
 
     def find_by_run_id(self, run_id: str) -> AuditResult | None:

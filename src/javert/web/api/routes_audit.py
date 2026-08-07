@@ -169,7 +169,9 @@ async def run_audit(
             return
 
         # 持久化: 本地 SQLite + 立即推 142 + mark sync state
-        state = persist_one(result, rule, triggered_by="web")
+        state = persist_one(
+            result, rule, triggered_by="web", source_loader=loader,
+        )
 
         payload = _result_payload(result)
         payload["persisted"] = {
@@ -276,7 +278,9 @@ async def run_audit_batch(req: RunBatchRequest):
             # 持久化（本地 SQLite + 142），与单条一致.
             # persist 成功才发 result — 否则 BFF 拿到库中不存在的 run (真丢数窗口)
             try:
-                persist_one(result, rule, triggered_by="bff-batch")
+                persist_one(
+                    result, rule, triggered_by="bff-batch", source_loader=loader,
+                )
             except Exception as exc:
                 logger.exception("persist failed: run=%s", result.run_id)
                 yield _format_sse("fail", {
@@ -509,8 +513,11 @@ def _hub_probe(syxh: str) -> bool:
     cfg = get_config()
     cn = hs.connect(cfg, timeout=10)
     try:
-        yq2org = hs.fetch_hospital_map(cn)
-        return len(hs.fetch_fees(cn, [syxh], yq2org)) > 0
+        prefix = cfg.hub_table_prefix
+        yq2org = hs.fetch_hospital_map(cn, table_prefix=prefix)
+        return len(hs.fetch_fees(
+            cn, [syxh], yq2org, table_prefix=prefix
+        )) > 0
     finally:
         cn.close()
 
@@ -522,14 +529,27 @@ def _hub_fetch_patient(syxh: str, out) -> None:
     out.mkdir(parents=True, exist_ok=True)
     cn = hs.connect(cfg)
     try:
-        yq2org = hs.fetch_hospital_map(cn)
+        prefix = cfg.hub_table_prefix
+        yq2org = hs.fetch_hospital_map(cn, table_prefix=prefix)
         kw = {"index": False, "encoding": "utf-8-sig"}
-        hs.fetch_fees(cn, [syxh], yq2org).to_csv(out / "shi_fee.csv", **kw)
-        hs.fetch_notes(cn, [syxh]).to_csv(out / "case_notes.csv", **kw)
-        hs.fetch_zd(cn, [syxh], yq2org).to_csv(out / "shi_zd.csv", **kw)
-        hs.fetch_ss(cn, [syxh], yq2org).to_csv(out / "shi_ss.csv", **kw)
-        hs.fetch_labs(cn, [syxh]).to_csv(out / "lab_results.csv", **kw)
-        hs.fetch_exams(cn, [syxh]).to_csv(out / "examinations.csv", **kw)
+        hs.fetch_fees(cn, [syxh], yq2org, table_prefix=prefix).to_csv(
+            out / "shi_fee.csv", **kw
+        )
+        hs.fetch_notes(cn, [syxh], table_prefix=prefix).to_csv(
+            out / "case_notes.csv", **kw
+        )
+        hs.fetch_zd(cn, [syxh], yq2org, table_prefix=prefix).to_csv(
+            out / "shi_zd.csv", **kw
+        )
+        hs.fetch_ss(cn, [syxh], yq2org, table_prefix=prefix).to_csv(
+            out / "shi_ss.csv", **kw
+        )
+        hs.fetch_labs(cn, [syxh], table_prefix=prefix).to_csv(
+            out / "lab_results.csv", **kw
+        )
+        hs.fetch_exams(cn, [syxh], table_prefix=prefix).to_csv(
+            out / "examinations.csv", **kw
+        )
     finally:
         cn.close()
 
@@ -603,7 +623,12 @@ def _2c_run_patient(syxh: str) -> None:
                 rule = futs[fut]
                 try:
                     result = fut.result()
-                    persist_one(result, rule, triggered_by="2c-submit", sqlite_store=store)
+                    persist_one(
+                        result, rule,
+                        triggered_by="2c-submit",
+                        sqlite_store=store,
+                        source_loader=loader,
+                    )
                 except Exception as exc:  # noqa: BLE001 — 单条失败不中断整患者
                     logger.warning("2c audit rule failed: %s %s: %s", syxh, rule.rule_id, exc)
                     with _2c_lock:

@@ -9,6 +9,8 @@
 """
 from __future__ import annotations
 
+import re
+
 import pandas as pd
 
 # MXFYLB 统一 2 位码 → 中文 (与 build_data_hub_filled.MXFYLB_DICT 一致; szx 侧 EXT 无中文类别时回填)
@@ -26,6 +28,26 @@ SENT = "1900-01-01 00:00:00"
 # 主诊断锚 = SYJBK.ZYZD (与 IH 主诊 83% 同码), 诊断列表 = SYZDK, 手术 = SYSSK⋈OPERATION_DETAIL (v2.2).
 # sy(0001): 首页库回填不全 (J66252 仅 1 行且主诊错), 维持 IH/OPERATION 现状.
 BA_HOSPS = ("0003",)
+
+_TABLE_PREFIX_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}\Z")
+_BASE_TABLE_RE = re.compile(r"TB_[A-Z0-9_]+\Z")
+
+
+def validate_table_prefix(table_prefix: str = "") -> str:
+    """校验同库表族前缀；表名无法参数绑定，必须在拼 SQL 前拒绝非标识符。"""
+    value = table_prefix or ""
+    if value and not _TABLE_PREFIX_RE.fullmatch(value):
+        raise ValueError(
+            "JAVERT_HUB_TABLE_PREFIX 仅允许 1-64 位字母、数字和下划线，且须以字母或下划线开头"
+        )
+    return value
+
+
+def table_name(base: str, table_prefix: str = "") -> str:
+    """固定 TB_* 基名 + 受校验前缀；默认空前缀逐字保持既有 SQL。"""
+    if not _BASE_TABLE_RE.fullmatch(base):
+        raise ValueError(f"非法 Hub 基表名: {base}")
+    return f"{validate_table_prefix(table_prefix)}{base}"
 
 
 def build_conn_str(cfg, database: str | None = None, login_timeout: int = 60) -> str:
@@ -64,9 +86,10 @@ def clean_dt(s: pd.Series) -> pd.Series:
     return s.where(~s.str.startswith("1900-01-01"), "")
 
 
-def fetch_hospital_map(cn) -> dict[str, str]:
+def fetch_hospital_map(cn, *, table_prefix: str = "") -> dict[str, str]:
     """院区码 YLJGYQDM → 原机构码 (建库时逆映射存 YYJC)."""
-    hosp = q(cn, "SELECT YLJGYQDM, YYJC FROM TB_DIC_HOSPITAL")
+    hospital_table = table_name("TB_DIC_HOSPITAL", table_prefix)
+    hosp = q(cn, f"SELECT YLJGYQDM, YYJC FROM {hospital_table}")
     return dict(zip(hosp["YLJGYQDM"], hosp["YYJC"]))
 
 
@@ -80,19 +103,27 @@ _FEE_EXT_COLS = [
 ]
 
 
-def fetch_fees(cn, pids: list[str] | None, yq2org: dict[str, str]) -> pd.DataFrame:
+def fetch_fees(
+    cn,
+    pids: list[str] | None,
+    yq2org: dict[str, str],
+    *,
+    table_prefix: str = "",
+) -> pd.DataFrame:
     """费用: FS (⋈ EXT 若存在) → shi_fee (36 列契约).
 
     v3: 编码两列直取 FS 原生列 (MXXMBMYB 国家码 / MXXMBM 院内码); EXT 只装原始补充字段
     (通用名/规格/科室医生/原始类别/自付比例)。EXT 缺表容忍 (医院数据未就绪时 FS 单表可跑);
     已剔除列 (医保分解死列/剂型等) 契约位置保留、恒空。"""
-    has_ext = len(q(cn, "SELECT 1 x FROM sys.tables WHERE name='TB_HIS_ZY_FEE_DETAIL_EXT'")) > 0
+    fee_table = table_name("TB_HIS_ZY_FEE_DETAIL_FS", table_prefix)
+    ext_table = table_name("TB_HIS_ZY_FEE_DETAIL_EXT", table_prefix)
+    has_ext = len(q(cn, "SELECT 1 x FROM sys.tables WHERE name=?", (ext_table,))) > 0
     ext_sel = ", ".join(f"e.{c}" for c in _FEE_EXT_COLS)
     fee = q(cn, f"""
         SELECT f.YLJGYQDM, f.SFMXID, f.STFBZ, f.JZLSH, f.MXFYLB, f.FYFSSJ, f.MXXMBM, f.MXXMBMYB,
                f.MXXMMC, f.MXXMDJ, f.MXXMSL, f.MXXMJE{', ' + ext_sel if has_ext else ''}
-        FROM TB_HIS_ZY_FEE_DETAIL_FS f
-        {'LEFT JOIN TB_HIS_ZY_FEE_DETAIL_EXT e ON f.YLJGYQDM=e.YLJGYQDM AND f.SFMXID=e.SFMXID' if has_ext else ''}
+        FROM {fee_table} f
+        {f'LEFT JOIN {ext_table} e ON f.YLJGYQDM=e.YLJGYQDM AND f.SFMXID=e.SFMXID' if has_ext else ''}
         WHERE {in_clause(pids, 'f.JZLSH')}""")
     if not has_ext:
         for c in _FEE_EXT_COLS:
@@ -150,7 +181,7 @@ def _summary_to_notes(summ: pd.DataFrame) -> list[dict]:
     return rows
 
 
-def fetch_notes(cn, pids: list[str] | None) -> pd.DataFrame:
+def fetch_notes(cn, pids: list[str] | None, *, table_prefix: str = "") -> pd.DataFrame:
     """文书: 标准表 LEAVEHOSPITAL_SUMMARY (出院小结) + 扩展表 MEDICAL_DOCUMENT → case_notes (6 列契约).
 
     46表标准化: 出院小结的标准承载 = LEAVEHOSPITAL_SUMMARY。患者在扩展表有 WSLB=05 行
@@ -163,13 +194,15 @@ def fetch_notes(cn, pids: list[str] | None) -> pd.DataFrame:
     """
     from javert.onboarding.etl_engine import split_sections
 
+    document_table = table_name("TB_CIS_MEDICAL_DOCUMENT", table_prefix)
+    summary_table = table_name("TB_CIS_LEAVEHOSPITAL_SUMMARY", table_prefix)
     doc = q(cn, f"""
-        SELECT JZLSH, JLSJ, WSMC, WSLB, DLBT, ZW FROM TB_CIS_MEDICAL_DOCUMENT
+        SELECT JZLSH, JLSJ, WSMC, WSLB, DLBT, ZW FROM {document_table}
         WHERE {in_clause(pids, 'JZLSH')} ORDER BY JZLSH, WSLSH""")
     summ = q(cn, f"""
         SELECT JZLSH, CYSJ, YYZTBBT1, YYZTB1, YYZTBBT2, YYZTB2,
                {', '.join(c for c, _ in SUMMARY_COL2SEC)}
-        FROM TB_CIS_LEAVEHOSPITAL_SUMMARY WHERE {in_clause(pids, 'JZLSH')}""")
+        FROM {summary_table} WHERE {in_clause(pids, 'JZLSH')}""")
     # 05 判定: WSLB 或 WSMC 正则 (v2 医院侧 WSLB 可空, 按文书名称派生)
     is05 = (doc["WSLB"] == "05") | doc["WSMC"].str.contains("出院小结|出院记录", regex=True, na=False)
     ext05_pids = set(doc.loc[is05, "JZLSH"])
@@ -201,30 +234,39 @@ def _zd_frame(ba_id, mainflag, name, code, sn) -> pd.DataFrame:
     })
 
 
-def fetch_zd(cn, pids: list[str] | None, yq2org: dict[str, str]) -> pd.DataFrame:
+def fetch_zd(
+    cn,
+    pids: list[str] | None,
+    yq2org: dict[str, str],
+    *,
+    table_prefix: str = "",
+) -> pd.DataFrame:
     """诊断 → shi_zd (7 列契约). BA_HOSPS 院区走病案首页 (SYJBK 主诊锚 + SYZDK 列表),
     其他院区维持 IH_DIAGNOSIS_DETAIL 现状.
 
     harden-onsite-redlines D5: 源选择按患者粒度 — 只有 SYJBK 真有行的患者剔除 IH 行,
     缺首页行的 szx 患者保留 IH 诊断 (此前整院区剔除 → 诊断/手术双清零)."""
     ba_in = ",".join(f"'{h}'" for h in BA_HOSPS)
+    diagnosis_table = table_name("TB_IH_DIAGNOSIS_DETAIL", table_prefix)
+    ba_main_table = table_name("TB_BA_SYJBK", table_prefix)
+    ba_diagnosis_table = table_name("TB_BA_SYZDK", table_prefix)
 
     # ── IH 全院区取 (BA 院区行的去留按患者定, 见下) ──
     zd = q(cn, f"""
-        SELECT YLJGYQDM, JZLSH, ZDBM, ZDSM, CYZDBZ FROM TB_IH_DIAGNOSIS_DETAIL
+        SELECT YLJGYQDM, JZLSH, ZDBM, ZDSM, CYZDBZ FROM {diagnosis_table}
         WHERE {in_clause(pids, 'JZLSH')}
         ORDER BY JZLSH, ZYZDLSH""")
 
     # ── BA 院区: 主诊断 = SYJBK.ZYZD; 列表 = SYZDK (ZDXH 排序) ──
     jbk = q(cn, f"""
-        SELECT YLJGYQDM, SYXH, ZYZD FROM TB_BA_SYJBK
+        SELECT YLJGYQDM, SYXH, ZYZD FROM {ba_main_table}
         WHERE YLJGYQDM IN ({ba_in}) AND {in_clause(pids, 'SYXH')}""")
     # fix-scan-residuals: 主诊 ZYZD 空串不构成 BA 覆盖 — 剔空后 ba_keys/main/zyzd_of 一致,
     # SYJBK 有行但 ZYZD 空的患者回退 IH (否则 IH 被剔 + 生成一条空主诊, 比 per-patient 回退前更糟).
     if len(jbk):
         jbk = jbk[jbk["ZYZD"].fillna("").astype(str).str.strip() != ""]
     zdk = q(cn, f"""
-        SELECT YLJGYQDM, SYXH, ZDXH, ZDDM, ZDMC FROM TB_BA_SYZDK
+        SELECT YLJGYQDM, SYXH, ZDXH, ZDDM, ZDMC FROM {ba_diagnosis_table}
         WHERE YLJGYQDM IN ({ba_in}) AND {in_clause(pids, 'SYXH')}""")
 
     # BA 源患者 = SYJBK 真有行的 (院区, 患者); 其 IH 行剔除, 其余患者保留 IH.
@@ -255,8 +297,8 @@ def fetch_zd(cn, pids: list[str] | None, yq2org: dict[str, str]) -> pd.DataFrame
         cin = ",".join("'" + c.replace("'", "") + "'" for c in codes)
         pin = ",".join("'" + c[:5].replace("'", "") + "%'" for c in set(c[:5] for c in codes))
         for sql, cc, nc in [
-            (f"SELECT DISTINCT ZDDM, ZDMC FROM TB_BA_SYZDK WHERE ZDDM IN ({cin})", "ZDDM", "ZDMC"),
-            (f"SELECT DISTINCT ZDBM, ZDSM FROM TB_IH_DIAGNOSIS_DETAIL WHERE ZDBM IN ({cin})", "ZDBM", "ZDSM"),
+            (f"SELECT DISTINCT ZDDM, ZDMC FROM {ba_diagnosis_table} WHERE ZDDM IN ({cin})", "ZDDM", "ZDMC"),
+            (f"SELECT DISTINCT ZDBM, ZDSM FROM {diagnosis_table} WHERE ZDBM IN ({cin})", "ZDBM", "ZDSM"),
         ]:
             d = q(cn, sql)
             for code, name in zip(d[cc], d[nc]):
@@ -264,8 +306,8 @@ def fetch_zd(cn, pids: list[str] | None, yq2org: dict[str, str]) -> pd.DataFrame
         like = " OR ".join(f"ZDDM LIKE {p}" for p in pin.split(","))
         like_ih = " OR ".join(f"ZDBM LIKE {p}" for p in pin.split(","))
         for sql, cc, nc in [
-            (f"SELECT DISTINCT ZDDM, ZDMC FROM TB_BA_SYZDK WHERE {like}", "ZDDM", "ZDMC"),
-            (f"SELECT DISTINCT ZDBM, ZDSM FROM TB_IH_DIAGNOSIS_DETAIL WHERE {like_ih}", "ZDBM", "ZDSM"),
+            (f"SELECT DISTINCT ZDDM, ZDMC FROM {ba_diagnosis_table} WHERE {like}", "ZDDM", "ZDMC"),
+            (f"SELECT DISTINCT ZDBM, ZDSM FROM {diagnosis_table} WHERE {like_ih}", "ZDBM", "ZDSM"),
         ]:
             d = q(cn, sql)
             for code, name in zip(d[cc], d[nc]):
@@ -304,7 +346,13 @@ def _ss_frame(ba_id, name, code, mainflag, date, lv, anst, dr, anst_dr) -> pd.Da
     })
 
 
-def fetch_ss(cn, pids: list[str] | None, yq2org: dict[str, str]) -> pd.DataFrame:
+def fetch_ss(
+    cn,
+    pids: list[str] | None,
+    yq2org: dict[str, str],
+    *,
+    table_prefix: str = "",
+) -> pd.DataFrame:
     """手术 → shi_ss (9 列契约). BA_HOSPS 走病案首页 SYSSK⋈OPERATION_DETAIL (SFZYSS 主手术标志),
     其他院区维持 OPERATION_DETAIL 现状.
 
@@ -314,19 +362,21 @@ def fetch_ss(cn, pids: list[str] | None, yq2org: dict[str, str]) -> pd.DataFrame
     harden-onsite-redlines D5: per-patient 源选择 — 只有 SYSSK 真有行的患者剔除
     OPERATION 行, 缺首页手术行的 szx 患者保留 IH 侧手术."""
     ba_in = ",".join(f"'{h}'" for h in BA_HOSPS)
+    operation_table = table_name("TB_OPERATION_DETAIL", table_prefix)
+    ba_operation_table = table_name("TB_BA_SYSSK", table_prefix)
 
     ss = q(cn, f"""
         SELECT YLJGYQDM, JZLSH, SSCZMC, SSCZBM, ZCBZ, SSKSSJ, SSJB, MZFS, SXYHRYXM, MZYHRYXM
-        FROM TB_OPERATION_DETAIL
+        FROM {operation_table}
         WHERE {in_clause(pids, 'JZLSH')}
         ORDER BY JZLSH, SSMXLSH""")
 
     ba = q(cn, f"""
         SELECT s.YLJGYQDM, s.SYXH, s.SSXH, s.SSRQ, s.SSDM, s.SSMC, s.SSJB, s.MZFS,
                s.SSYS, s.MZYS, s.SFZYSS, o.SSKSSJ
-        FROM TB_BA_SYSSK s
+        FROM {ba_operation_table} s
         LEFT JOIN (SELECT YLJGYQDM, JZLSH, SSXH, MIN(SSKSSJ) AS SSKSSJ
-                   FROM TB_OPERATION_DETAIL GROUP BY YLJGYQDM, JZLSH, SSXH) o
+                   FROM {operation_table} GROUP BY YLJGYQDM, JZLSH, SSXH) o
           ON s.YLJGYQDM=o.YLJGYQDM AND s.SYXH=o.JZLSH AND s.SSXH=o.SSXH
         WHERE s.YLJGYQDM IN ({ba_in}) AND {in_clause(pids, 's.SYXH')}
         ORDER BY s.SYXH, s.SSXH""")
@@ -367,13 +417,15 @@ def fetch_ss(cn, pids: list[str] | None, yq2org: dict[str, str]) -> pd.DataFrame
     return pd.concat([op, syssk], ignore_index=True).reset_index(drop=True)
 
 
-def fetch_labs(cn, pids: list[str] | None) -> pd.DataFrame:
+def fetch_labs(cn, pids: list[str] | None, *, table_prefix: str = "") -> pd.DataFrame:
     """检验: INDICATORS ⋈ REPORT → lab_results (16 列契约)."""
+    indicators_table = table_name("TB_LIS_INDICATORS", table_prefix)
+    report_table = table_name("TB_LIS_REPORT", table_prefix)
     lab = q(cn, f"""
         SELECT r.JZLSH, i.JYZBMC, i.JYZBDM, i.JYZBJG, i.JLDW, i.CKZ, i.YCTS,
                r.SQKS, r.BGSJ, r.BBMC, r.BGDLB, r.BRNL, r.BRXB, r.BGYHRYXM, r.SHYHRYXM
-        FROM TB_LIS_INDICATORS i
-        JOIN TB_LIS_REPORT r ON i.YLJGYQDM=r.YLJGYQDM AND i.BGDH=r.BGDH AND i.BGRQ=r.BGRQ
+        FROM {indicators_table} i
+        JOIN {report_table} r ON i.YLJGYQDM=r.YLJGYQDM AND i.BGDH=r.BGDH AND i.BGRQ=r.BGRQ
         WHERE {in_clause(pids, 'r.JZLSH')}""")
     return pd.DataFrame({
         "zyh": lab["JZLSH"],
@@ -395,16 +447,18 @@ def fetch_labs(cn, pids: list[str] | None) -> pd.DataFrame:
     })
 
 
-def fetch_exams(cn, pids: list[str] | None) -> pd.DataFrame:
+def fetch_exams(cn, pids: list[str] | None, *, table_prefix: str = "") -> pd.DataFrame:
     """检查: RIS_REPORT ∪ RIS_REPORT2 → examinations (15 列契约)."""
+    report_table = table_name("TB_RIS_REPORT", table_prefix)
+    report2_table = table_name("TB_RIS_REPORT2", table_prefix)
     r1 = q(cn, f"""
         SELECT JZLSH, EXAMTYPE, JCMC, YXZD AS concl, YXBX AS descr, JCBW, JCKS, JCSJ, BGSJ,
                BGLCZD AS diag, YYS AS pos, BRXB, BGYHRYXM, SHYHRYXM
-        FROM TB_RIS_REPORT WHERE {in_clause(pids, 'JZLSH')}""")
+        FROM {report_table} WHERE {in_clause(pids, 'JZLSH')}""")
     r2 = q(cn, f"""
         SELECT JZLSH, EXAMTYPE, JCMC, JCBGJG AS concl, BT1NR AS descr, JCBW, JCKS, JCSJ, BGSJ,
                BT2NR AS diag, JCJGDM AS pos, BRXB, BGYHRYXM, SHYHRYXM
-        FROM TB_RIS_REPORT2 WHERE {in_clause(pids, 'JZLSH')}""")
+        FROM {report2_table} WHERE {in_clause(pids, 'JZLSH')}""")
     r = pd.concat([r1, r2], ignore_index=True)
     return pd.DataFrame({
         "zyh": r["JZLSH"],

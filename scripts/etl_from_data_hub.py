@@ -39,25 +39,27 @@ def main() -> None:
     out = Path(args.output)
     out.mkdir(exist_ok=True)
 
-    cn = hs.connect(get_config())
-    yq2org = hs.fetch_hospital_map(cn)
+    cfg = get_config()
+    table_prefix = cfg.hub_table_prefix
+    cn = hs.connect(cfg)
+    yq2org = hs.fetch_hospital_map(cn, table_prefix=table_prefix)
 
-    shi_fee = hs.fetch_fees(cn, pids, yq2org)
+    shi_fee = hs.fetch_fees(cn, pids, yq2org, table_prefix=table_prefix)
     shi_fee.to_csv(out / "shi_fee.csv", index=False, encoding="utf-8-sig")
 
-    notes = hs.fetch_notes(cn, pids)
+    notes = hs.fetch_notes(cn, pids, table_prefix=table_prefix)
     notes.to_csv(out / "case_notes.csv", index=False, encoding="utf-8-sig")
 
-    shi_zd = hs.fetch_zd(cn, pids, yq2org)
+    shi_zd = hs.fetch_zd(cn, pids, yq2org, table_prefix=table_prefix)
     shi_zd.to_csv(out / "shi_zd.csv", index=False, encoding="utf-8-sig")
 
-    shi_ss = hs.fetch_ss(cn, pids, yq2org)
+    shi_ss = hs.fetch_ss(cn, pids, yq2org, table_prefix=table_prefix)
     shi_ss.to_csv(out / "shi_ss.csv", index=False, encoding="utf-8-sig")
 
-    labs = hs.fetch_labs(cn, pids)
+    labs = hs.fetch_labs(cn, pids, table_prefix=table_prefix)
     labs.to_csv(out / "lab_results.csv", index=False, encoding="utf-8-sig")
 
-    exams = hs.fetch_exams(cn, pids)
+    exams = hs.fetch_exams(cn, pids, table_prefix=table_prefix)
     exams.to_csv(out / "examinations.csv", index=False, encoding="utf-8-sig")
 
     print(f"→ {out}/")

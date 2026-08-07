@@ -319,13 +319,13 @@ class SqlServerStore:
                         INSERT INTO javert_audit_runs (
                             run_id, rule_id, patient_id, verdict, confidence,
                             reasoning, evidence_json, tool_calls_json,
-                            eligibility_json, promise_trace_json,
+                            eligibility_json, promise_trace_json, anchors_json,
                             duration_ms, model, rule_yaml_snapshot, rule_status,
                             triggered_by, started_at, batch_tag, gate_tag
                         ) VALUES (
                             :run_id, :rule_id, :patient_id, :verdict, :confidence,
                             :reasoning, :evidence_json, :tool_calls_json,
-                            :eligibility_json, :promise_trace_json,
+                            :eligibility_json, :promise_trace_json, :anchors_json,
                             :duration_ms, :model, :rule_yaml_snapshot, :rule_status,
                             :triggered_by, :started_at, :batch_tag, :gate_tag
                         )
@@ -342,6 +342,7 @@ class SqlServerStore:
                         "tool_calls_json": tool_calls_json,
                         "eligibility_json": eligibility_json,
                         "promise_trace_json": promise_trace_json,
+                        "anchors_json": result.anchors_json,
                         "duration_ms": int(result.duration_ms),
                         "model": result.model or "",
                         "rule_yaml_snapshot": snapshot_text,
@@ -420,7 +421,7 @@ class SqlServerStore:
                     text(
                         "SELECT run_id, rule_id, patient_id, verdict, confidence, "
                         "reasoning, evidence_json, tool_calls_json, duration_ms, model, "
-                        "started_at, gate_tag, eligibility_json, promise_trace_json "
+                        "started_at, gate_tag, eligibility_json, promise_trace_json, anchors_json "
                         "FROM javert_audit_runs WHERE run_id = :rid"
                     ),
                     {"rid": run_id},
@@ -458,6 +459,7 @@ class SqlServerStore:
                 gate_tag=row[11] or "",
                 eligibility_evaluation=eligibility,
                 promise_trace=promise_trace,
+                anchors_json=(row[14] if len(row) > 14 else None),
             )
         except Exception as e:
             logger.warning("find_audit_by_run_id 失败 run_id=%s: %s", run_id, e)

@@ -32,6 +32,7 @@ from javert.web.auth import current_user, request_meta, session_user_id
 from javert.web.doc_order import bucket_of
 from javert.web.hit_resolver import (
     hits_from_json,
+    hits_have_verified_fee_snapshot,
     load_kb_drugs,
     resolve_hits,
 )
@@ -114,12 +115,22 @@ def _resolve_hits_for_runs(
         m = meta_map.get(run.rule_id) or {}
         drug_type = m.get("drug_rule_type")
         # 1) 缓存命中 (确定性回填的 anchors_json)
-        cached = hits_from_json(anchors_map.get(run.run_id)) if anchors_map else None
+        cached_json = anchors_map.get(run.run_id) if anchors_map else None
+        cached = hits_from_json(cached_json)
         # fee/drug 旧缓存可能是 locator/search fallback，必须关联当前患者净正收费后重算；
-        # note/lab/exam 锚点仍可直接复用。
+        # v2 verified cache 已绑定审计时的实际收费切片，可在隔离数据源下自包含回放。
+        verified_charge_cache = bool(
+            cached is not None
+            and hits_have_verified_fee_snapshot(cached_json)
+            and all(
+                h.source not in {"fee", "drug"} or bool(h.matched_fee_name.strip())
+                for h in cached
+            )
+        )
         stale_public_charge_cache = bool(
             cached is not None
             and any(h.source in {"fee", "drug"} for h in cached)
+            and not verified_charge_cache
         )
         if cached is not None and not stale_public_charge_cache:
             out[run.run_id] = cached

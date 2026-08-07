@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 
 from javert.audit.result import AuditResult
@@ -26,6 +27,42 @@ from .sqlserver_store import get_sqlserver_store
 logger = logging.getLogger("javert.store.result_persister")
 
 DRIFT_TAG = "漂移防护(历史曾判V)"
+
+
+def _attach_verified_hits(
+    result: AuditResult,
+    rule: Rule | None,
+    source_loader,
+) -> None:
+    """用审计时的同一收费切片生成可自包含回放的命中缓存；失败不阻断落库。"""
+    if source_loader is None:
+        return
+    try:
+        fee_df = source_loader.get_fees(result.patient_id)
+        if fee_df is None:
+            return
+        from javert.web.hit_resolver import (
+            hits_to_json,
+            load_kb_drugs,
+            resolve_hits_from_json,
+        )
+
+        drug_type = rule.drug_rule_type if rule is not None else None
+        hits = resolve_hits_from_json(
+            json.dumps([e.model_dump() for e in result.evidence], ensure_ascii=False),
+            json.dumps([tc.model_dump() for tc in result.tool_calls], ensure_ascii=False),
+            drug_type,
+            fee_df,
+            load_kb_drugs() if drug_type else {},
+        )
+        result.anchors_json = hits_to_json(hits, verified_fee_snapshot=True)
+    except Exception as exc:  # noqa: BLE001 — 可选展示缓存失败不得丢审计结果
+        logger.warning(
+            "命中缓存生成失败 run=%s rule=%s error_type=%s",
+            result.run_id,
+            result.rule_id,
+            type(exc).__name__,
+        )
 
 
 def _expert_rejected_violation(run_id: str, sql_enabled: bool) -> bool:
@@ -95,6 +132,7 @@ def persist_one(
     triggered_by: str = "cli",
     sqlite_store: SqliteStore | None = None,
     batch_tag: str | None = None,
+    source_loader=None,
 ) -> dict:
     """单条 audit 持久化.
 
@@ -103,6 +141,7 @@ def persist_one(
         rule: 可选, 用于 142 双写的 yaml snapshot
         triggered_by: "cli-dry-run" / "cli-run" / "web" / "heartbeat"
         sqlite_store: 复用已开的连接 (批量场景); None = 内部新开
+        source_loader: 本次审计使用的数据 loader；用于持久化已验证命中缓存
 
     Returns:
         {
@@ -123,6 +162,9 @@ def persist_one(
         sqlite_store.init_schema()
 
     try:
+        # 命中项目必须绑定本次审计实际收费切片，不能依赖工作台稍后猜测数据源。
+        _attach_verified_hits(result, rule, source_loader)
+
         # 0. 重跑漂移防护 (recover-deterministic-recall): 老 V 新 C → 就地改判 I (写前).
         if str(cfg.drift_guard).lower() != "off":
             _apply_drift_guard(result, sqlite_store, cfg.sql_enabled)

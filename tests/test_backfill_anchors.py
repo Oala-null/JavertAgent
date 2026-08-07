@@ -10,6 +10,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -17,8 +18,16 @@ import pandas as pd
 import pytest
 
 from javert.config import get_config
+from javert.audit.result import AuditResult, Evidence
 from javert.data.csv_loader import CsvLoader
-from javert.web.hit_resolver import Anchor, HitItem, hits_from_json, hits_to_json
+from javert.store.result_persister import _attach_verified_hits
+from javert.web.hit_resolver import (
+    Anchor,
+    HitItem,
+    hits_from_json,
+    hits_have_verified_fee_snapshot,
+    hits_to_json,
+)
 from javert.web.rule_meta import load_rule_meta
 from javert.web.hit_resolver import load_kb_drugs
 
@@ -81,6 +90,46 @@ def test_hits_from_json_handles_garbage():
     assert hits_from_json('{"not":"a list"}') is None
 
 
+def test_verified_hits_json_round_trip_and_marker():
+    hits = [
+        HitItem(
+            source="fee",
+            name="麻醉恢复室监护费",
+            matched_fee_name="麻醉恢复室监护费",
+            anchor=Anchor(tab="fees", query="麻醉恢复室监护费", match_level="keyword"),
+        )
+    ]
+    s = hits_to_json(hits, verified_fee_snapshot=True)
+    assert hits_have_verified_fee_snapshot(s) is True
+    assert hits_have_verified_fee_snapshot(hits_to_json(hits)) is False
+    assert [h.model_dump() for h in hits_from_json(s) or []] == [h.model_dump() for h in hits]
+
+
+def test_persister_builds_verified_cache_from_audit_loader():
+    result = AuditResult(
+        run_id="aud_abcdef123456",
+        rule_id="R212",
+        patient_id="TEST-P001",
+        verdict="INCONCLUSIVE",
+        evidence=[
+            Evidence(
+                source="search_fees",
+                locator="吸入用布地奈德混悬液",
+                text="患者存在该收费项目",
+            )
+        ],
+        started_at=datetime.now(timezone.utc),
+    )
+    _attach_verified_hits(
+        result,
+        SimpleNamespace(drug_rule_type=None),
+        _SyntheticFeeLoader(),
+    )
+    assert hits_have_verified_fee_snapshot(result.anchors_json) is True
+    hits = hits_from_json(result.anchors_json)
+    assert hits and hits[0].matched_fee_name == "(集)吸入用布地奈德混悬液"
+
+
 def test_build_anchors_json_idempotent():
     a = backfill.build_anchors_json("P1", _EV, "[]", "限适应症", _FEE_DF, _KB)
     b = backfill.build_anchors_json("P1", _EV, "[]", "限适应症", _FEE_DF, _KB)
@@ -138,6 +187,55 @@ def test_backfill_sqlite_end_to_end(tmp_path):
     con.close()
     assert aj2 == aj1
     assert cnt == 1
+
+
+def test_backfill_sqlite_verified_cache_is_strictly_scoped(tmp_path):
+    db = tmp_path / "audit.sqlite"
+    con = sqlite3.connect(db)
+    con.execute(
+        "CREATE TABLE audit_runs (run_id TEXT PRIMARY KEY, rule_id TEXT, "
+        "patient_id TEXT, batch_tag TEXT, verdict TEXT, evidence_json TEXT, "
+        "tool_calls_json TEXT, anchors_json TEXT)"
+    )
+    con.executemany(
+        "INSERT INTO audit_runs VALUES (?,?,?,?,?,?,?,?)",
+        [
+            ("aud_target", "R007", "TEST-P001", "desus", "INCONCLUSIVE", _EV, "[]", None),
+            ("aud_other_tag", "R007", "TEST-P001", "other", "CLEAN", _EV, "[]", None),
+            ("aud_other_patient", "R007", "TEST-P002", "desus", "CLEAN", _EV, "[]", None),
+        ],
+    )
+    con.commit()
+    con.close()
+
+    n = backfill.backfill_sqlite(
+        db,
+        _SyntheticFeeLoader(),
+        {"R007": {"drug_rule_type": "限适应症"}},
+        _KB_CODED,
+        patient_id="TEST-P001",
+        batch_tag="desus",
+        verified_fee_snapshot=True,
+    )
+    assert n == 1
+    con = sqlite3.connect(db)
+    rows = dict(con.execute("SELECT run_id, anchors_json FROM audit_runs").fetchall())
+    con.close()
+    assert hits_have_verified_fee_snapshot(rows["aud_target"]) is True
+    assert rows["aud_other_tag"] is None
+    assert rows["aud_other_patient"] is None
+
+
+def test_verified_backfill_requires_patient_and_batch_scope(tmp_path):
+    with pytest.raises(ValueError, match="patient_id 和 batch_tag"):
+        backfill.backfill_sqlite(
+            tmp_path / "unused.sqlite",
+            _SyntheticFeeLoader(),
+            {},
+            {},
+            patient_id="TEST-P001",
+            verified_fee_snapshot=True,
+        )
 
 
 def test_backfill_sqlite_skips_failing_run(tmp_path, monkeypatch):
@@ -230,3 +328,35 @@ def test_route_resolve_hits_cache_hit_charge_recheck_and_fallback():
     out2 = _resolve_hits_for_runs("J90508", [run], meta, {})
     assert out2["aud_cache1"]  # 非空
     assert any(h.source == "drug" for h in out2["aud_cache1"])
+
+
+def test_route_replays_verified_charge_cache_without_current_source(monkeypatch):
+    from javert.web.api import routes_workbench as rw
+
+    class _MustNotLoad:
+        def get_fees(self, _patient_id):
+            raise AssertionError("verified cache 不应回查当前默认数据源")
+
+    run = SimpleNamespace(
+        run_id="aud_verified1",
+        rule_id="R212",
+        patient_id="TEST-P001",
+        evidence_json="[]",
+        tool_calls_json="[]",
+    )
+    cached_hits = [
+        HitItem(
+            source="fee",
+            name="麻醉恢复室监护费",
+            matched_fee_name="麻醉恢复室监护费",
+            anchor=Anchor(tab="fees", query="麻醉恢复室监护费", match_level="keyword"),
+        )
+    ]
+    monkeypatch.setattr(rw, "_get_loader", lambda: _MustNotLoad())
+    out = rw._resolve_hits_for_runs(
+        "TEST-P001",
+        [run],
+        {"R212": {}},
+        {"aud_verified1": hits_to_json(cached_hits, verified_fee_snapshot=True)},
+    )
+    assert [h.matched_fee_name for h in out["aud_verified1"]] == ["麻醉恢复室监护费"]

@@ -248,6 +248,7 @@ def _run_serial(
                 result, rule,
                 triggered_by="cli-audit-patient",
                 sqlite_store=store,
+                source_loader=runner.loader,
             )
             key = state.get("sync_state", "pending")
             sync_counters[key] = sync_counters.get(key, 0) + 1
@@ -337,6 +338,7 @@ def _run_parallel(
                         result, rule,
                         triggered_by="cli-audit-patient",
                         sqlite_store=store,
+                        source_loader=runner.loader,
                     )
                     with print_lock:
                         key = state.get("sync_state", "pending")

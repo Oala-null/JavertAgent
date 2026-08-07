@@ -31,7 +31,9 @@ def run_dry_run(rule_id: str, patient_id: str) -> None:
         click.echo(f"\n✗ LLM 不可用: {exc}", err=True)
         sys.exit(2)
 
-    state = persist_one(result, rule, triggered_by="cli-dry-run")
+    state = persist_one(
+        result, rule, triggered_by="cli-dry-run", source_loader=loader,
+    )
     sync_label = {
         "synced": f"✓ {cfg.sql_host}",
         "pending": "⏳ 待回灌 (本地已存)",

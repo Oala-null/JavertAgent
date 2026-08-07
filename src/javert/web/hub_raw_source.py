@@ -57,6 +57,7 @@ class HubRawSource:
         executor: Executor | None = None,
     ):
         self.cfg = cfg
+        self.table_prefix = hs.validate_table_prefix(cfg.hub_table_prefix)
         self.deadline_seconds = max(0.01, float(deadline_seconds))
         self._clock = clock
         self._cn = None
@@ -95,7 +96,9 @@ class HubRawSource:
 
     def _hospital_map(self, cn) -> dict[str, str]:
         if self._yq2org is None:
-            self._yq2org = hs.fetch_hospital_map(cn)
+            self._yq2org = hs.fetch_hospital_map(
+                cn, table_prefix=self.table_prefix
+            )
         return self._yq2org
 
     def _query(self, pid: str, tab: str) -> Any:
@@ -103,15 +106,29 @@ class HubRawSource:
             cn = self._conn()
             pids = [pid]
             if tab == "notes":
-                return hs.fetch_notes(cn, pids)
+                return hs.fetch_notes(cn, pids, table_prefix=self.table_prefix)
             if tab == "fees":
-                return hs.fetch_fees(cn, pids, self._hospital_map(cn))
+                return hs.fetch_fees(
+                    cn,
+                    pids,
+                    self._hospital_map(cn),
+                    table_prefix=self.table_prefix,
+                )
             if tab == "zd":
-                return hs.fetch_zd(cn, pids, self._hospital_map(cn))
+                return hs.fetch_zd(
+                    cn,
+                    pids,
+                    self._hospital_map(cn),
+                    table_prefix=self.table_prefix,
+                )
             if tab == "labs":
                 return {
-                    "labs": hs.fetch_labs(cn, pids),
-                    "exams": hs.fetch_exams(cn, pids),
+                    "labs": hs.fetch_labs(
+                        cn, pids, table_prefix=self.table_prefix
+                    ),
+                    "exams": hs.fetch_exams(
+                        cn, pids, table_prefix=self.table_prefix
+                    ),
                 }
         raise ValueError("INVALID_RAW_TAB")
 

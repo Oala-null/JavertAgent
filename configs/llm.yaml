@@ -37,6 +37,10 @@ sql_pool_size: 5
 sql_max_overflow: 5
 sql_pool_timeout: 30
 
+# Hub 只读源：同库隔离表族前缀；默认空值读 TB_*，desus_TB_* 可设为 "desus_"。
+# 环境变量 JAVERT_HUB_TABLE_PREFIX 优先覆盖；库名仍由 JAVERT_HUB_DATABASE 独立配置。
+hub_table_prefix: ""
+
 # Web 服务 (javert web 子命令)
 web_host: "127.0.0.1"
 web_port: 8090

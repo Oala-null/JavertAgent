@@ -79,14 +79,24 @@ def test_hub_raw_defaults():
     cfg = JavertConfig()
     assert cfg.hub_raw_enabled is False
     assert cfg.hub_database == "sh_yb_platform"
+    assert cfg.hub_table_prefix == ""
 
 
 def test_hub_raw_env_override(monkeypatch):
     monkeypatch.setenv("JAVERT_HUB_RAW_ENABLED", "true")
     monkeypatch.setenv("JAVERT_HUB_DATABASE", "TP_other")
+    monkeypatch.setenv("JAVERT_HUB_TABLE_PREFIX", "desus_")
     cfg = JavertConfig()
     assert cfg.hub_raw_enabled is True
     assert cfg.hub_database == "TP_other"
+    assert cfg.hub_table_prefix == "desus_"
+
+
+@pytest.mark.parametrize("prefix", ["dbo.", "desus-", "desus ", "x;DROP", "1desus_"])
+def test_hub_table_prefix_rejects_unsafe_identifier(monkeypatch, prefix):
+    monkeypatch.setenv("JAVERT_HUB_TABLE_PREFIX", prefix)
+    with pytest.raises(ValueError):
+        JavertConfig()
 
 
 def test_tool_result_max_chars_default():

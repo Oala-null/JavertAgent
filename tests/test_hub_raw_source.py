@@ -64,12 +64,12 @@ def test_degrade_on_sql_error_and_no_error_cache(monkeypatch):
 def test_lru_caches_bundle_per_patient(monkeypatch):
     calls = []
     monkeypatch.setattr(hs, "connect", lambda cfg, database=None, timeout=60: type("C", (), {})())
-    monkeypatch.setattr(hs, "fetch_hospital_map", lambda cn: {"0003": "42506084200"})
-    monkeypatch.setattr(hs, "fetch_notes", lambda cn, pids: (calls.append(1), _notes_df())[1])
-    monkeypatch.setattr(hs, "fetch_fees", lambda cn, pids, m: _fees_df())
-    monkeypatch.setattr(hs, "fetch_zd", lambda cn, pids, m: pd.DataFrame())
-    monkeypatch.setattr(hs, "fetch_labs", lambda cn, pids: pd.DataFrame())
-    monkeypatch.setattr(hs, "fetch_exams", lambda cn, pids: pd.DataFrame())
+    monkeypatch.setattr(hs, "fetch_hospital_map", lambda cn, **kw: {"0003": "42506084200"})
+    monkeypatch.setattr(hs, "fetch_notes", lambda cn, pids, **kw: (calls.append(1), _notes_df())[1])
+    monkeypatch.setattr(hs, "fetch_fees", lambda cn, pids, m, **kw: _fees_df())
+    monkeypatch.setattr(hs, "fetch_zd", lambda cn, pids, m, **kw: pd.DataFrame())
+    monkeypatch.setattr(hs, "fetch_labs", lambda cn, pids, **kw: pd.DataFrame())
+    monkeypatch.setattr(hs, "fetch_exams", lambda cn, pids, **kw: pd.DataFrame())
     src = HubRawSource(_StubCfg())
     assert len(src.get_notes("211999999")) == 1
     assert len(src.get_fees("211999999")) == 1
@@ -84,12 +84,12 @@ def test_main_dx_label_format(monkeypatch):
         "inhosp_diag_code": ["K02.9", "K04.0"],
     })
     monkeypatch.setattr(hs, "connect", lambda cfg, database=None, timeout=60: type("C", (), {})())
-    monkeypatch.setattr(hs, "fetch_hospital_map", lambda cn: {})
-    monkeypatch.setattr(hs, "fetch_notes", lambda cn, pids: pd.DataFrame())
-    monkeypatch.setattr(hs, "fetch_fees", lambda cn, pids, m: pd.DataFrame())
-    monkeypatch.setattr(hs, "fetch_zd", lambda cn, pids, m: zd)
-    monkeypatch.setattr(hs, "fetch_labs", lambda cn, pids: pd.DataFrame())
-    monkeypatch.setattr(hs, "fetch_exams", lambda cn, pids: pd.DataFrame())
+    monkeypatch.setattr(hs, "fetch_hospital_map", lambda cn, **kw: {})
+    monkeypatch.setattr(hs, "fetch_notes", lambda cn, pids, **kw: pd.DataFrame())
+    monkeypatch.setattr(hs, "fetch_fees", lambda cn, pids, m, **kw: pd.DataFrame())
+    monkeypatch.setattr(hs, "fetch_zd", lambda cn, pids, m, **kw: zd)
+    monkeypatch.setattr(hs, "fetch_labs", lambda cn, pids, **kw: pd.DataFrame())
+    monkeypatch.setattr(hs, "fetch_exams", lambda cn, pids, **kw: pd.DataFrame())
     src = HubRawSource(_StubCfg())
     assert src.get_main_diagnosis("211999999") == "牙髓炎 (K04.0)"
 
@@ -97,11 +97,11 @@ def test_main_dx_label_format(monkeypatch):
 def test_success_cache_is_per_patient_and_tab(monkeypatch):
     calls = {"notes": 0, "fees": 0, "labs": 0, "exams": 0}
     monkeypatch.setattr(hs, "connect", lambda cfg, database=None, timeout=60: type("C", (), {})())
-    monkeypatch.setattr(hs, "fetch_hospital_map", lambda cn: {})
-    monkeypatch.setattr(hs, "fetch_notes", lambda cn, pids: (calls.__setitem__("notes", calls["notes"] + 1), _notes_df())[1])
-    monkeypatch.setattr(hs, "fetch_fees", lambda cn, pids, m: (calls.__setitem__("fees", calls["fees"] + 1), _fees_df())[1])
-    monkeypatch.setattr(hs, "fetch_labs", lambda cn, pids: (calls.__setitem__("labs", calls["labs"] + 1), pd.DataFrame())[1])
-    monkeypatch.setattr(hs, "fetch_exams", lambda cn, pids: (calls.__setitem__("exams", calls["exams"] + 1), pd.DataFrame())[1])
+    monkeypatch.setattr(hs, "fetch_hospital_map", lambda cn, **kw: {})
+    monkeypatch.setattr(hs, "fetch_notes", lambda cn, pids, **kw: (calls.__setitem__("notes", calls["notes"] + 1), _notes_df())[1])
+    monkeypatch.setattr(hs, "fetch_fees", lambda cn, pids, m, **kw: (calls.__setitem__("fees", calls["fees"] + 1), _fees_df())[1])
+    monkeypatch.setattr(hs, "fetch_labs", lambda cn, pids, **kw: (calls.__setitem__("labs", calls["labs"] + 1), pd.DataFrame())[1])
+    monkeypatch.setattr(hs, "fetch_exams", lambda cn, pids, **kw: (calls.__setitem__("exams", calls["exams"] + 1), pd.DataFrame())[1])
     src = HubRawSource(_StubCfg())
     src.get_tab("211999999", "fees")
     src.get_tab("211999999", "fees")
@@ -110,11 +110,31 @@ def test_success_cache_is_per_patient_and_tab(monkeypatch):
     assert calls["notes"] == 1
 
 
+def test_table_prefix_propagates_to_every_raw_tab(monkeypatch):
+    seen: list[tuple[str, str]] = []
+    monkeypatch.setattr(hs, "connect", lambda cfg, database=None, timeout=60: type("C", (), {})())
+    monkeypatch.setattr(hs, "fetch_hospital_map", lambda cn, **kw: (seen.append(("hospital", kw["table_prefix"])), {})[1])
+    monkeypatch.setattr(hs, "fetch_notes", lambda cn, pids, **kw: (seen.append(("notes", kw["table_prefix"])), pd.DataFrame())[1])
+    monkeypatch.setattr(hs, "fetch_fees", lambda cn, pids, m, **kw: (seen.append(("fees", kw["table_prefix"])), pd.DataFrame())[1])
+    monkeypatch.setattr(hs, "fetch_zd", lambda cn, pids, m, **kw: (seen.append(("zd", kw["table_prefix"])), pd.DataFrame())[1])
+    monkeypatch.setattr(hs, "fetch_labs", lambda cn, pids, **kw: (seen.append(("labs", kw["table_prefix"])), pd.DataFrame())[1])
+    monkeypatch.setattr(hs, "fetch_exams", lambda cn, pids, **kw: (seen.append(("exams", kw["table_prefix"])), pd.DataFrame())[1])
+
+    src = HubRawSource(_StubCfg(hub_table_prefix="desus_"))
+    for tab in ("notes", "fees", "zd", "labs"):
+        src.get_tab("211999999", tab)
+
+    assert {name for name, _ in seen} == {
+        "hospital", "notes", "fees", "zd", "labs", "exams"
+    }
+    assert {prefix for _, prefix in seen} == {"desus_"}
+
+
 def test_timeout_returns_quickly_is_not_cached_and_diagnostics_hide_patient(monkeypatch, caplog):
     attempts = []
     monkeypatch.setattr(hs, "connect", lambda cfg, database=None, timeout=60: type("C", (), {})())
 
-    def slow_then_recover(cn, pids):
+    def slow_then_recover(cn, pids, **kwargs):
         attempts.append(1)
         if len(attempts) == 1:
             time.sleep(0.08)
@@ -136,9 +156,9 @@ def test_timeout_returns_quickly_is_not_cached_and_diagnostics_hide_patient(monk
 def test_disconnect_failure_does_not_poison_tab_cache(monkeypatch):
     attempts = []
     monkeypatch.setattr(hs, "connect", lambda cfg, database=None, timeout=60: type("C", (), {})())
-    monkeypatch.setattr(hs, "fetch_hospital_map", lambda cn: {})
+    monkeypatch.setattr(hs, "fetch_hospital_map", lambda cn, **kw: {})
 
-    def fetch(cn, pids, mapping):
+    def fetch(cn, pids, mapping, **kwargs):
         attempts.append(1)
         if len(attempts) == 1:
             raise ConnectionError("synthetic disconnect")

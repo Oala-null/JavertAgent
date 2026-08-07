@@ -756,9 +756,25 @@ def resolve_hits_from_json(
 # =========================================================
 # 序列化 (anchors_json 缓存 + 回填脚本共用; 确定性 sort_keys)
 # =========================================================
-def hits_to_json(hits: list[HitItem]) -> str:
-    """HitItem[] → 确定性 JSON 串 (sort_keys, 同输入 byte-identical)."""
-    return json.dumps([h.model_dump() for h in hits], ensure_ascii=False, sort_keys=True)
+def hits_to_json(
+    hits: list[HitItem], *, verified_fee_snapshot: bool = False,
+) -> str:
+    """HitItem[] → 确定性 JSON 串 (sort_keys, 同输入 byte-identical).
+
+    默认保留历史 list 格式。只有命中已用该次审计实际收费切片解析时，调用方才可写入
+    v2 envelope；工作台据此区分“可自包含回放”与“必须按当前数据源重验”的旧缓存。
+    """
+    items = [h.model_dump() for h in hits]
+    data: list[dict] | dict[str, Any]
+    if verified_fee_snapshot:
+        data = {
+            "schema_version": 2,
+            "verified_fee_snapshot": True,
+            "items": items,
+        }
+    else:
+        data = items
+    return json.dumps(data, ensure_ascii=False, sort_keys=True)
 
 
 def hits_from_json(s: str | None) -> list[HitItem] | None:
@@ -767,11 +783,31 @@ def hits_from_json(s: str | None) -> list[HitItem] | None:
         return None
     try:
         data = json.loads(s)
+        if isinstance(data, dict):
+            if data.get("schema_version") != 2 or not isinstance(data.get("items"), list):
+                return None
+            data = data["items"]
         if not isinstance(data, list):
             return None
         return [HitItem.model_validate(d) for d in data]
     except Exception:  # noqa: BLE001
         return None
+
+
+def hits_have_verified_fee_snapshot(s: str | None) -> bool:
+    """缓存是否明确声明由该次审计的实际收费切片验证生成。"""
+    if not s:
+        return False
+    try:
+        data = json.loads(s)
+        return bool(
+            isinstance(data, dict)
+            and data.get("schema_version") == 2
+            and data.get("verified_fee_snapshot") is True
+            and isinstance(data.get("items"), list)
+        )
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def resolve_hits(
