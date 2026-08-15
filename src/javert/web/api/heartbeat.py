@@ -155,7 +155,14 @@ class SyncWorker:
                     rule_obj = load_rule(cfg.rules_path / f"{r.rule_id}.yaml")
                 except Exception:
                     rule_obj = None
-                ok = sql142.write_audit(r, rule_obj, triggered_by="heartbeat")
+                batch_tag, replay_key = store.publication_metadata(r.run_id)
+                ok = sql142.write_audit(
+                    r,
+                    rule_obj,
+                    triggered_by="heartbeat",
+                    batch_tag=batch_tag,
+                    replay_key=replay_key,
+                )
                 if ok:
                     store.mark_synced(r.run_id)
                     synced += 1

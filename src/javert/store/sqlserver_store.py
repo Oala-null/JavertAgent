@@ -229,6 +229,7 @@ class SqlServerStore:
         rule_yaml_text: str | None = None,
         triggered_by: str = "cli",
         batch_tag: str | None = None,
+        replay_key: str | None = None,
     ) -> bool:
         """单次 AuditResult 写入 142. 失败只 warn 不抛.
 
@@ -312,6 +313,20 @@ class SqlServerStore:
                 if existing:
                     logger.info("142 已有 run_id=%s, 跳过 INSERT", result.run_id)
                     return True
+                if replay_key:
+                    replay_existing = conn.execute(
+                        text(
+                            "SELECT TOP (1) run_id FROM javert_audit_runs "
+                            "WHERE replay_key=:replay_key AND rule_id=:rule_id"
+                        ),
+                        {"replay_key": replay_key, "rule_id": result.rule_id},
+                    ).fetchone()
+                    if replay_existing:
+                        logger.info(
+                            "142 已有 replay_key/rule_id，跳过重复 INSERT rule=%s",
+                            result.rule_id,
+                        )
+                        return True
 
                 conn.execute(
                     text(
@@ -321,13 +336,13 @@ class SqlServerStore:
                             reasoning, evidence_json, tool_calls_json,
                             eligibility_json, promise_trace_json, anchors_json,
                             duration_ms, model, rule_yaml_snapshot, rule_status,
-                            triggered_by, started_at, batch_tag, gate_tag
+                            triggered_by, started_at, batch_tag, gate_tag, replay_key
                         ) VALUES (
                             :run_id, :rule_id, :patient_id, :verdict, :confidence,
                             :reasoning, :evidence_json, :tool_calls_json,
                             :eligibility_json, :promise_trace_json, :anchors_json,
                             :duration_ms, :model, :rule_yaml_snapshot, :rule_status,
-                            :triggered_by, :started_at, :batch_tag, :gate_tag
+                            :triggered_by, :started_at, :batch_tag, :gate_tag, :replay_key
                         )
                         """
                     ),
@@ -351,6 +366,7 @@ class SqlServerStore:
                         "started_at": result.started_at,
                         "batch_tag": batch_tag,
                         "gate_tag": getattr(result, "gate_tag", "") or "",
+                        "replay_key": replay_key,
                     },
                 )
                 conn.commit()

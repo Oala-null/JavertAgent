@@ -335,6 +335,34 @@ def test_tab_selects_profile_from_latest_batch_tag(monkeypatch, _route_env):
     assert out["n_fees"] == 1
 
 
+def test_ocr_profile_bypasses_csv_and_default_hub(monkeypatch, _route_env):
+    class _TaggedStore:
+        def latest_batch_tag_for_patient(self, _pid):
+            return "ocr1.0"
+
+    cfg = _StubCfg(
+        hub_raw_enabled=False,
+        hub_raw_profiles={
+            "ocr1.0": {"database": "TP_data_hub", "table_prefix": "desus_"}
+        },
+    )
+    monkeypatch.setattr(rw, "get_config", lambda: cfg)
+    monkeypatch.setattr(rw, "get_sqlserver_store", lambda: _TaggedStore())
+    monkeypatch.setattr(rw, "_get_loader", lambda: _HubSentinel())
+    monkeypatch.setattr(rw, "_get_hub_source", lambda: _HubSentinel())
+    monkeypatch.setattr(
+        rw,
+        "_get_hub_profile_source",
+        lambda tag: _HubStub() if tag == "ocr1.0" else None,
+    )
+
+    out = rw._raw_payload("MASKED-OCR-1")
+
+    assert out["source"] == "hub"
+    assert out["fees"] and out["notes"]
+    assert out["main_diagnosis"] == "牙髓炎 (K04.0)"
+
+
 def test_profile_source_uses_isolated_database_and_prefix(monkeypatch):
     import javert.web.hub_raw_source as hub_module
 

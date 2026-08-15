@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import time
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -206,6 +207,25 @@ def test_two_writes_same_rule_patient_kept(store: SqliteStore):
     latest = store.find_by_rule_patient_latest("R191", "J66252")
     assert latest is not None
     assert latest.run_id in {r1.run_id, r2.run_id}
+
+
+def test_replay_key_is_persisted_and_unique_per_rule(store: SqliteStore):
+    replay_key = "123e4567-e89b-42d3-a456-426614174000-v1"
+    first = _make_result(rule_id="R191")
+    store.write(first, batch_tag="ocr1.0", replay_key=replay_key)
+
+    assert store.publication_metadata(first.run_id) == ("ocr1.0", replay_key)
+    entries = store.find_replay_entries(replay_key)
+    assert [(result.run_id, synced) for result, synced in entries] == [
+        (first.run_id, False)
+    ]
+
+    with pytest.raises(sqlite3.IntegrityError):
+        store.write(
+            _make_result(rule_id="R191"),
+            batch_tag="ocr1.0",
+            replay_key=replay_key,
+        )
 
 
 def test_summary_distribution(store: SqliteStore):

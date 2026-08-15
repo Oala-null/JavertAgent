@@ -6,6 +6,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
@@ -184,6 +185,50 @@ def test_audit_patient_explicit_rules_force_include_abandoned(audit_project, mon
     # 强制纳入提示
     assert "force-included abandoned: R312" in result.stdout
     assert "Verdicts: V=1 / C=1 / I=0" in result.stdout
+
+
+def test_replay_key_reuses_persisted_audit_without_second_llm_run(
+    audit_project,
+    monkeypatch,
+):
+    replay_key = "123e4567-e89b-42d3-a456-426614174000-v1"
+    monkeypatch.setenv("JAVERT_REPLAY_KEY", replay_key)
+    monkeypatch.setenv("JAVERT_BATCH_TAG", "ocr1.0")
+    from javert.config import reset_config_cache
+
+    reset_config_cache()
+    first_provider = _patch_provider(
+        monkeypatch,
+        _ScriptedProvider(per_call=_audit_script("CLEAN")),
+    )
+    runner = CliRunner()
+    first = runner.invoke(main, ["audit-patient", PT_ID, "--rules", "R045"])
+    assert first.exit_code == 0
+    assert first_provider.call_idx == 2
+
+    monkeypatch.setenv("JAVERT_SQL_ENABLED", "true")
+    reset_config_cache()
+    sql_store = MagicMock()
+    sql_store.write_audit.return_value = True
+    monkeypatch.setattr(
+        "javert.store.sqlserver_store.get_sqlserver_store",
+        lambda: sql_store,
+    )
+    second_provider = _patch_provider(monkeypatch, _ScriptedProvider(per_call=[]))
+    second = runner.invoke(main, ["audit-patient", PT_ID, "--rules", "R045"])
+
+    assert second.exit_code == 0, second.output
+    assert second_provider.call_idx == 0
+    assert "replay reused 1" in second.stdout
+    assert "mssql_sync: 1/1 succeeded (0 pending)" in second.stdout
+    sql_store.write_audit.assert_called_once()
+    with sqlite3.connect(audit_project["db"]) as connection:
+        count, synced_at = connection.execute(
+            "SELECT COUNT(*), MAX(synced_at) FROM audit_runs WHERE replay_key=?",
+            (replay_key,),
+        ).fetchone()
+    assert count == 1
+    assert synced_at is not None
 
 
 def test_share_tool_cache_hits_on_second_rule(audit_project, monkeypatch):

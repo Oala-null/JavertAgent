@@ -141,6 +141,35 @@ ELSE
     PRINT 'Column batch_tag already exists on javert_audit_runs';
 GO
 
+-- OCR pipeline: caseRef/version 派生安全重放键（不含原始患者标识）
+IF NOT EXISTS (
+    SELECT 1 FROM sys.columns
+    WHERE Name = N'replay_key'
+      AND Object_ID = Object_ID(N'javert_audit_runs')
+)
+BEGIN
+    ALTER TABLE javert_audit_runs ADD replay_key NVARCHAR(128) NULL;
+    PRINT 'Added column replay_key to javert_audit_runs (OCR pipeline)';
+END
+ELSE
+    PRINT 'Column replay_key already exists on javert_audit_runs';
+GO
+
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes
+    WHERE name = N'ux_Javert_audit_replay_rule'
+      AND object_id = OBJECT_ID(N'dbo.javert_audit_runs')
+)
+BEGIN
+    CREATE UNIQUE INDEX ux_Javert_audit_replay_rule
+        ON javert_audit_runs (replay_key, rule_id)
+        WHERE replay_key IS NOT NULL;
+    PRINT 'Created index ux_Javert_audit_replay_rule';
+END
+ELSE
+    PRINT 'Index ux_Javert_audit_replay_rule already exists';
+GO
+
 -- v0.9 (enhance-workbench-usability) migration: anchors_json 派生缓存
 --   命中项目 / 锚点 (hit_resolver) 的确定性结果缓存. 渲染优先读此列, miss 则现算.
 --   由 scripts/backfill_anchors.py 重放确定性逻辑回填 (不调 LLM, 同 run_id, 不增删行).

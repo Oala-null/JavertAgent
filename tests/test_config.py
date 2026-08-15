@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from javert.config import JavertConfig, load_config, reset_config_cache
+from javert.config import PROJECT_ROOT, JavertConfig, load_config, reset_config_cache
 
 
 @pytest.fixture(autouse=True)
@@ -101,6 +101,13 @@ def test_hub_raw_profiles_env_json(monkeypatch, tmp_path):
     cfg = load_config(tmp_path / "missing.yaml")
     assert cfg.hub_raw_profiles["desus"].database == "TP_data_hub"
     assert cfg.hub_raw_profiles["desus"].table_prefix == "desus_"
+
+
+def test_repository_config_pins_ocr_profile_to_desensitized_hub():
+    cfg = load_config(PROJECT_ROOT / "configs" / "llm.yaml")
+    profile = cfg.hub_raw_profiles["ocr1.0"]
+    assert profile.database == "TP_data_hub"
+    assert profile.table_prefix == "desus_"
 
 
 @pytest.mark.parametrize(

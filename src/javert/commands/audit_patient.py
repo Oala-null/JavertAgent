@@ -430,6 +430,58 @@ def _print_router_block(decision: RouterDecision) -> None:
     click.echo("", err=True)
 
 
+def _reconcile_replay_entries(
+    *,
+    store: SqliteStore,
+    selected: list[Rule],
+    patient_id: str,
+    replay_key: str,
+    sql_enabled: bool,
+) -> tuple[list[AuditResult], dict[str, int], list[str]]:
+    """复用已完成规则，并补偿 callback 丢失后的 Workbench 同步状态。"""
+    selected_by_id = {rule.rule_id: rule for rule in selected}
+    entries = [
+        (result, synced)
+        for result, synced in store.find_replay_entries(replay_key)
+        if result.rule_id in selected_by_id
+    ]
+    if any(result.patient_id != patient_id for result, _synced in entries):
+        raise RuntimeError("replay_key 已关联另一伪名患者")
+
+    counters = {"synced": 0, "pending": 0, "skipped": 0}
+    pending_run_ids: list[str] = []
+    sql_store = None
+    if sql_enabled and any(not synced for _result, synced in entries):
+        from javert.store.sqlserver_store import get_sqlserver_store
+
+        sql_store = get_sqlserver_store()
+
+    for result, synced in entries:
+        if synced:
+            counters["synced"] += 1
+            continue
+        if not sql_enabled:
+            counters["skipped"] += 1
+            continue
+        batch_tag, stored_replay_key = store.publication_metadata(result.run_id)
+        assert sql_store is not None
+        ok = sql_store.write_audit(
+            result,
+            selected_by_id[result.rule_id],
+            triggered_by="cli-audit-patient-replay",
+            batch_tag=batch_tag,
+            replay_key=stored_replay_key,
+        )
+        if ok:
+            store.mark_synced(result.run_id)
+            counters["synced"] += 1
+        else:
+            store.mark_sync_failed(result.run_id, "OCR replay Workbench 补偿失败")
+            counters["pending"] += 1
+            pending_run_ids.append(result.run_id)
+    return [result for result, _synced in entries], counters, pending_run_ids
+
+
 def run_audit_patient(
     patient_id: str,
     priority: str = "P0",
@@ -474,23 +526,13 @@ def run_audit_patient(
             click.echo(f"✓ router 判定无可疑规则, 跳过 LLM 审计 (V=0 C=0 I=0, 0.0s)", err=True)
             return 0
 
-    executor = build_executor(loader, cfg)
-    runner = Runner(executor=executor, config=cfg, emit=lambda _msg: None, loader=loader)
-
     cache_mode = (
         "shared (reset only between patients)"
         if share_tool_cache or concurrency > 1
         else "cold-start (reset per rule)"
     )
-    click.echo(f"=== audit-patient {patient_id} ===", err=True)
-    click.echo(f"rule selection: {selection_label}", err=True)
-    if router_decision is not None:
-        _print_router_block(router_decision)
-    click.echo(f"cache mode: {cache_mode}", err=True)
-    click.echo(f"concurrency: {concurrency}", err=True)
-    click.echo("", err=True)
-
-    results: list = []
+    original_selection = list(selected)
+    results: list[AuditResult] = []
     failed_rules: list[str] = []
     llm_failed_rules: list[str] = []
     sync_counters: dict[str, int] = {"synced": 0, "pending": 0, "skipped": 0}
@@ -500,27 +542,65 @@ def run_audit_patient(
     store = SqliteStore(cfg.audit_db_path)
     store.init_schema()
     try:
-        if concurrency > 1:
-            (results, failed_rules, llm_failed_rules,
-             sync_counters, pending_run_ids) = _run_parallel(
+        if cfg.replay_key:
+            replayed, replay_counters, replay_pending = _reconcile_replay_entries(
+                store=store,
                 selected=selected,
                 patient_id=patient_id,
-                runner=runner,
-                share_tool_cache=share_tool_cache,
-                store=store,
-                concurrency=concurrency,
+                replay_key=cfg.replay_key,
+                sql_enabled=cfg.sql_enabled,
             )
-        else:
-            (results, failed_rules, llm_failed_rules,
-             sync_counters, pending_run_ids) = _run_serial(
-                selected=selected,
-                patient_id=patient_id,
-                runner=runner,
-                share_tool_cache=share_tool_cache,
-                store=store,
+            results.extend(replayed)
+            sync_counters.update(replay_counters)
+            pending_run_ids.extend(replay_pending)
+            replayed_rule_ids = {result.rule_id for result in replayed}
+            selected = [
+                rule for rule in selected if rule.rule_id not in replayed_rule_ids
+            ]
+            if replayed:
+                cache_mode += f"; replay reused {len(replayed)}"
+
+        if selected:
+            executor = build_executor(loader, cfg)
+            runner = Runner(
+                executor=executor,
+                config=cfg,
+                emit=lambda _msg: None,
+                loader=loader,
             )
+            if concurrency > 1:
+                (new_results, failed_rules, llm_failed_rules,
+                 new_counters, new_pending) = _run_parallel(
+                    selected=selected,
+                    patient_id=patient_id,
+                    runner=runner,
+                    share_tool_cache=share_tool_cache,
+                    store=store,
+                    concurrency=concurrency,
+                )
+            else:
+                (new_results, failed_rules, llm_failed_rules,
+                 new_counters, new_pending) = _run_serial(
+                    selected=selected,
+                    patient_id=patient_id,
+                    runner=runner,
+                    share_tool_cache=share_tool_cache,
+                    store=store,
+                )
+            results.extend(new_results)
+            for key, value in new_counters.items():
+                sync_counters[key] = sync_counters.get(key, 0) + value
+            pending_run_ids.extend(new_pending)
     finally:
         store.close()
+
+    click.echo(f"=== audit-patient {patient_id} ===", err=True)
+    click.echo(f"rule selection: {selection_label}", err=True)
+    if router_decision is not None:
+        _print_router_block(router_decision)
+    click.echo(f"cache mode: {cache_mode}", err=True)
+    click.echo(f"concurrency: {concurrency}", err=True)
+    click.echo("", err=True)
 
     total_ms = int((time.perf_counter() - t_total_start) * 1000)
 
@@ -534,13 +614,13 @@ def run_audit_patient(
         concurrency=concurrency,
         results=results,
         total_ms=total_ms,
-        n_selected=len(selected),
+        n_selected=len(original_selection),
         failed_rules=failed_rules,
         llm_failed_rules=llm_failed_rules,
         sync_counters=sync_counters,
         pending_run_ids=pending_run_ids,
     )
 
-    if failed_rules or llm_failed_rules:
+    if failed_rules or llm_failed_rules or sync_counters.get("pending", 0):
         return 1
     return 0

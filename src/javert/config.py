@@ -101,6 +101,15 @@ class JavertConfig(BaseSettings):
     # v0.7: batch tag — 写入 audit_runs 时打上, 工作台 sidebar 显示 + 排序.
     # 默认 None = 不标 (baseline); CLI 跑 v1.2 重跑前 export JAVERT_BATCH_TAG=v1.2
     batch_tag: str | None = None
+    # OCR 流水线安全重放键：仅含 caseRef UUID + 版本，不含患者原始标识。
+    replay_key: str | None = Field(
+        default=None,
+        max_length=128,
+        pattern=(
+            r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"
+            r"[0-9a-f]{4}-[0-9a-f]{12}-v[1-9][0-9]*$"
+        ),
+    )
 
     # SQL Server 142 双写归档 (env: JAVERT_SQL_*)
     sql_enabled: bool = True

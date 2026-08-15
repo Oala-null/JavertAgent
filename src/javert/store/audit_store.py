@@ -67,7 +67,7 @@ class AuditStore(ABC):
 class SqliteStore(AuditStore):
     """SQLite 实现."""
 
-    SCHEMA_VERSION = 7
+    SCHEMA_VERSION = 8
 
     def __init__(self, db_path: Path):
         self.db_path = db_path
@@ -103,7 +103,7 @@ class SqliteStore(AuditStore):
         logger.info("audit_store schema 已初始化 (v%d): %s", self.SCHEMA_VERSION, self.db_path)
 
     def _ensure_v2_columns(self) -> None:
-        """累积 migration: 给 audit_runs 幂等补齐 v2-v7 可空列.
+        """累积 migration: 给 audit_runs 幂等补齐 v2-v8 可空列.
 
         幂等. 老库 (v1) 缺这三列 → ALTER TABLE 补; 新库 (v2) 已含 → 跳过.
         最后无条件 CREATE INDEX IF NOT EXISTS idx_audit_unsynced.
@@ -133,6 +133,9 @@ class SqliteStore(AuditStore):
         # v7 (add-evolving-promise-harness): 可空、去标识的终局 trace
         if "promise_trace_json" not in existing_cols:
             migrations.append("ALTER TABLE audit_runs ADD COLUMN promise_trace_json TEXT")
+        # v8 (OCR pipeline): caseRef/version 派生安全重放键
+        if "replay_key" not in existing_cols:
+            migrations.append("ALTER TABLE audit_runs ADD COLUMN replay_key TEXT")
 
         with self.conn as c:
             for sql in migrations:
@@ -143,6 +146,10 @@ class SqliteStore(AuditStore):
                 "CREATE INDEX IF NOT EXISTS idx_audit_unsynced "
                 "ON audit_runs(synced_at, created_at)"
             )
+            c.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ux_audit_replay_rule "
+                "ON audit_runs(replay_key, rule_id) WHERE replay_key IS NOT NULL"
+            )
             if migrations:
                 c.execute(
                     "INSERT OR REPLACE INTO _meta(key, value) VALUES ('schema_version', ?)",
@@ -150,7 +157,12 @@ class SqliteStore(AuditStore):
                 )
 
     # ---- write ----
-    def write(self, result: AuditResult, batch_tag: str | None = None) -> None:
+    def write(
+        self,
+        result: AuditResult,
+        batch_tag: str | None = None,
+        replay_key: str | None = None,
+    ) -> None:
         evidence_json = json.dumps(
             [e.model_dump() for e in result.evidence],
             ensure_ascii=False,
@@ -186,8 +198,8 @@ class SqliteStore(AuditStore):
                     run_id, rule_id, patient_id, verdict, confidence,
                     reasoning, evidence_json, tool_calls_json,
                     duration_ms, model, started_at, batch_tag, gate_tag,
-                    eligibility_json, promise_trace_json, anchors_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    eligibility_json, promise_trace_json, anchors_json, replay_key
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     result.run_id,
@@ -206,6 +218,7 @@ class SqliteStore(AuditStore):
                     eligibility_json,
                     promise_trace_json,
                     result.anchors_json,
+                    replay_key,
                 ),
             )
 
@@ -440,6 +453,30 @@ class SqliteStore(AuditStore):
             "last_error": last_err["sync_last_error"] if last_err else None,
             "last_error_run_id": last_err["run_id"] if last_err else None,
         }
+
+    def publication_metadata(self, run_id: str) -> tuple[str | None, str | None]:
+        """返回不进入 AuditResult 的批次标签与安全重放键。"""
+        row = self.conn.execute(
+            "SELECT batch_tag, replay_key FROM audit_runs WHERE run_id=?",
+            (run_id,),
+        ).fetchone()
+        if row is None:
+            return None, None
+        return row[0], row[1]
+
+    def find_replay_entries(
+        self,
+        replay_key: str,
+    ) -> list[tuple[AuditResult, bool]]:
+        """返回同一安全重放键的结果及其 Workbench 同步状态。"""
+        rows = self.conn.execute(
+            "SELECT * FROM audit_runs WHERE replay_key=? ORDER BY rule_id",
+            (replay_key,),
+        ).fetchall()
+        return [
+            (self._row_to_result(row), row["synced_at"] is not None)
+            for row in rows
+        ]
 
     # =========================================================
     # 中位数耗时 (v1 已有)

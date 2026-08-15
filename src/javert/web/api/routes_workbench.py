@@ -138,9 +138,14 @@ def _resolve_hits_for_runs(
         # 2) 现算回退 (lazy 加载 fee/KB, 仅在确有 miss 时)
         if not fee_loaded:
             try:
-                fee_df = _get_loader().get_fees(patient_id)
-                if (fee_df is None or len(fee_df) == 0) and get_config().hub_raw_enabled:
-                    fee_df = _get_hub_source_for_patient(patient_id).get_fees(patient_id)
+                profile_source = _get_profile_hub_source_for_patient(patient_id)
+                if profile_source is not None:
+                    fee_df = profile_source.get_fees(patient_id)
+                else:
+                    fee_df = _get_loader().get_fees(patient_id)
+                    if ((fee_df is None or len(fee_df) == 0)
+                            and get_config().hub_raw_enabled):
+                        fee_df = _get_hub_source().get_fees(patient_id)
             except Exception as e:  # noqa: BLE001
                 logger.warning("_resolve_hits_for_runs 取 fee 失败 patient=%s: %s", patient_id, e)
                 fee_df = None
@@ -311,12 +316,16 @@ def workbench_patient(
     # 病案基本信息/费用分类对 hub 患者才有数据; add-workbench-sql-raw-source 补遗)
     overview = None
     try:
-        ov_loader = _get_loader()
-        _n = ov_loader.get_notes(patient_id)
-        _f = ov_loader.get_fees(patient_id)
-        if ((_n is None or len(_n) == 0) and (_f is None or len(_f) == 0)
-                and get_config().hub_raw_enabled):
-            ov_loader = _get_hub_source_for_patient(patient_id)
+        profile_source = _get_profile_hub_source_for_patient(patient_id)
+        if profile_source is not None:
+            ov_loader = profile_source
+        else:
+            ov_loader = _get_loader()
+            _n = ov_loader.get_notes(patient_id)
+            _f = ov_loader.get_fees(patient_id)
+            if ((_n is None or len(_n) == 0) and (_f is None or len(_f) == 0)
+                    and get_config().hub_raw_enabled):
+                ov_loader = _get_hub_source()
         overview = build_overview(patient_id, ov_loader)
     except Exception as e:  # noqa: BLE001
         logger.warning("build_overview 失败 patient=%s: %s", patient_id, e)
@@ -507,8 +516,8 @@ def _get_hub_profile_source(batch_tag: str):
     return source
 
 
-def _get_hub_source_for_patient(patient_id: str):
-    """只在患者 latest batch tag 命中显式 profile 时切隔离源；否则走默认 Hub。"""
+def _get_profile_hub_source_for_patient(patient_id: str):
+    """返回患者显式 batch profile；命中后调用方不得回退到 CSV/默认 Hub。"""
     cfg = get_config()
     if cfg.hub_raw_profiles:
         tag = get_sqlserver_store().latest_batch_tag_for_patient(patient_id)
@@ -516,6 +525,14 @@ def _get_hub_source_for_patient(patient_id: str):
             profile_source = _get_hub_profile_source(tag)
             if profile_source is not None:
                 return profile_source
+    return None
+
+
+def _get_hub_source_for_patient(patient_id: str):
+    """显式 profile 优先；未命中才走默认 Hub。"""
+    profile_source = _get_profile_hub_source_for_patient(patient_id)
+    if profile_source is not None:
+        return profile_source
     return _get_hub_source()
 
 
@@ -673,6 +690,40 @@ def _raw_tab_payload(patient_id: str, tab: str) -> dict:
 
     source = "csv"
     try:
+        profile_source = _get_profile_hub_source_for_patient(patient_id)
+        if profile_source is not None:
+            source = "hub"
+            if tab == "fees":
+                rows = _fees_to_list(profile_source.get_tab(patient_id, "fees"))
+                if not rows:
+                    raise HTTPException(
+                        status_code=404,
+                        detail={"code": "RAW_TAB_NOT_FOUND", "tab": tab},
+                    )
+                return {"patient_id": patient_id, "source": source, "tab": tab,
+                        "fees": rows, "n_fees": len(rows)}
+            if tab == "notes":
+                rows = _notes_to_list(profile_source.get_tab(patient_id, "notes"))
+                if not rows:
+                    raise HTTPException(
+                        status_code=404,
+                        detail={"code": "RAW_TAB_NOT_FOUND", "tab": tab},
+                    )
+                return {"patient_id": patient_id, "source": source, "tab": tab,
+                        "notes": rows, "n_notes": len(rows)}
+            bundle = profile_source.get_tab(patient_id, "labs")
+            lab_rows = bundle["labs"].to_dict("records") if len(bundle["labs"]) else []
+            exam_rows = bundle["exams"].to_dict("records") if len(bundle["exams"]) else []
+            labs = _format_lab_rows(lab_rows)
+            exams = _format_exam_rows(exam_rows)
+            if not labs and not exams:
+                raise HTTPException(
+                    status_code=404,
+                    detail={"code": "RAW_TAB_NOT_FOUND", "tab": tab},
+                )
+            return {"patient_id": patient_id, "source": source, "tab": tab,
+                    "labs": labs, "exams": exams,
+                    "n_labs": len(labs), "n_exams": len(exams)}
         if tab == "fees":
             fees_df = _get_loader().get_fees(patient_id)
             rows = _fees_to_list(fees_df)
@@ -728,13 +779,21 @@ def _raw_payload(patient_id: str, tab: str | None = None) -> dict:
         return _raw_tab_payload(patient_id, tab)
 
     source = "csv"
-    loader = _get_loader()
-    fees_df = loader.get_fees(patient_id)
-    notes_df = loader.get_notes(patient_id)
-    if (fees_df is None or len(fees_df) == 0) and (notes_df is None or len(notes_df) == 0):
+    profile_source = _get_profile_hub_source_for_patient(patient_id)
+    if profile_source is not None:
+        loader = profile_source
+        fees_df = profile_source.get_fees(patient_id)
+        notes_df = profile_source.get_notes(patient_id)
+        source = "hub"
+    else:
+        loader = _get_loader()
+        fees_df = loader.get_fees(patient_id)
+        notes_df = loader.get_notes(patient_id)
+    if ((fees_df is None or len(fees_df) == 0)
+            and (notes_df is None or len(notes_df) == 0)):
         # CSV 双 miss → hub SQL 链式回退 (开关关闭时直接 404, 行为与从前一致)
-        if get_config().hub_raw_enabled:
-            hub = _get_hub_source_for_patient(patient_id)
+        if profile_source is None and get_config().hub_raw_enabled:
+            hub = _get_hub_source()
             fees_df = hub.get_fees(patient_id)
             notes_df = hub.get_notes(patient_id)
             source = "hub"
@@ -777,13 +836,18 @@ def _format_lab_rows(rows: list[dict]) -> list[dict]:
 
 def _labs_to_list(patient_id: str, *, allow_hub: bool = True) -> list[dict]:
     """该患者检验/化验报告 (按 report_dt 升序). 文件缺失/加载失败 → 空列表 (不阻断 raw)."""
+    profile_source = (
+        _get_profile_hub_source_for_patient(patient_id) if allow_hub else None
+    )
+    if profile_source is not None:
+        return _format_lab_rows(profile_source.get_labs(patient_id))
     try:
         rows = _get_lab_loader().get_lab_results(patient_id)
     except Exception as e:  # noqa: BLE001
         logger.warning("加载检验数据失败 patient=%s: %s", patient_id, e)
         rows = []
     if not rows and allow_hub and get_config().hub_raw_enabled:
-        rows = _get_hub_source_for_patient(patient_id).get_labs(patient_id)
+        rows = _get_hub_source().get_labs(patient_id)
     return _format_lab_rows(rows)
 
 
@@ -800,13 +864,18 @@ def _format_exam_rows(rows: list[dict]) -> list[dict]:
 
 def _exams_to_list(patient_id: str, *, allow_hub: bool = True) -> list[dict]:
     """该患者检查报告 (CT/超声/MRI...). 文件缺失/加载失败 → 空列表 (不阻断 raw)."""
+    profile_source = (
+        _get_profile_hub_source_for_patient(patient_id) if allow_hub else None
+    )
+    if profile_source is not None:
+        return _format_exam_rows(profile_source.get_exams(patient_id))
     try:
         rows = _get_exam_loader().get_examinations(patient_id)
     except Exception as e:  # noqa: BLE001
         logger.warning("加载检查数据失败 patient=%s: %s", patient_id, e)
         rows = []
     if not rows and allow_hub and get_config().hub_raw_enabled:
-        rows = _get_hub_source_for_patient(patient_id).get_exams(patient_id)
+        rows = _get_hub_source().get_exams(patient_id)
     return _format_exam_rows(rows)
 
 
@@ -816,14 +885,20 @@ _zd_cache: dict[str, str] | None = None
 
 def _hub_main_dx(patient_id: str) -> str | None:
     """hub 主诊回退 (开关关 → None); _get_main_diagnosis 所有 miss 出口共用."""
+    profile_source = _get_profile_hub_source_for_patient(patient_id)
+    if profile_source is not None:
+        return profile_source.get_main_diagnosis(patient_id)
     if get_config().hub_raw_enabled:
-        return _get_hub_source_for_patient(patient_id).get_main_diagnosis(patient_id)
+        return _get_hub_source().get_main_diagnosis(patient_id)
     return None
 
 
 def _get_main_diagnosis(patient_id: str) -> str | None:
     """从 shi_zd.xls 拿病案首页主诊 (maindiag_flag=1). 文件/匹配 miss → hub 回退 → None."""
     global _zd_cache
+    profile_source = _get_profile_hub_source_for_patient(patient_id)
+    if profile_source is not None:
+        return profile_source.get_main_diagnosis(patient_id)
     if _zd_cache is None:
         _zd_cache = {}
         cfg = get_config()

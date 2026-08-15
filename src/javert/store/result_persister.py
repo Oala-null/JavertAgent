@@ -156,6 +156,7 @@ def persist_one(
     cfg = get_config()
     # batch_tag 优先级: 显式参数 > config (env JAVERT_BATCH_TAG)
     tag = batch_tag if batch_tag is not None else cfg.batch_tag
+    replay_key = cfg.replay_key
     own_store = sqlite_store is None
     if own_store:
         sqlite_store = SqliteStore(cfg.audit_db_path)
@@ -170,14 +171,20 @@ def persist_one(
             _apply_drift_guard(result, sqlite_store, cfg.sql_enabled)
 
         # 1. 本地写 (source-of-truth)
-        sqlite_store.write(result, batch_tag=tag)
+        sqlite_store.write(result, batch_tag=tag, replay_key=replay_key)
 
         # 2. 立即试推 142
         sql142 = get_sqlserver_store()
         if not cfg.sql_enabled:
             return {"sqlite": True, "sqlserver_142": False, "sync_state": "skipped"}
 
-        ok = sql142.write_audit(result, rule, triggered_by=triggered_by, batch_tag=tag)
+        ok = sql142.write_audit(
+            result,
+            rule,
+            triggered_by=triggered_by,
+            batch_tag=tag,
+            replay_key=replay_key,
+        )
         if ok:
             sqlite_store.mark_synced(result.run_id)
             return {"sqlite": True, "sqlserver_142": True, "sync_state": "synced"}
