@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import pandas as pd
 import pytest
+from types import SimpleNamespace
 
 import javert.data.hub_source as hs
 import javert.web.api.routes_audit as routes_audit
@@ -99,6 +100,41 @@ def test_all_shared_fetchers_use_desus_table_family(monkeypatch):
         assert f"desus_{base}" in rendered
     assert " FROM TB_" not in rendered
     assert " JOIN TB_" not in rendered
+
+
+def test_2c_probe_falls_back_to_configured_profile(monkeypatch):
+    seen: list[str] = []
+
+    class _Connection:
+        def close(self):
+            pass
+
+    class _Cfg:
+        hub_database = "TP_data_hub"
+        hub_table_prefix = ""
+        hub_raw_profiles = {
+            "ocr1.0": SimpleNamespace(database="TP_data_hub", table_prefix="desus_")
+        }
+
+        def model_copy(self, *, update):
+            clone = _Cfg()
+            clone.hub_database = update["hub_database"]
+            clone.hub_table_prefix = update["hub_table_prefix"]
+            clone.hub_raw_profiles = {}
+            return clone
+
+    monkeypatch.setattr(routes_audit, "get_config", _Cfg)
+    monkeypatch.setattr(hs, "connect", lambda config, timeout=10: _Connection())
+    monkeypatch.setattr(hs, "fetch_hospital_map", lambda cn, **kw: {})
+
+    def _fees(cn, pids, mapping, **kw):
+        seen.append(kw["table_prefix"])
+        return pd.DataFrame([{"JZLSH": pids[0]}]) if kw["table_prefix"] == "desus_" else pd.DataFrame()
+
+    monkeypatch.setattr(hs, "fetch_fees", _fees)
+
+    assert routes_audit._hub_probe("P") is True
+    assert seen == ["", "desus_"]
 
 
 def test_2c_hub_snapshot_propagates_desus_prefix(monkeypatch, tmp_path):

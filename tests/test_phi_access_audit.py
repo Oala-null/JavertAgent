@@ -35,6 +35,10 @@ class _FakeStore:
         return User(id=uid, username=f"u{uid}",
                     created_at=datetime.now(timezone.utc))
 
+    def latest_batch_tag_for_patient(self, _patient_id: str) -> None:
+        """No batch-profile routing in this CSV-only raw-access fixture."""
+        return None
+
 
 class _FakeLoader:
     """一行文书 + 空费用 → 走 csv 源, 不 404."""

@@ -2,7 +2,7 @@
 """_summary_to_notes: 标准表 LEAVEHOSPITAL_SUMMARY → case_notes 重建 (46表标准化)."""
 import pandas as pd
 
-from javert.data.hub_source import SUMMARY_COL2SEC, _summary_to_notes
+from javert.data.hub_source import SUMMARY_COL2SEC, _summary_to_notes, fetch_basics
 
 _COLS = ["JZLSH", "CYSJ", "YYZTBBT1", "YYZTB1", "YYZTBBT2", "YYZTB2"] + [c for c, _ in SUMMARY_COL2SEC]
 
@@ -30,6 +30,36 @@ def test_dynamic_title_blocks():
     rows = _summary_to_notes(_row(YYZTBBT1="健康教育", YYZTB1="低盐饮食"))
     assert rows == [{"住院号": "P1", "事件时间": "2026-01-05 10:00:00", "阶段": "出院小结",
                      "子阶段": "健康教育", "内容": "低盐饮食", "来源文件": "data_hub"}]
+
+
+def test_fetch_basics_uses_standard_summary_fields(monkeypatch):
+    import javert.data.hub_source as hs
+
+    row = pd.DataFrame([{
+        "JZLSH": "P1",
+        "BRXB": "2",
+        "BRNL": "45",
+        "RYSJ": "2026-01-01 08:00:00",
+        "CYSJ": "2026-01-03 09:00:00",
+        "ZYTS": "3",
+        "KS": "测试科",
+        "ZZYSRYXM": "",
+        "ZYYSYHRYXM": "住院医生",
+    }])
+    monkeypatch.setattr(hs, "q", lambda cn, sql, params=(): row)
+
+    basics = fetch_basics(None, ["P1"], table_prefix="desus_")
+
+    assert basics.iloc[0].to_dict() == {
+        "patient_id": "P1",
+        "gender": "女",
+        "age": "45",
+        "admission_date": "2026-01-01",
+        "discharge_date": "2026-01-03",
+        "los_days": "3",
+        "department": "测试科",
+        "doctor": "住院医生",
+    }
 
 
 # ── v2: fetch_notes 合流规则 (WSLB 可空按 WSMC 派生 05; 扩展表优先, 标准表补缺) ──

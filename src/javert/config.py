@@ -137,6 +137,9 @@ class JavertConfig(BaseSettings):
     # CSV miss 时按患者 latest batch_tag 选择隔离只读源；默认空映射保持单 Hub 行为。
     # env 使用 JSON，例如 {"desus":{"database":"TP_data_hub","table_prefix":"desus_"}}。
     hub_raw_profiles: dict[str, HubRawProfile] = Field(default_factory=dict)
+    # 单次 SQL 与整页签 deadline 分离；本地经 TCP 转发时可通过环境变量放宽。
+    hub_query_timeout: int = Field(default=4, ge=1, le=120)
+    hub_raw_deadline_seconds: float = Field(default=5.0, ge=0.1, le=180.0)
     sql_driver: str = "ODBC Driver 18 for SQL Server"
     sql_pool_size: int = 5
     sql_max_overflow: int = 5

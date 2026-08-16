@@ -101,6 +101,26 @@ def test_presenter_keeps_humanized_narrative_without_guessing_structured_facts()
     assert public["clinical_evidence"] == []
 
 
+def test_presenter_does_not_publish_charge_assertion_without_charge_anchor():
+    result = _locked_result().model_copy(update={
+        "promise_trace": None,
+        "verdict": "INCONCLUSIVE",
+    })
+
+    public = present_public_explanation(
+        result,
+        {
+            "behavior_name": "提供不必要的医药服务",
+            "question": "未开展相关诊疗项目，但收取对应诊疗费用。",
+        },
+        [],
+    )
+
+    assert public["audit_items"] == ["提供不必要的医药服务"]
+    assert "收取对应诊疗费用" not in public["audit_items"][0]
+    assert any("未形成可公开的收费项目锚点" in item for item in public["review_needs"])
+
+
 def test_public_sanitizer_removes_internal_ids_tools_verdicts_and_reason_codes():
     text = sanitize_public_text(
         "根据规则 RD04，search_fees 与 gate 得出 VIOLATION，原因 PROMISE_CONFLICT。"

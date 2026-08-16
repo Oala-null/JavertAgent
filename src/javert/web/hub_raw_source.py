@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 _LRU_MAX = 96
 _QUERY_TIMEOUT = 4
 _DEADLINE_SECONDS = 5.0
-_VALID_TABS = {"notes", "fees", "labs", "zd"}
+_VALID_TABS = {"notes", "fees", "labs", "zd", "basics"}
 
 
 class RawSourceUnavailable(RuntimeError):
@@ -52,13 +52,20 @@ class HubRawSource:
         self,
         cfg,
         *,
-        deadline_seconds: float = _DEADLINE_SECONDS,
+        deadline_seconds: float | None = None,
         clock=time.monotonic,
         executor: Executor | None = None,
     ):
         self.cfg = cfg
         self.table_prefix = hs.validate_table_prefix(cfg.hub_table_prefix)
-        self.deadline_seconds = max(0.01, float(deadline_seconds))
+        configured_deadline = getattr(
+            cfg, "hub_raw_deadline_seconds", _DEADLINE_SECONDS
+        )
+        self.deadline_seconds = max(
+            0.01,
+            float(configured_deadline if deadline_seconds is None else deadline_seconds),
+        )
+        self.query_timeout = max(1, int(getattr(cfg, "hub_query_timeout", _QUERY_TIMEOUT)))
         self._clock = clock
         self._cn = None
         self._yq2org: dict[str, str] | None = None
@@ -90,8 +97,8 @@ class HubRawSource:
 
     def _conn(self):
         if self._cn is None:
-            self._cn = hs.connect(self.cfg, timeout=_QUERY_TIMEOUT)
-            self._cn.timeout = _QUERY_TIMEOUT
+            self._cn = hs.connect(self.cfg, timeout=self.query_timeout)
+            self._cn.timeout = self.query_timeout
         return self._cn
 
     def _hospital_map(self, cn) -> dict[str, str]:
@@ -121,6 +128,8 @@ class HubRawSource:
                     self._hospital_map(cn),
                     table_prefix=self.table_prefix,
                 )
+            if tab == "basics":
+                return hs.fetch_basics(cn, pids, table_prefix=self.table_prefix)
             if tab == "labs":
                 return {
                     "labs": hs.fetch_labs(
@@ -194,6 +203,15 @@ class HubRawSource:
 
     def get_fees(self, patient_id: str) -> pd.DataFrame:
         return self._compat(patient_id, "fees")
+
+    def get_basics(self, patient_id: str) -> dict[str, str]:
+        df = self._compat(patient_id, "basics")
+        if df is None or len(df) == 0:
+            return {}
+        return {
+            str(key): "" if value is None else str(value)
+            for key, value in df.iloc[0].to_dict().items()
+        }
 
     def get_labs(self, patient_id: str) -> list[dict]:
         df = self._compat(patient_id, "labs")["labs"]

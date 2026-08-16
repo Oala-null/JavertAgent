@@ -68,19 +68,28 @@ _LABEL_CATEGORY: list[tuple[tuple[str, ...], str]] = [
 ]
 
 
-def _classify_by_label(label: str) -> str | None:
+def _clean_label(value: object) -> str:
+    """Normalize SQL/pandas values before substring matching (NaN is a float)."""
+    if value is None or pd.isna(value):
+        return ""
+    return str(value).strip()
+
+
+def _classify_by_label(label: object) -> str | None:
+    label_text = _clean_label(label)
     for needles, cat in _LABEL_CATEGORY:
-        if any(n in label for n in needles):
+        if any(n in label_text for n in needles):
             return cat
     return None
 
 
-def _classify(name: str, chrgitm_label: str = "") -> str:
+def _classify(name: object, chrgitm_label: object = "") -> str:
     by_label = _classify_by_label(chrgitm_label)
     if by_label:
         return by_label
+    name_text = _clean_label(name)
     for cat, kws in _CATEGORY_KEYWORDS.items():
-        if any(kw in name for kw in kws):
+        if any(kw in name_text for kw in kws):
             return cat
     return "其他类"
 

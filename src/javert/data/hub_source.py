@@ -181,6 +181,35 @@ def _summary_to_notes(summ: pd.DataFrame) -> list[dict]:
     return rows
 
 
+def fetch_basics(cn, pids: list[str] | None, *, table_prefix: str = "") -> pd.DataFrame:
+    """出院小结标准字段 → 工作台基本信息；不依赖费用日期或文书正文正则。"""
+    summary_table = table_name("TB_CIS_LEAVEHOSPITAL_SUMMARY", table_prefix)
+    basics = q(cn, f"""
+        SELECT JZLSH, BRXB, BRNL, RYSJ, CYSJ, ZYTS, KS,
+               ZZYSRYXM, ZYYSYHRYXM
+        FROM {summary_table}
+        WHERE {in_clause(pids, 'JZLSH')}
+        ORDER BY JZLSH, CYSJ DESC""")
+    if len(basics) == 0:
+        return pd.DataFrame(columns=[
+            "patient_id", "gender", "age", "admission_date", "discharge_date",
+            "los_days", "department", "doctor",
+        ])
+    gender = basics["BRXB"].map({"1": "男", "2": "女"}).fillna(basics["BRXB"])
+    attending = basics["ZZYSRYXM"].replace({"-": "", "None": ""})
+    resident = basics["ZYYSYHRYXM"].replace({"-": "", "None": ""})
+    return pd.DataFrame({
+        "patient_id": basics["JZLSH"],
+        "gender": gender,
+        "age": basics["BRNL"].replace("-", ""),
+        "admission_date": clean_dt(basics["RYSJ"]).str[:10],
+        "discharge_date": clean_dt(basics["CYSJ"]).str[:10],
+        "los_days": basics["ZYTS"].replace("-", ""),
+        "department": basics["KS"].replace("-", ""),
+        "doctor": attending.where(attending.ne(""), resident),
+    })
+
+
 def fetch_notes(cn, pids: list[str] | None, *, table_prefix: str = "") -> pd.DataFrame:
     """文书: 标准表 LEAVEHOSPITAL_SUMMARY (出院小结) + 扩展表 MEDICAL_DOCUMENT → case_notes (6 列契约).
 

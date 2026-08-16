@@ -507,19 +507,48 @@ def _2c_result_diagnostic(reasoning: str) -> tuple[str, str, bool]:
 _2C_HUB_CACHE = "output/hub_cache_2c"  # 每患者一目录, 每次提交重取保新鲜
 
 
+def _hub_source_candidates(cfg):
+    """默认 Hub + 已声明 profile；2C 提交本身不携带 batch_tag，必须逐一探测。"""
+    candidates = [(cfg, cfg.hub_table_prefix)]
+    seen = {(getattr(cfg, "hub_database", ""), cfg.hub_table_prefix)}
+    for profile in (getattr(cfg, "hub_raw_profiles", {}) or {}).values():
+        key = (profile.database, profile.table_prefix)
+        if key in seen:
+            continue
+        seen.add(key)
+        candidates.append((
+            cfg.model_copy(update={
+                "hub_database": profile.database,
+                "hub_table_prefix": profile.table_prefix,
+            }),
+            profile.table_prefix,
+        ))
+    return candidates
+
+
 def _hub_probe(syxh: str) -> bool:
-    """中台是否有该患者费用数据 (submit 受理判据). 连接失败向上抛, 调用方给诚实 reason."""
+    """中台任一已配置表族是否有患者费用；全部连接失败才报依赖故障。"""
     from javert.data import hub_source as hs
     cfg = get_config()
-    cn = hs.connect(cfg, timeout=10)
-    try:
-        prefix = cfg.hub_table_prefix
-        yq2org = hs.fetch_hospital_map(cn, table_prefix=prefix)
-        return len(hs.fetch_fees(
-            cn, [syxh], yq2org, table_prefix=prefix
-        )) > 0
-    finally:
-        cn.close()
+    successful_queries = 0
+    last_error = None
+    for source_cfg, prefix in _hub_source_candidates(cfg):
+        cn = None
+        try:
+            cn = hs.connect(source_cfg, timeout=10)
+            yq2org = hs.fetch_hospital_map(cn, table_prefix=prefix)
+            fees = hs.fetch_fees(cn, [syxh], yq2org, table_prefix=prefix)
+            successful_queries += 1
+            if len(fees) > 0:
+                return True
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+        finally:
+            if cn is not None:
+                cn.close()
+    if successful_queries == 0 and last_error is not None:
+        raise last_error
+    return False
 
 
 def _hub_fetch_patient(syxh: str, out) -> None:
@@ -527,14 +556,38 @@ def _hub_fetch_patient(syxh: str, out) -> None:
     from javert.data import hub_source as hs
     cfg = get_config()
     out.mkdir(parents=True, exist_ok=True)
-    cn = hs.connect(cfg)
+    candidates = _hub_source_candidates(cfg)
+    selected = None
+    last_error = None
+    for source_cfg, prefix in candidates:
+        cn = None
+        try:
+            cn = hs.connect(source_cfg)
+            yq2org = hs.fetch_hospital_map(cn, table_prefix=prefix)
+            fees = hs.fetch_fees(cn, [syxh], yq2org, table_prefix=prefix)
+            if len(fees) > 0:
+                selected = (cn, prefix, yq2org, fees)
+                break
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+        if cn is not None:
+            cn.close()
+    if selected is None:
+        # 保留历史行为：即使患者为空也产出六个空快照；连接全失败时才抛错。
+        source_cfg, prefix = candidates[0]
+        try:
+            cn = hs.connect(source_cfg)
+            yq2org = hs.fetch_hospital_map(cn, table_prefix=prefix)
+            fees = hs.fetch_fees(cn, [syxh], yq2org, table_prefix=prefix)
+            selected = (cn, prefix, yq2org, fees)
+        except Exception:
+            if last_error is not None:
+                raise last_error
+            raise
+    cn, prefix, yq2org, fees = selected
     try:
-        prefix = cfg.hub_table_prefix
-        yq2org = hs.fetch_hospital_map(cn, table_prefix=prefix)
         kw = {"index": False, "encoding": "utf-8-sig"}
-        hs.fetch_fees(cn, [syxh], yq2org, table_prefix=prefix).to_csv(
-            out / "shi_fee.csv", **kw
-        )
+        fees.to_csv(out / "shi_fee.csv", **kw)
         hs.fetch_notes(cn, [syxh], table_prefix=prefix).to_csv(
             out / "case_notes.csv", **kw
         )

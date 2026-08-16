@@ -54,6 +54,11 @@ def test_ambiguous_label_falls_back_to_name():
     assert _classify("某项目", "治疗") == "其他类"
 
 
+def test_nan_label_falls_back_to_name_without_crashing():
+    assert _classify("全身麻醉", float("nan")) == "其他类"
+    assert _classify("血常规", float("nan")) == "检查类"
+
+
 # ── 集成: 缺列零回归 ──
 
 def _fees_with_label() -> pd.DataFrame:

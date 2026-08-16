@@ -81,16 +81,22 @@ def test_hub_raw_defaults():
     assert cfg.hub_database == "sh_yb_platform"
     assert cfg.hub_table_prefix == ""
     assert cfg.hub_raw_profiles == {}
+    assert cfg.hub_query_timeout == 4
+    assert cfg.hub_raw_deadline_seconds == 5.0
 
 
 def test_hub_raw_env_override(monkeypatch):
     monkeypatch.setenv("JAVERT_HUB_RAW_ENABLED", "true")
     monkeypatch.setenv("JAVERT_HUB_DATABASE", "TP_other")
     monkeypatch.setenv("JAVERT_HUB_TABLE_PREFIX", "desus_")
+    monkeypatch.setenv("JAVERT_HUB_QUERY_TIMEOUT", "30")
+    monkeypatch.setenv("JAVERT_HUB_RAW_DEADLINE_SECONDS", "45")
     cfg = JavertConfig()
     assert cfg.hub_raw_enabled is True
     assert cfg.hub_database == "TP_other"
     assert cfg.hub_table_prefix == "desus_"
+    assert cfg.hub_query_timeout == 30
+    assert cfg.hub_raw_deadline_seconds == 45.0
 
 
 def test_hub_raw_profiles_env_json(monkeypatch, tmp_path):

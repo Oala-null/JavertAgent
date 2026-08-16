@@ -17,6 +17,8 @@ _INTERNAL_PATTERNS = (
     re.compile(r"\b[A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+\b"),
 )
 
+_CHARGE_ASSERTION_TERMS = ("收费", "收取", "费用", "支付")
+
 
 def sanitize_public_text(value: str | None) -> str:
     text = str(value or "")
@@ -93,7 +95,6 @@ def present_public_explanation(
 
     question = sanitize_public_text(meta.get("question"))
     behavior = sanitize_public_text(meta.get("behavior_name"))
-    audit_items = [question or behavior] if (question or behavior) else []
 
     charge_facts: list[dict[str, Any]] = []
     if trace is not None and trace.finality == "LOCKED":
@@ -124,6 +125,14 @@ def present_public_explanation(
     basis: list[str] = []
     clinical_evidence: list[dict[str, str]] = []
     review_needs: list[str] = []
+    question_asserts_charge = any(term in question for term in _CHARGE_ASSERTION_TERMS)
+    if verdict in {"VIOLATION", "INCONCLUSIVE"} and question_asserts_charge and not charge_facts:
+        audit_items = [behavior or "核对临床资料与收费项目是否一致。"]
+        review_needs.append(
+            "当前结果未形成可公开的收费项目锚点，不能据此确认具体收费事实。"
+        )
+    else:
+        audit_items = [question or behavior] if (question or behavior) else []
     if trace is not None and trace.finality == "LOCKED":
         basis.append("按退费后的收费净数量核对同一项目是否达到多次检查边界。")
         if trace.historical_conflict:

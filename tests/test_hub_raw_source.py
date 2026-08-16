@@ -117,17 +117,43 @@ def test_table_prefix_propagates_to_every_raw_tab(monkeypatch):
     monkeypatch.setattr(hs, "fetch_notes", lambda cn, pids, **kw: (seen.append(("notes", kw["table_prefix"])), pd.DataFrame())[1])
     monkeypatch.setattr(hs, "fetch_fees", lambda cn, pids, m, **kw: (seen.append(("fees", kw["table_prefix"])), pd.DataFrame())[1])
     monkeypatch.setattr(hs, "fetch_zd", lambda cn, pids, m, **kw: (seen.append(("zd", kw["table_prefix"])), pd.DataFrame())[1])
+    monkeypatch.setattr(hs, "fetch_basics", lambda cn, pids, **kw: (seen.append(("basics", kw["table_prefix"])), pd.DataFrame())[1])
     monkeypatch.setattr(hs, "fetch_labs", lambda cn, pids, **kw: (seen.append(("labs", kw["table_prefix"])), pd.DataFrame())[1])
     monkeypatch.setattr(hs, "fetch_exams", lambda cn, pids, **kw: (seen.append(("exams", kw["table_prefix"])), pd.DataFrame())[1])
 
     src = HubRawSource(_StubCfg(hub_table_prefix="desus_"))
-    for tab in ("notes", "fees", "zd", "labs"):
+    for tab in ("notes", "fees", "zd", "basics", "labs"):
         src.get_tab("211999999", tab)
 
     assert {name for name, _ in seen} == {
-        "hospital", "notes", "fees", "zd", "labs", "exams"
+        "hospital", "notes", "fees", "zd", "basics", "labs", "exams"
     }
     assert {prefix for _, prefix in seen} == {"desus_"}
+
+
+def test_basics_are_exposed_as_one_structured_record(monkeypatch):
+    monkeypatch.setattr(hs, "connect", lambda cfg, database=None, timeout=60: type("C", (), {})())
+    monkeypatch.setattr(
+        hs,
+        "fetch_basics",
+        lambda cn, pids, **kw: pd.DataFrame([{
+            "patient_id": pids[0],
+            "gender": "女",
+            "age": "45",
+            "admission_date": "2026-01-01",
+            "discharge_date": "2026-01-03",
+            "los_days": "3",
+            "department": "测试科",
+            "doctor": "测试医生",
+        }]),
+    )
+    src = HubRawSource(_StubCfg())
+
+    basics = src.get_basics("211999999")
+
+    assert basics["gender"] == "女"
+    assert basics["age"] == "45"
+    assert basics["department"] == "测试科"
 
 
 def test_timeout_returns_quickly_is_not_cached_and_diagnostics_hide_patient(monkeypatch, caplog):

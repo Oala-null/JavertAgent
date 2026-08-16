@@ -583,14 +583,30 @@ def build_overview(patient_id: str, loader: CsvLoader) -> dict[str, Any]:
 def _build_overview_cached(patient_id: str, loader: CsvLoader) -> dict[str, Any]:
     notes_df = loader.get_notes(patient_id)
     fees_df = loader.get_fees(patient_id)
+    basics = {}
+    get_basics = getattr(loader, "get_basics", None)
+    if callable(get_basics):
+        try:
+            basics = get_basics(patient_id) or {}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("读取患者基本信息失败: %s", type(exc).__name__)
 
     note_b = _extract_from_notes_df(notes_df)
     fee_b = _extract_from_fees_df(fees_df)
 
     dates = sorted(fee_b["dates"])
-    admit_date = dates[0].strftime("%Y-%m-%d") if dates else "—"
-    discharge_date = dates[-1].strftime("%Y-%m-%d") if dates else "—"
-    los_days = (dates[-1] - dates[0]).days + 1 if dates else 0
+    admit_date = basics.get("admission_date") or (
+        dates[0].strftime("%Y-%m-%d") if dates else "—"
+    )
+    discharge_date = basics.get("discharge_date") or (
+        dates[-1].strftime("%Y-%m-%d") if dates else "—"
+    )
+    try:
+        los_days = int(float(basics.get("los_days") or 0))
+    except (TypeError, ValueError):
+        los_days = 0
+    if not los_days and dates:
+        los_days = (dates[-1] - dates[0]).days + 1
 
     zd = _load_zd().get(patient_id, {"main": [], "others": []})
     ss = _load_ss().get(patient_id, [])
@@ -602,10 +618,19 @@ def _build_overview_cached(patient_id: str, loader: CsvLoader) -> dict[str, Any]
         primary_dx = f"{m['name']} ({m['code']})" if m["code"] else m["name"]
         primary_source = "病案首页"
     else:
+        get_main_diagnosis = getattr(loader, "get_main_diagnosis", None)
+        hub_primary_dx = None
+        if callable(get_main_diagnosis):
+            try:
+                hub_primary_dx = get_main_diagnosis(patient_id)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("读取患者主诊断失败: %s", type(exc).__name__)
         cand = (diags.get("出院诊断") or diags.get("主要诊断")
                 or diags.get("入院诊断") or diags.get("临床诊断") or [])
-        primary_dx = cand[0] if cand else "(无)"
-        primary_source = "病历文书 (病案首页无主诊断)"
+        primary_dx = hub_primary_dx or (cand[0] if cand else "(无)")
+        primary_source = (
+            "诊断明细" if hub_primary_dx else "病历文书 (病案首页无主诊断)"
+        )
 
     other_dx = (
         [f"{o['name']} ({o['code']})" if o["code"] else o["name"] for o in zd["others"][:10]]
@@ -616,6 +641,10 @@ def _build_overview_cached(patient_id: str, loader: CsvLoader) -> dict[str, Any]
     # top-N 排序
     top_depts = sorted(fee_b["departments"].items(), key=lambda kv: -kv[1])[:5]
     top_drs = sorted(fee_b["doctors"].items(), key=lambda kv: -kv[1])[:5]
+    if not top_depts and basics.get("department"):
+        top_depts = [(basics["department"], 1)]
+    if not top_drs and basics.get("doctor"):
+        top_drs = [(basics["doctor"], 1)]
     top_stages = sorted(note_b["notes_stages"].items(), key=lambda kv: -kv[1])[:8]
 
     fee_items_sorted = sorted(
@@ -685,8 +714,8 @@ def _build_overview_cached(patient_id: str, loader: CsvLoader) -> dict[str, Any]
         "notes_total": note_b["notes_total"],
         "fees_count": fee_b["fees_count"],
         "fees_sum": fee_b["fees_sum"],
-        "gender": fields.get("gender", ""),
-        "age": fields.get("age", ""),
+        "gender": basics.get("gender") or fields.get("gender", ""),
+        "age": basics.get("age") or fields.get("age", ""),
         "anesthesia": fields.get("anesthesia_method", ""),
         "asa": fields.get("asa", ""),
         "chief_complaint": fields.get("chief_complaint", ""),

@@ -177,3 +177,55 @@ def test_build_overview_cache_cleared_by_reset(synthetic_patient):
     cached_after = po._build_overview_cached(patient_id, loader)
     assert cached_after is not cached_before
     assert cached_before["patient_id"] == cached_after["patient_id"] == patient_id
+
+
+def test_build_overview_prefers_hub_basics_and_diagnosis(tmp_path, monkeypatch):
+    class _HubLoader:
+        def get_notes(self, _patient_id):
+            return pd.DataFrame(columns=["住院号", "阶段", "子阶段", "内容"])
+
+        def get_fees(self, patient_id):
+            return pd.DataFrame({
+                "bah": [f"HOSP-{patient_id}"],
+                "medins_list_name": ["测试费用"],
+                "cnt": [1],
+                "pric": [20],
+                "det_item_fee_sumamt": [20],
+                "fee_ocur_time": ["2026-02-02"],
+                "medins_chrgitm_type": ["治疗"],
+            })
+
+        def get_basics(self, _patient_id):
+            return {
+                "gender": "女",
+                "age": "45",
+                "admission_date": "2026-01-01",
+                "discharge_date": "2026-01-03",
+                "los_days": "3",
+                "department": "结构化科室",
+                "doctor": "结构化医生",
+            }
+
+        def get_main_diagnosis(self, _patient_id):
+            return "结构化主诊断 (A00.1)"
+
+    monkeypatch.setattr(
+        po,
+        "get_config",
+        lambda: SimpleNamespace(
+            zd_path=tmp_path / "missing_zd.csv",
+            ss_path=tmp_path / "missing_ss.csv",
+        ),
+    )
+
+    overview = build_overview("HUB-PATIENT", _HubLoader())
+
+    assert overview["gender"] == "女"
+    assert overview["age"] == "45"
+    assert overview["admit_date"] == "2026-01-01"
+    assert overview["discharge_date"] == "2026-01-03"
+    assert overview["los_days"] == 3
+    assert overview["primary_dx"] == "结构化主诊断 (A00.1)"
+    assert overview["primary_source"] == "诊断明细"
+    assert overview["top_depts"] == [("结构化科室", 1)]
+    assert overview["top_drs"] == [("结构化医生", 1)]

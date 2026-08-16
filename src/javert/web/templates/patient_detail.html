@@ -80,8 +80,10 @@
           <span class="confidence">置信 {{ '%.2f' % (run.confidence or 0.0) }}</span>
           {% if run.history %}<span class="history-hint" title="该项目之前审核过 {{ run.history|length }} 次，末尾可展开查看">📜 +{{ run.history|length }}</span>{% endif %}
         </div>
-        {% if meta %}
-        <div class="rule-question">{{ meta.question }}</div>
+        {% if public.get('audit_items') %}
+        <div class="rule-question">{{ public.audit_items[0] }}</div>
+        {% elif meta %}
+        <div class="rule-question">{{ meta.behavior_name }}</div>
         {% endif %}
 
         {# 命中项目 (evidence-anchoring) — 仅 fee/drug; note 类收敛成「查阅文书原文」按钮 #}
