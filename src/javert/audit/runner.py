@@ -29,7 +29,7 @@ from .prompt_assembler import (
     load_hospital_config,
 )
 from .precheck import CLEAN as PC_CLEAN, FACTS as PC_FACTS, PrecheckResult, run_precheck
-from .result import AuditResult, Evidence, ToolCall
+from .result import AuditResult, Evidence, ToolCall, TOOL_FAILURE_GATE_TAG
 from .rule import Rule
 from .run_id import new_run_id
 from .verdict_gate import apply_gate, get_gate_config
@@ -43,6 +43,15 @@ _TRUNCATE = 2000  # 单工具结果存储上限 (默认; 实际用 config.tool_r
 # 分段截断标记 (fix-drug-audit-precision D1): 工具把「必留头部」放标记之前、
 # 「可截明细」放标记之后; 无此标记的工具结果维持旧尾截断行为.
 RETAIN_HEAD_MARKER = "====[必留头部结束]===="
+
+_TECHNICAL_FAILURE_MARKERS = (
+    "not iterable",
+    "执行失败",
+    "技术故障",
+    "工具调用错误",
+    "tool error",
+    "traceback",
+)
 
 
 def _truncate(text: str, limit: int = _TRUNCATE) -> str:
@@ -137,6 +146,19 @@ def _coerce_evidence(raw: list | None) -> list[Evidence]:
         except Exception:
             continue
     return out
+
+
+def _contains_technical_failure(text: str) -> bool:
+    lowered = text.lower()
+    return any(marker in lowered for marker in _TECHNICAL_FAILURE_MARKERS)
+
+
+def _is_fact_evidence(evidence: Evidence) -> bool:
+    return (
+        evidence.source.lower() != "etl_warning"
+        and bool(evidence.text.strip())
+        and not _contains_technical_failure(f"{evidence.locator}\n{evidence.text}")
+    )
 
 
 # 结构化资格 → 自然语言: 状态词 + 结论句. 前端 follow-up 面板另有逐条清单.
@@ -907,6 +929,36 @@ class Runner:
                 + "\n建议复查病理文书及该项目是否自费后再最终定性 "
                 "(本项目费用数据无自付明细、病理文书常缺, 药品违规存在系统性盲区)."
             ).strip()
+
+        # OCR/脱敏质量门禁：技术失败是系统事实，不是患者风险事实。只要失败调用导致
+        # 不明裁决、进入公开文案，或所谓违规没有独立可复核证据，就保守隔离为 CLEAN。
+        # 有独立正向证据、且公开结果完全不引用技术失败的 VIOLATION 仍保留。
+        failed_tool_calls = [
+            record for record in tool_records
+            if ToolExecutor.is_error_result(record.result)
+        ]
+        public_text = "\n".join(
+            [reasoning]
+            + [f"{item.locator}\n{item.text}" for item in evidence]
+        )
+        if (
+            failed_tool_calls
+            and eligibility_evaluation is None
+            and (
+                verdict != "VIOLATION"
+                or _contains_technical_failure(public_text)
+                or not any(_is_fact_evidence(item) for item in evidence)
+            )
+        ):
+            self.emit(
+                "[QualityGate] 技术失败未形成可复核异常证据，结果隔离为 CLEAN: "
+                + ",".join(sorted({record.tool_name for record in failed_tool_calls}))
+            )
+            verdict = "CLEAN"
+            confidence = 0.0
+            reasoning = "未形成可复核的异常证据，本规则不输出风险判定。"
+            evidence = []
+            gate_tag = TOOL_FAILURE_GATE_TAG
 
         result = AuditResult(
             run_id=run_id,

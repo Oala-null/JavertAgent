@@ -813,27 +813,43 @@ class SqlServerStore:
         if engine is None:
             return []
         from sqlalchemy import text
-        # 病人 + 各 verdict 计数 (latest 去重) + 该 patient 的最新 batch_tag
+        # 病人 + 各 verdict 计数 (latest 去重) + 稳定来源标签。
+        # OCR 是患者来源属性；后续普通重跑即使 batch_tag=NULL，也不能把 ocr1.0 覆盖掉。
         sql_counts = """
             WITH latest AS (
-                SELECT patient_id, rule_id, verdict, run_id, batch_tag, created_at,
-                       ROW_NUMBER() OVER (PARTITION BY patient_id, rule_id ORDER BY created_at DESC) AS rn
+                SELECT id, patient_id, rule_id, verdict, run_id, batch_tag, created_at,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY patient_id, rule_id
+                           ORDER BY created_at DESC, id DESC
+                       ) AS rn
+                FROM javert_audit_runs
+            ),
+            patient_tag_ranked AS (
+                SELECT patient_id, batch_tag,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY patient_id
+                           ORDER BY created_at DESC, id DESC
+                       ) AS rn_tag
                 FROM javert_audit_runs
             ),
             patient_tag AS (
-                SELECT patient_id, batch_tag,
-                       ROW_NUMBER() OVER (PARTITION BY patient_id ORDER BY created_at DESC) AS rn_tag
-                FROM javert_audit_runs
+                SELECT patient_id,
+                       CASE
+                           WHEN MAX(CASE WHEN batch_tag = N'ocr1.0' THEN 1 ELSE 0 END) = 1
+                               THEN N'ocr1.0'
+                           ELSE MAX(CASE WHEN rn_tag = 1 THEN batch_tag END)
+                       END AS batch_tag
+                FROM patient_tag_ranked
+                GROUP BY patient_id
             )
             SELECT latest.patient_id,
                    SUM(CASE WHEN verdict = N'VIOLATION' THEN 1 ELSE 0 END) AS v_count,
                    SUM(CASE WHEN verdict = N'INCONCLUSIVE' THEN 1 ELSE 0 END) AS i_count,
                    SUM(CASE WHEN verdict = N'CLEAN' THEN 1 ELSE 0 END) AS c_count,
-                   MAX(CASE WHEN pt.rn_tag = 1 THEN pt.batch_tag ELSE NULL END) AS batch_tag,
+                   MAX(pt.batch_tag) AS batch_tag,
                    MAX(latest.created_at) AS updated_at
             FROM latest
-            LEFT JOIN patient_tag pt
-                   ON pt.patient_id = latest.patient_id AND pt.rn_tag = 1
+            LEFT JOIN patient_tag pt ON pt.patient_id = latest.patient_id
             WHERE latest.rn = 1
             GROUP BY latest.patient_id
         """
@@ -882,7 +898,8 @@ class SqlServerStore:
                 relevant = i
             else:  # 'all'
                 relevant = v + i + c
-            if filter_mode != "all" and relevant == 0:
+            # OCR 患者即使全部 CLEAN 也必须可发现；详情链接会自动切到 all。
+            if filter_mode != "all" and relevant == 0 and batch_tag != "ocr1.0":
                 continue
             rmap = reviewed.get(pid, {})
             if filter_mode == "v_and_i":
@@ -952,7 +969,7 @@ class SqlServerStore:
         return [(r[0], r[1], r[2]) for r in rows]
 
     def latest_batch_tag_for_patient(self, patient_id: str) -> str | None:
-        """返回患者最新 audit run 的 batch_tag；查询失败/无行/NULL 均返回 None。"""
+        """返回稳定患者来源标签；历史含 OCR 时始终返回 ocr1.0。"""
         engine = self.get_engine()
         if engine is None:
             return None
@@ -961,8 +978,12 @@ class SqlServerStore:
             with engine.connect() as conn:
                 row = conn.execute(
                     text(
-                        "SELECT TOP (1) batch_tag FROM javert_audit_runs "
-                        "WHERE patient_id = :pid ORDER BY created_at DESC, run_id DESC"
+                        "SELECT CASE "
+                        "WHEN EXISTS (SELECT 1 FROM javert_audit_runs "
+                        "             WHERE patient_id = :pid AND batch_tag = N'ocr1.0') "
+                        "THEN N'ocr1.0' "
+                        "ELSE (SELECT TOP (1) batch_tag FROM javert_audit_runs "
+                        "      WHERE patient_id = :pid ORDER BY created_at DESC, run_id DESC) END"
                     ),
                     {"pid": patient_id},
                 ).fetchone()

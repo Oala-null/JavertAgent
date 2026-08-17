@@ -131,7 +131,7 @@ class RunWithReviews(BaseModel):
     started_at: datetime | None = None
     created_at: datetime
     triggered_by: str | None = None
-    batch_tag: str | None = None  # v0.7: 这是 latest run 的 tag (v1.2 或 NULL)
+    batch_tag: str | None = None  # v0.7: latest tag；OCR 来源患者稳定保留 ocr1.0
     gate_tag: str = ""  # add-verdict-gate-layer: gate 降级标签 (缺文书/单次放过/低置信降级/'')
     eligibility_evaluation: EligibilityEvaluation | None = None
     promise_trace: PromiseTrace | None = None

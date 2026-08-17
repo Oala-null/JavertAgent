@@ -169,9 +169,52 @@ def test_2c_hub_snapshot_propagates_desus_prefix(monkeypatch, tmp_path):
             )[1],
         )
 
-    routes_audit._hub_fetch_patient("P", tmp_path)
+    source_tag = routes_audit._hub_fetch_patient("P", tmp_path)
 
     assert {name for name, _ in seen} == {
         "hospital", "fees", "notes", "zd", "ss", "labs", "exams"
     }
     assert {prefix for _, prefix in seen} == {"desus_"}
+    assert source_tag is None
+
+
+def test_2c_hub_snapshot_returns_matched_profile_tag(monkeypatch, tmp_path):
+    class _Connection:
+        def close(self):
+            pass
+
+    class _Cfg:
+        hub_database = "TP_data_hub"
+        hub_table_prefix = ""
+        hub_raw_profiles = {
+            "ocr1.0": SimpleNamespace(database="TP_data_hub", table_prefix="desus_")
+        }
+
+        def model_copy(self, *, update):
+            clone = _Cfg()
+            clone.hub_database = update["hub_database"]
+            clone.hub_table_prefix = update["hub_table_prefix"]
+            clone.hub_raw_profiles = {}
+            return clone
+
+    monkeypatch.setattr(routes_audit, "get_config", _Cfg)
+    monkeypatch.setattr(hs, "connect", lambda config: _Connection())
+    monkeypatch.setattr(hs, "fetch_hospital_map", lambda cn, **kw: {})
+    monkeypatch.setattr(
+        hs,
+        "fetch_fees",
+        lambda cn, pids, mapping, **kw: (
+            pd.DataFrame([{"JZLSH": pids[0]}])
+            if kw["table_prefix"] == "desus_" else pd.DataFrame()
+        ),
+    )
+    for name in ("notes", "labs", "exams"):
+        monkeypatch.setattr(hs, f"fetch_{name}", lambda cn, pids, **kw: pd.DataFrame())
+    for name in ("zd", "ss"):
+        monkeypatch.setattr(
+            hs,
+            f"fetch_{name}",
+            lambda cn, pids, mapping, **kw: pd.DataFrame(),
+        )
+
+    assert routes_audit._hub_fetch_patient("P", tmp_path) == "ocr1.0"

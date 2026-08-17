@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import logging
 
-from javert.audit.result import AuditResult
+from javert.audit.result import AuditResult, TOOL_FAILURE_GATE_TAG
 from javert.audit.rule import Rule
 from javert.config import get_config
 from javert.promises.loader import get_promise_repository
@@ -88,7 +88,11 @@ def _apply_drift_guard(result: AuditResult, sqlite_store: SqliteStore, sql_enabl
     """
     # 结构化结果的旧 verdict 必须与双轴投影一致；漂移比较交由 shadow 报告，
     # 不得在写库前把 CLEAN 就地改 I，制造自相矛盾的 eligibility_json。
-    if result.eligibility_evaluation is not None or result.verdict != "CLEAN":
+    if (
+        result.eligibility_evaluation is not None
+        or result.verdict != "CLEAN"
+        or result.gate_tag == TOOL_FAILURE_GATE_TAG
+    ):
         return
     prior = sqlite_store.find_by_rule_patient_latest(result.rule_id, result.patient_id)
     if prior is None or prior.verdict != "VIOLATION":

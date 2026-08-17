@@ -217,6 +217,32 @@ def test_workbench_sidebar_facets_and_summary(alice):
     assert "甲状腺恶性肿瘤" in out
 
 
+def test_ocr_clean_patient_links_to_all_results(alice):
+    patients = [
+        PatientSidebarItem(
+            patient_id="J-OCR-SYNTHETIC",
+            v_count=0,
+            i_count=0,
+            c_count=12,
+            reviewed_count=0,
+            relevant_count=0,
+            batch_tag="ocr1.0",
+        )
+    ]
+
+    out = render(
+        "workbench.html", title="工作台", current_user=alice,
+        patients=patients, active_patient=None, filter="v_and_i",
+        filter_label="违规 + 不明", runs=[], show_banner=False,
+        banner_stats=SinceLastLoginStats(), banner_first_login=False,
+        prev_last_login=None,
+    )
+
+    assert "/workbench/J-OCR-SYNTHETIC?filter=all" in out
+    assert "12C" in out
+    assert 'data-tag="ocr1.0"' in out
+
+
 def test_patient_detail_v_card_with_my_review(alice):
     my = ReviewRecord(
         id=1, run_id="aud_abcdefghijkl", user_id=alice.id,

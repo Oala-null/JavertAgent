@@ -12,6 +12,7 @@ from javert.oncology.contracts import EligibilityEvaluation
 from javert.promises.models import PromiseTrace
 
 Verdict = Literal["VIOLATION", "CLEAN", "INCONCLUSIVE"]
+TOOL_FAILURE_GATE_TAG = "技术故障隔离"
 
 
 class Evidence(BaseModel):
@@ -55,7 +56,7 @@ class AuditResult(BaseModel):
     duration_ms: int = Field(default=0, ge=0)
     model: str = Field(default="")
     started_at: datetime
-    # add-verdict-gate-layer: 确定性 gate 降级标签 ∈ {"", 缺文书, 单次放过, 低置信降级}.
+    # add-verdict-gate-layer: 确定性 gate 标签包含缺文书、单次放过、低置信降级、技术故障隔离等.
     # 空 = 未被 gate 降级 (verdict 即 LLM 原判).
     gate_tag: str = Field(default="")
     # pilot-deterministic-precheck: 确定性预检标签 ∈ {"", 无A项, 无B项, A∩B并存待核反证}.

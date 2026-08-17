@@ -10,7 +10,7 @@ from typing import Any
 import pandas as pd
 import pytest
 
-from javert.audit.result import AuditResult
+from javert.audit.result import AuditResult, TOOL_FAILURE_GATE_TAG
 from javert.audit.rule import PrecheckSpec, Rule
 from javert.audit.runner import Runner
 from javert.config import JavertConfig, reset_config_cache
@@ -569,6 +569,47 @@ def test_rejects_verdict_without_any_tool_call(cfg, executor):
     assert len(result.tool_calls) == 1
 
 
+def test_tool_failure_cannot_be_published_as_suspicion(cfg):
+    """技术异常不能成为患者疑似判定或公开证据。"""
+    broken = ToolExecutor()
+
+    def fail_fees(**_kwargs):
+        raise TypeError("argument of type 'float' is not iterable")
+
+    broken.register("search_fees", fail_fees, requires_patient_id=True)
+    broken.register(
+        "search_notes",
+        lambda **_kwargs: "病历文书中未检索到相关执行记录",
+        requires_patient_id=True,
+    )
+    contents = [
+        (
+            '<tool_call>{"name":"search_fees","arguments":{}}</tool_call>'
+            '<tool_call>{"name":"search_notes","arguments":{}}</tool_call>'
+        ),
+        (
+            '```json\n{"verdict":"INCONCLUSIVE","confidence":0.5,'
+            '"evidence":[{"source":"etl_warning","locator":"费用明细",'
+            '"text":"search_fees 执行失败: argument of type float is not iterable"}],'
+            '"reasoning":"费用明细工具调用错误，无法确认"}\n```'
+        ),
+    ]
+    runner = Runner(
+        executor=broken,
+        provider=FakeProvider(contents),
+        config=cfg,
+        loader=_StubLoader(),
+    )
+
+    result = runner.audit(_make_rule(), "J66252")
+
+    assert result.verdict == "CLEAN"
+    assert result.gate_tag == TOOL_FAILURE_GATE_TAG
+    assert result.evidence == []
+    assert "执行失败" not in result.reasoning
+    assert "工具调用错误" not in result.reasoning
+
+
 # ==== harden-agent-loop ====
 
 def test_repair_tool_call_continues_not_inconclusive(cfg, executor):
@@ -609,7 +650,7 @@ def test_malformed_tool_call_gets_targeted_feedback(cfg, executor):
 
 
 def test_all_tool_calls_failed_does_not_unlock_verdict(cfg, executor):
-    """change 4: 工具全部执行失败时不解锁裁决, 模型想判 V 也被拒绝."""
+    """工具全部失败时不解锁裁决，也不把系统故障发布成疑似。"""
     contents = [
         # 1 轮: 未知工具 → 执行失败 (不计成功)
         '<tool_call>{"name": "no_such_tool", "arguments": {}}</tool_call>',
@@ -624,7 +665,8 @@ def test_all_tool_calls_failed_does_not_unlock_verdict(cfg, executor):
     runner = Runner(executor=executor, provider=FakeProvider(contents), config=cfg, emit=emitted.append)
     result = runner.audit(_make_rule(), "J66252")
     assert result.verdict != "VIOLATION"      # 全失败的 V 不被接受
-    assert result.verdict == "INCONCLUSIVE"
+    assert result.verdict == "CLEAN"
+    assert result.gate_tag == TOOL_FAILURE_GATE_TAG
     assert any("无成功 tool_call" in m for m in emitted)
 
 

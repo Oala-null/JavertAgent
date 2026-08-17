@@ -508,10 +508,10 @@ _2C_HUB_CACHE = "output/hub_cache_2c"  # 每患者一目录, 每次提交重取�
 
 
 def _hub_source_candidates(cfg):
-    """默认 Hub + 已声明 profile；2C 提交本身不携带 batch_tag，必须逐一探测。"""
-    candidates = [(cfg, cfg.hub_table_prefix)]
+    """默认 Hub + 已声明 profile，并保留命中 profile 的来源标签。"""
+    candidates = [(cfg, cfg.hub_table_prefix, None)]
     seen = {(getattr(cfg, "hub_database", ""), cfg.hub_table_prefix)}
-    for profile in (getattr(cfg, "hub_raw_profiles", {}) or {}).values():
+    for tag, profile in (getattr(cfg, "hub_raw_profiles", {}) or {}).items():
         key = (profile.database, profile.table_prefix)
         if key in seen:
             continue
@@ -522,6 +522,7 @@ def _hub_source_candidates(cfg):
                 "hub_table_prefix": profile.table_prefix,
             }),
             profile.table_prefix,
+            tag,
         ))
     return candidates
 
@@ -532,7 +533,7 @@ def _hub_probe(syxh: str) -> bool:
     cfg = get_config()
     successful_queries = 0
     last_error = None
-    for source_cfg, prefix in _hub_source_candidates(cfg):
+    for source_cfg, prefix, _source_tag in _hub_source_candidates(cfg):
         cn = None
         try:
             cn = hs.connect(source_cfg, timeout=10)
@@ -551,22 +552,22 @@ def _hub_probe(syxh: str) -> bool:
     return False
 
 
-def _hub_fetch_patient(syxh: str, out) -> None:
-    """中台 → out/ 6 CSV (镜像 scripts/etl_from_data_hub.py 的单患者切片)."""
+def _hub_fetch_patient(syxh: str, out) -> str | None:
+    """中台 → out/ 6 CSV，并返回命中 profile 的 batch tag。"""
     from javert.data import hub_source as hs
     cfg = get_config()
     out.mkdir(parents=True, exist_ok=True)
     candidates = _hub_source_candidates(cfg)
     selected = None
     last_error = None
-    for source_cfg, prefix in candidates:
+    for source_cfg, prefix, source_tag in candidates:
         cn = None
         try:
             cn = hs.connect(source_cfg)
             yq2org = hs.fetch_hospital_map(cn, table_prefix=prefix)
             fees = hs.fetch_fees(cn, [syxh], yq2org, table_prefix=prefix)
             if len(fees) > 0:
-                selected = (cn, prefix, yq2org, fees)
+                selected = (cn, prefix, source_tag, yq2org, fees)
                 break
         except Exception as exc:  # noqa: BLE001
             last_error = exc
@@ -574,17 +575,17 @@ def _hub_fetch_patient(syxh: str, out) -> None:
             cn.close()
     if selected is None:
         # 保留历史行为：即使患者为空也产出六个空快照；连接全失败时才抛错。
-        source_cfg, prefix = candidates[0]
+        source_cfg, prefix, source_tag = candidates[0]
         try:
             cn = hs.connect(source_cfg)
             yq2org = hs.fetch_hospital_map(cn, table_prefix=prefix)
             fees = hs.fetch_fees(cn, [syxh], yq2org, table_prefix=prefix)
-            selected = (cn, prefix, yq2org, fees)
+            selected = (cn, prefix, source_tag, yq2org, fees)
         except Exception:
             if last_error is not None:
                 raise last_error
             raise
-    cn, prefix, yq2org, fees = selected
+    cn, prefix, source_tag, yq2org, fees = selected
     try:
         kw = {"index": False, "encoding": "utf-8-sig"}
         fees.to_csv(out / "shi_fee.csv", **kw)
@@ -605,6 +606,7 @@ def _hub_fetch_patient(syxh: str, out) -> None:
         )
     finally:
         cn.close()
+    return source_tag
 
 
 def _hub_cfg_for(cfg, data_dir) -> Any:
@@ -625,13 +627,14 @@ def _hub_cfg_for(cfg, data_dir) -> Any:
 def _2c_run_patient(syxh: str) -> None:
     """单患者全流程: (hub 患者先取数) → ready 全集 → router 预筛 → 规则并发 5 → 逐条落库."""
     cfg = get_config()
+    batch_tag = None
     with _2c_lock:
         source = _2c_tasks[syxh].get("source", "local")
     if source == "hub":
         with _2c_lock:
             _2c_tasks[syxh]["stage"] = "hub_fetch"
         hub_dir = cfg.resolve(_2C_HUB_CACHE) / syxh
-        _hub_fetch_patient(syxh, hub_dir)
+        batch_tag = _hub_fetch_patient(syxh, hub_dir)
         cfg = _hub_cfg_for(cfg, hub_dir)
         loader = CsvLoader(cfg.notes_path, cfg.fees_path)
         zd_path = cfg.zd_path
@@ -680,6 +683,7 @@ def _2c_run_patient(syxh: str) -> None:
                         result, rule,
                         triggered_by="2c-submit",
                         sqlite_store=store,
+                        batch_tag=batch_tag,
                         source_loader=loader,
                     )
                 except Exception as exc:  # noqa: BLE001 — 单条失败不中断整患者
