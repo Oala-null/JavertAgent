@@ -12,6 +12,7 @@ import re
 
 # 工具名/内部文件名 → 中文 (长名在前, 防子串误替换; 纯 str.replace 不吃边界)
 _TOOL_ZH: list[tuple[str, str]] = [
+    ("catalog_lookup", "诊疗目录查询"),
     ("scan_progress_indications", "病程记录排查"),
     ("sy_patient_examination", "检查报告库"),
     ("search_lab_results", "检验报告检索"),
@@ -22,6 +23,7 @@ _TOOL_ZH: list[tuple[str, str]] = [
     ("search_anesthesia", "麻醉记录检索"),
     ("search_pathology", "病理报告检索"),
     ("search_notes", "病历文书检索"),
+    ("search_orders", "医嘱检索"),
     ("search_fees", "费用明细检索"),
     ("sy_检验", "检验报告库"),
     ("experience.md", "审计经验库"),

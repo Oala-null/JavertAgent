@@ -120,8 +120,9 @@ def fetch_fees(
     has_ext = len(q(cn, "SELECT 1 x FROM sys.tables WHERE name=?", (ext_table,))) > 0
     ext_sel = ", ".join(f"e.{c}" for c in _FEE_EXT_COLS)
     fee = q(cn, f"""
-        SELECT f.YLJGYQDM, f.SFMXID, f.STFBZ, f.JZLSH, f.MXFYLB, f.FYFSSJ, f.MXXMBM, f.MXXMBMYB,
-               f.MXXMMC, f.MXXMDJ, f.MXXMSL, f.MXXMJE{', ' + ext_sel if has_ext else ''}
+        SELECT f.YLJGYQDM, f.SFMXID, f.STFBZ, f.JZLSH, f.YZID, f.MXFYLB, f.FYFSSJ,
+               f.MXXMBM, f.MXXMBMYB, f.MXXMMC, f.MXXMDW, f.MXXMDJ, f.MXXMSL,
+               f.MXXMJE{', ' + ext_sel if has_ext else ''}
         FROM {fee_table} f
         {f'LEFT JOIN {ext_table} e ON f.YLJGYQDM=e.YLJGYQDM AND f.SFMXID=e.SFMXID' if has_ext else ''}
         WHERE {in_clause(pids, 'f.JZLSH')}""")
@@ -137,6 +138,8 @@ def fetch_fees(
         "feedetl_sn": fee["SFMXID"],
         "fee_ocur_time": fee["FYFSSJ"],
         "cnt": pd.to_numeric(fee["MXXMSL"], errors="coerce").fillna(0) * sign,
+        "unit": fee["MXXMDW"].replace("-", ""),
+        "order_id": fee["YZID"].replace("-", ""),
         "pric": fee["MXXMDJ"],
         "det_item_fee_sumamt": pd.to_numeric(fee["MXXMJE"], errors="coerce").fillna(0) * sign,
         "pric_uplmt_amt": empty, "selfpay_prop": fee["SELFPAY_PROP"],
@@ -225,6 +228,7 @@ def fetch_notes(cn, pids: list[str] | None, *, table_prefix: str = "") -> pd.Dat
 
     document_table = table_name("TB_CIS_MEDICAL_DOCUMENT", table_prefix)
     summary_table = table_name("TB_CIS_LEAVEHOSPITAL_SUMMARY", table_prefix)
+    advice_table = table_name("TB_CIS_DRADVICE_DETAIL", table_prefix)
     doc = q(cn, f"""
         SELECT JZLSH, JLSJ, WSMC, WSLB, DLBT, ZW FROM {document_table}
         WHERE {in_clause(pids, 'JZLSH')} ORDER BY JZLSH, WSLSH""")
@@ -232,6 +236,13 @@ def fetch_notes(cn, pids: list[str] | None, *, table_prefix: str = "") -> pd.Dat
         SELECT JZLSH, CYSJ, YYZTBBT1, YYZTB1, YYZTBBT2, YYZTB2,
                {', '.join(c for c, _ in SUMMARY_COL2SEC)}
         FROM {summary_table} WHERE {in_clause(pids, 'JZLSH')}""")
+    has_advice = len(q(cn, "SELECT 1 x FROM sys.tables WHERE name=?", (advice_table,))) > 0
+    advice = q(cn, f"""
+        SELECT JZLSH, YZZH, YZSM, MXXMMC, YZXDSJ, YZZXSJ, YZZZSJ,
+               YZLB, XMMXSL, XMMXDW
+        FROM {advice_table}
+        WHERE {in_clause(pids, 'JZLSH')}
+        ORDER BY JZLSH, YZXDSJ, YZZH""") if has_advice else pd.DataFrame()
     # 05 判定: WSLB 或 WSMC 正则 (v2 医院侧 WSLB 可空, 按文书名称派生)
     is05 = (doc["WSLB"] == "05") | doc["WSMC"].str.contains("出院小结|出院记录", regex=True, na=False)
     ext05_pids = set(doc.loc[is05, "JZLSH"])
@@ -251,6 +262,26 @@ def fetch_notes(cn, pids: list[str] | None, *, table_prefix: str = "") -> pd.Dat
         for title, body in sections:
             rows.append({"住院号": r.JZLSH, "事件时间": ts, "阶段": r.WSMC,
                          "子阶段": title, "内容": body, "来源文件": "data_hub"})
+    for r in advice.itertuples(index=False):
+        order_type = str(r.YZLB or "").strip()
+        sub_stage = "临时医嘱" if order_type.upper() == "ST" or "临时" in order_type else "长期医嘱"
+        quantity = str(r.XMMXSL or "").strip()
+        unit = str(r.XMMXDW or "").strip()
+        parts = [f"类型={order_type or '未标明'}", f"项目={str(r.MXXMMC or '').strip()}"]
+        if quantity:
+            parts.append(f"数量={quantity}{unit}")
+        if r.YZZH:
+            parts.append(f"组号={str(r.YZZH).strip()}")
+        if r.YZZXSJ and not str(r.YZZXSJ).startswith(SENT[:10]):
+            parts.append(f"执行={str(r.YZZXSJ).strip()}")
+        if r.YZZZSJ and not str(r.YZZZSJ).startswith(SENT[:10]):
+            parts.append(f"停止={str(r.YZZZSJ).strip()}")
+        if r.YZSM and str(r.YZSM).strip() not in ("", "-"):
+            parts.append(f"备注={str(r.YZSM).strip()}")
+        ordered_at = "" if str(r.YZXDSJ).startswith(SENT[:10]) else str(r.YZXDSJ).strip()
+        rows.append({"住院号": r.JZLSH, "事件时间": ordered_at, "阶段": "医嘱单",
+                     "子阶段": sub_stage, "内容": "；".join(parts),
+                     "来源文件": "data_hub_advice"})
     return pd.DataFrame(rows, columns=["住院号", "事件时间", "阶段", "子阶段", "内容", "来源文件"])
 
 

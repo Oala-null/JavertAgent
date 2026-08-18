@@ -139,7 +139,9 @@ def test_executor_lists_tools(stub_loader, drug_map_tmp):
     executor = build_executor(stub_loader)
     assert set(executor.list_tools()) == {
         "search_notes",
+        "search_orders",
         "search_fees",
+        "catalog_lookup",
         "note_diagnosis",
         "drug_indication",
         "drug_audit_lookup",  # v0.8 药品违规审计 (与 drug_indication 并存)

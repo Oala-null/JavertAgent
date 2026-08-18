@@ -67,6 +67,8 @@ def test_fetch_basics_uses_standard_summary_fields(monkeypatch):
 def _fake_q(doc_rows, summ_rows):
     doc_cols = ["JZLSH", "JLSJ", "WSMC", "WSLB", "DLBT", "ZW"]
     def q(cn, sql, params=()):
+        if "sys.tables" in sql:
+            return pd.DataFrame(columns=["x"])
         if "TB_CIS_MEDICAL_DOCUMENT" in sql:
             return pd.DataFrame(doc_rows, columns=doc_cols)
         return pd.DataFrame(summ_rows, columns=_COLS)

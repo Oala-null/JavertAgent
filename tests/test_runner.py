@@ -749,6 +749,44 @@ def test_precheck_clean_short_circuits_no_llm(cfg, executor):
     assert result.tool_calls == []
 
 
+@pytest.mark.parametrize("rule_id", ["R319", "R320", "R321", "R322"])
+def test_ophthalmology_rules_without_target_fee_use_zero_llm(cfg, executor, rule_id):
+    from javert.audit.rule_loader import load_rule
+
+    rule = load_rule(Path(__file__).resolve().parent.parent / "configs" / "rules" / f"{rule_id}.yaml")
+    provider = FakeProvider([])
+    runner = Runner(executor=executor, provider=provider, config=cfg, loader=_StubLoader())
+
+    result = runner.audit(rule, "J66252")
+
+    assert result.verdict == "CLEAN"
+    assert provider.calls == 0
+    assert result.tool_calls == []
+
+
+def test_bedside_ecg_target_fee_short_circuits_to_review_without_llm(cfg, executor):
+    from javert.audit.rule_loader import load_rule
+
+    class _BedsideLoader(_StubLoader):
+        def __init__(self):
+            super().__init__()
+            self._fees.loc[0, "medins_list_name"] = "床头心电图/次"
+            self._fees.loc[0, "det_item_fee_sumamt"] = 43.0
+
+    loader = _BedsideLoader()
+    provider = FakeProvider([])
+    runner = Runner(executor=executor, provider=provider, config=cfg, loader=loader)
+    rule = load_rule(Path(__file__).resolve().parent.parent / "configs" / "rules" / "R321.yaml")
+
+    result = runner.audit(rule, "J66252")
+
+    assert result.verdict == "INCONCLUSIVE"
+    assert result.confidence == pytest.approx(0.5)
+    assert provider.calls == 0
+    assert result.tool_calls == []
+    assert "现场核查设备台账" in result.reasoning
+
+
 def test_precheck_facts_injects_and_merges_evidence(cfg, executor):
     """A∩B 并存 → 注入事实块, LLM 判 V → 合并 precheck 费用锚点."""
     contents = [

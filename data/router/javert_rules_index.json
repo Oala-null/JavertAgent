@@ -1,5 +1,5 @@
 {
-  "count": 159,
+  "count": 163,
   "rules": [
     {
       "rule_id": "R003",
@@ -2443,6 +2443,92 @@
       ],
       "trigger_codes": [],
       "question": "未开展相关诊疗项目，但收取对应诊疗费用。"
+    },
+    {
+      "rule_id": "R319",
+      "yaml_path": "configs/rules/R319.yaml",
+      "domain": "眼科",
+      "violation_type": "超标准收费",
+      "status": "ready",
+      "priority": "P0",
+      "derived_from_template": "M4",
+      "trigger_keywords": [
+        "结膜囊冲洗",
+        "结膜囊冲洗费",
+        "眼压检查",
+        "眼压检查费",
+        "眼压日曲线"
+      ],
+      "trigger_codes": [
+        "013103000060000",
+        "012403000050000",
+        "003103000270000"
+      ],
+      "question": "眼科按次或按侧收费项目的实际收费数量，大于独立医嘱、实际执行次数或诊疗目录允许数量。"
+    },
+    {
+      "rule_id": "R320",
+      "yaml_path": "configs/rules/R320.yaml",
+      "domain": "眼科",
+      "violation_type": "虚构医药服务项目",
+      "status": "ready",
+      "priority": "P0",
+      "derived_from_template": "M5",
+      "trigger_keywords": [
+        "睑板腺治疗",
+        "睑板腺按摩",
+        "睑治疗",
+        "睑治疗费",
+        "睑板腺阻塞"
+      ],
+      "trigger_codes": [
+        "013103000030000",
+        "003103000870000"
+      ],
+      "question": "收取睑板腺治疗费用，但病历中没有治疗执行记录或存在明确未执行证据。"
+    },
+    {
+      "rule_id": "R321",
+      "yaml_path": "configs/rules/R321.yaml",
+      "domain": "眼科",
+      "violation_type": "虚构医药服务项目",
+      "status": "ready",
+      "priority": "P0",
+      "derived_from_template": "M4",
+      "trigger_keywords": [
+        "床头心电图",
+        "床旁心电图",
+        "床边心电图",
+        "移动心电图",
+        "心电图床旁检查"
+      ],
+      "trigger_codes": [
+        "003107010010003",
+        "A310701001"
+      ],
+      "question": "收取床头心电图费用，但医院是否具备床头心电相关设备和实际服务能力需要现场核查。"
+    },
+    {
+      "rule_id": "R322",
+      "yaml_path": "configs/rules/R322.yaml",
+      "domain": "眼科",
+      "violation_type": "过度检查",
+      "status": "ready",
+      "priority": "P0",
+      "derived_from_template": "M2",
+      "trigger_keywords": [
+        "A型超声检查",
+        "B型超声检查",
+        "眼科AB型超声",
+        "眼部A超",
+        "眼部B超",
+        "眼轴测量"
+      ],
+      "trigger_codes": [
+        "012302010010000",
+        "012302020010000"
+      ],
+      "question": "同时开展眼部 A 型和 B 型超声检查时，未分别记录两类检查的独立临床目的或指征。"
     },
     {
       "rule_id": "RD01",

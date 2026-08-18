@@ -10,6 +10,8 @@
 
 **2C 对接 v3**：新接入使用 `/api/audit/v3/submit` 与 `/api/audit/v3/results/{SYXH}`；在完整规则卡片上按实际收费明细行返回数量、单价、开单科室编码/名称和开单医生工号/名称。`public_explanation.narrative` 是保留持久化 reasoning 语义的只加字段，严格客户端须允许可选/未知字段。`status=running` 时 cards 只是增量结果，必须轮询到 `done`。详见 `docs/2c对接_javert审计服务_v3.md`。
 
+**临床证据工具补洞（2026-08-18）**：费用契约保留计价单位和医嘱关联；`search_orders` 结构化医嘱优先、OCR 医嘱全文兜底；`catalog_lookup` 按服务日期查询 2026-04/07 两版诊疗目录；检查/检验结构化表为空时返回明确标注的全文报告候选。新增眼科专家扩展 R319-R322，覆盖计价次数、睑板腺治疗执行、床头心电图现场核查和 A/B 超联合指征；设备资料缺失由 `presence_review` 零模型进入人工复核。
+
 **确定性 Promise 门禁**：已确认的漂移先沉淀为去标识 `DriftCase`，再提炼为带正例、
 相邻反例和显式规则 scope 的版本化 Promise。`decision_pre_llm` Promise 可在模型前给出
 终局锁定裁决；普通 verdict gate 和历史漂移防护不得改写合法的 `LOCKED` 结果。提交前运行：
@@ -405,7 +407,7 @@ abandoned (任意状态可达, 无需 force)
 | `add-java-engine-port` Phase 2 (候选) | Python 复现 11 valid=1 Java 规则 + LLM 润色 warn_msg, 独立 Track A 输出 java_violations[] | 补"做得了"覆盖 (不省 GPU 但拓宽监管面) |
 | `evidence-source-extend` (候选) | base.txt evidence source 加 hospital_config | R212/R220 设计语义准确化 |
 | `add-material-registry` (候选) | 引入耗材规格/采购数据 | R013/R033 P3 Y + M7 红色难 6 条 |
-| `add-catalog-loader` (候选) | 引入医保药品/诊疗目录 yaml (R007 已由 v0.8 M8 解锁) | 剩余 E 类 drafting |
+| `close-clinical-audit-tool-gaps` ✅ | 版本化诊疗目录 + 医嘱/单位/报告兜底工具 + R319-R322 眼科专家规则 | 关闭 OCR“数据已识别、规则看不见”缺口 |
 | `reasoning-precision-tune` (候选) | base.txt 加 "区分子项不要合并主项" | 修 J19333 R146 这类细节漂移 |
 
 ## 测试

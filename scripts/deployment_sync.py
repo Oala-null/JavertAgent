@@ -42,6 +42,8 @@ DEPLOY_SCOPES = (
     # Promise 运行时会 fail closed 校验去标识案例；它们不是普通测试附件。
     "tests/promise_cases",
     "scripts",
+    "截至20260401诊疗项目.xls",
+    "截至20260701诊疗项目.xls",
     "pyproject.toml",
     "uv.lock",
 )

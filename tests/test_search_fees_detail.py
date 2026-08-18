@@ -95,3 +95,11 @@ def test_partial_columns_price_only():
     out = _run(fees, keyword="麻醉")
     assert "86.00×3" in out
     assert "开单" not in out
+
+
+def test_optional_unit_and_order_id_are_visible():
+    fees = _fees_full().assign(unit=["次", "部位"], order_id=["O-1", "O-2"])
+    out = _run(fees, keyword="麻醉")
+    assert "单位=次" in out
+    assert "医嘱关联=有" in out
+    assert "O-1" not in out

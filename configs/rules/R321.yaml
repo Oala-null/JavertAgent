@@ -1,0 +1,49 @@
+rule_id: R321
+domain: 眼科
+violation_type: 虚构医药服务项目
+question: 收取床头心电图费用，但医院是否具备床头心电相关设备和实际服务能力需要现场核查。
+example: 病例有床头心电图费用和医嘱，但患者病历无法证明医院配置了相应设备，应形成机构级现场核查事项。
+status: ready
+priority: P0
+prompt_addon: |
+  本规则是机构能力现场核查规则，不是凭患者病历直接认定违规。患者医嘱和检查记录只能证明开具或执行线索，不能证明医院在收费时拥有符合要求的床头心电设备、设备登记、维护校准和操作能力。
+
+  审计步骤：
+  1. 调 search_fees(keyword="床头心电图")，必要时补搜“床旁心电图”。无费用时 CLEAN。
+  2. 调 search_orders(keyword="心电图") 和 search_notes(keyword="床头心电图")，记录医嘱、报告或执行线索；这些证据不得替代机构设备台账。
+  3. 当前系统没有医院设备资产数据源。只要床头心电图费用存在且没有外部机构能力证据，必须判 INCONCLUSIVE conf 0.50，reasoning 明确写“需现场核查床头心电图设备、设备台账、校准/维护记录及实际使用记录”。
+  4. 不得因医嘱存在或普通心电图报告存在而 CLEAN；也不得因系统没有设备台账而 VIOLATION。
+  5. 只有未来接入可验证的机构设备台账并确认收费期设备在册、可用且有使用记录时才可 CLEAN；若现场资料明确证明无设备或设备停用而仍收费，才可 VIOLATION。
+
+  本期硬边界：病例级证据只能触发现场核查，不能替代现场认定。
+trigger_keywords:
+  - 床头心电图
+  - 床旁心电图
+  - 床边心电图
+  - 移动心电图
+  - 心电图床旁检查
+trigger_codes:
+  - '003107010010003'
+  - A310701001
+exam_keywords:
+  - 床头心电图
+  - 床旁心电图
+suggested_tools:
+  - search_fees
+  - search_orders
+  - search_notes
+expected_signal: |
+  典型待复核：床头心电图收费和医嘱均存在，但系统无设备资产数据，输出现场核查清单。
+  典型违规：现场证实收费期无设备或设备停用且无外借记录。
+  典型合规：机构台账、校准维护和具体使用记录完整。
+notes: 专家扩展规则，非 0325 原始条目；当前无机构设备工具，生产结论固定保守到人工复核。
+derived_from_template: M4
+drug_rule_type:
+render_hash:
+precheck:
+  mode: presence_review
+  a_items:
+    - 床头心电图
+    - 床旁心电图
+    - 床边心电图
+  b_items: []

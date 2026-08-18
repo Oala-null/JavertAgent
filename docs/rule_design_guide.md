@@ -44,7 +44,7 @@ applicable_departments: []             # ["骨科", "肿瘤内科"] — 仅这�
 
 | 字段 | 说明 |
 |------|------|
-| `rule_id` | `R{序号:03d}` 从 0325 表行号映射; **或 `RD{NN}` 药品类命名段** (v0.8, 0325 清单无对应序号: `RD01-03` 类型级 / `RD10+` 精选). pattern `^(R\d{3}\|RD\d{2,3})$`. 不要手改. |
+| `rule_id` | `R001-R318` 通常从 0325 表行号映射；`R319+` 仅用于 notes 明确标注来源的本地专家扩展；`RD{NN}` 为药品类命名段。pattern `^(R\d{3}\|RD\d{2,3})$`。已注册 ID 不要手改。 |
 | `domain` | 所属领域. 与 spec 区分领域用. |
 | `violation_type` | 违规类型: 重复收费 / 串换项目 / 过度检查 ... |
 | `question` | 0325 表「问题」列原文. 这是判定的法律依据. |
@@ -66,7 +66,7 @@ applicable_departments: []             # ["骨科", "肿瘤内科"] — 仅这�
 | `derived_from_template` | 最近一次模板来源，如 `M1`/`M8`；不是模板生成的规则可空。 |
 | `drug_rule_type` | M8 的 `限适应症/超说明书/限二线/禁忌症`；非药品规则为空。 |
 | `render_hash` | `prompt-fit` 最近渲染产物 hash，用于发现模板渲染后又被手工改过。 |
-| `precheck` | 确定性费用项目集。`coexist` 用于 M1 并存判据；`companion` 用于主术式与必备配套缺失；`presence` 用于目标收费不存在时直接判规则不适用。无预检则为空。 |
+| `precheck` | 确定性费用项目集。`coexist` 用于 M1 附属并存；`companion` 用于主术式与必备配套缺失；`presence` 用于目标收费存在性；`coexist_review` 只确认两组费用共存、不注重复收费偏置；`presence_review` 在目标费用存在时零模型进入外部资料复核。无预检则为空。 |
 | `applicable_visit_type` | (v0.5) optional, 例 `["ipt"]` 表示仅住院适用. router 在 patient visit_type 不匹配时直接 prune. yaml 缺省 = 不限制. |
 | `applicable_gender` | (v0.5) optional, `"F"` 或 `"M"`. router prune 不符病人. |
 | `applicable_age_min` / `applicable_age_max` | (v0.5) optional, int 年龄区间. 用于"限儿童 / 限老年人"类规则. |

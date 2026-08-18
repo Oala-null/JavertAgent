@@ -28,7 +28,13 @@ from .prompt_assembler import (
     load_experience_doc,
     load_hospital_config,
 )
-from .precheck import CLEAN as PC_CLEAN, FACTS as PC_FACTS, PrecheckResult, run_precheck
+from .precheck import (
+    CLEAN as PC_CLEAN,
+    FACTS as PC_FACTS,
+    REVIEW as PC_REVIEW,
+    PrecheckResult,
+    run_precheck,
+)
 from .result import AuditResult, Evidence, ToolCall, TOOL_FAILURE_GATE_TAG
 from .rule import Rule
 from .run_id import new_run_id
@@ -519,6 +525,33 @@ class Runner:
         )
         return result
 
+    def _make_precheck_review(
+        self,
+        rule: Rule,
+        patient_id: str,
+        run_id: str,
+        started: datetime,
+        t_start: float,
+        pc: PrecheckResult,
+    ) -> AuditResult:
+        """预检确定需要外部资料 → 直接 INCONCLUSIVE，避免 LLM 把未知猜成有或无。"""
+        duration_ms = int((time.perf_counter() - t_start) * 1000)
+        self.emit(f"[Precheck] {rule.rule_id} → INCONCLUSIVE ({pc.precheck_tag}): {pc.reason}")
+        return AuditResult(
+            run_id=run_id,
+            rule_id=rule.rule_id,
+            patient_id=patient_id,
+            verdict="INCONCLUSIVE",
+            confidence=0.5,
+            reasoning=pc.reason,
+            evidence=pc.evidence,
+            tool_calls=[],
+            duration_ms=duration_ms,
+            model=self.provider.model_name,
+            started_at=started,
+            precheck_tag=pc.precheck_tag,
+        )
+
     def _audit_body(
         self,
         rule: Rule,
@@ -585,6 +618,8 @@ class Runner:
         if pc is not None:
             if pc.outcome == PC_CLEAN:
                 return self._make_precheck_clean(rule, patient_id, run_id, started, t_start, pc)
+            if pc.outcome == PC_REVIEW:
+                return self._make_precheck_review(rule, patient_id, run_id, started, t_start, pc)
             if pc.outcome == PC_FACTS:
                 precheck_facts = pc.fact_block
                 precheck_tag = pc.precheck_tag

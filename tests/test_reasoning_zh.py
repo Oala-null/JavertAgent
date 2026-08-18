@@ -12,6 +12,12 @@ def test_tool_names_replaced():
     assert "费用明细检索" in s and "检验报告检索" in s
 
 
+def test_new_clinical_tool_names_replaced():
+    s = humanize_reasoning("search_orders 与 catalog_lookup 提供证据")
+    assert "search_orders" not in s and "catalog_lookup" not in s
+    assert "医嘱检索" in s and "诊疗目录查询" in s
+
+
 def test_verdicts_and_rule_codes_replaced():
     s = humanize_reasoning("按 R191 规则应判 VIOLATION, RD20 为 CLEAN, 否则 INCONCLUSIVE")
     assert "R191" not in s and "RD20" not in s

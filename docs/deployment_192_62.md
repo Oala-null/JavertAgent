@@ -743,6 +743,38 @@ results 200，客户端 `--noproxy` 健康，浏览器去标识 notes/fees/labs 
 和 v3 submit/results 冒烟通过。浏览器真实详情页抽样 22 个说明区块，最长 399 字，内部工具/
 英文裁决词和旧 evidence JSON 区块均为 0。
 
+### 10.13 临床证据工具与眼科专家规则（2026-08-18）
+
+本批新增费用 `unit/order_id` 读契约、结构化医嘱合流、`search_orders`、按服务日期查询的
+`catalog_lookup`、检查/检验全文弱兜底，以及 R319-R322。生产制品范围新增根目录两份诊疗
+目录工作簿；缺任一文件时目录工具会诚实返回资产未就绪，不得静默用未来版本代替历史日期。
+
+发布前本地门禁：
+
+```bash
+PYTHONPATH=src .venv/bin/python scripts/build_rule_mapping.py
+.venv/bin/javert promise validate
+.venv/bin/javert promise run
+.venv/bin/pytest -q
+openspec validate close-clinical-audit-tool-gaps --strict
+```
+
+按 §10 从已提交 HEAD 执行 artifact/install；本批含 Python/YAML，必须重拉进程。无需修改
+`zadig` 结果库 schema，也不得对只读 `sh_yb_platform` 执行 DDL。`aidb.intake_fees` 若仍作为
+兜底接入源，由其库管理员另行幂等执行新版 `scripts/sql/create_aidb_tables.sql`，增加可空
+“计价单位/医嘱编号”；主 Hub 路径不依赖该操作。
+
+重启后除 §10 通用门禁外，追加：
+
+1. `javert list` 可见 R319-R322 ready，工具列表含 `search_orders/catalog_lookup`；
+2. 两份目录文件存在，合成查询 `眼压检查 + 2026-04-20` 返回单位“次”，不得返回未来“单侧”；
+3. 去标识合成病例结果为 R319=V、R320=I、R321=I 且零 LLM、R322=I；
+4. v3 空 submit=202、unknown results=200，SQL/Hub、登录和 systemd 正常；
+5. 真实 OCR 病例重跑会向配置的内部 LLM 提交脱敏病历，必须在明确授权该目的地后才执行。
+
+回滚到上一受控 HEAD 即恢复旧工具/规则；不删除目录、不回写历史 audit_runs。已生成的新规则
+结果保留审计追溯，需要业务撤回时走专家 review，不做数据库删除。
+
 ## 11. 实测性能 (2026-05-21 50 病人 batch)
 
 ```

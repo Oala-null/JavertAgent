@@ -143,6 +143,8 @@ def create_executor(loader: DataLoader) -> Callable[..., str]:
         # boost-llm-efficiency: 量价 + 开单科室/医师 信号 (M4 超标准/分解/串换科室类规则依赖).
         # 源数据缺列时整体省略 (不出现占位符); 行锚与既有列文本不变, 只追加.
         pric_col = next((c for c in ("pric", "unit_price", "单价") if c in patient_fees.columns), None)
+        unit_col = next((c for c in ("unit", "计价单位", "单位") if c in patient_fees.columns), None)
+        order_col = next((c for c in ("order_id", "YZID", "医嘱ID") if c in patient_fees.columns), None)
         dept_col = next(
             (c for c in ("acord_dept_name", "bilg_dept_name", "开单科室") if c in patient_fees.columns), None
         )
@@ -197,6 +199,8 @@ def create_executor(loader: DataLoader) -> Callable[..., str]:
                     "cnt": float(netit.net_qty) if netit else float(pos["_cnt"].sum()),
                     "dates": sorted({d for d in pos["_date"].tolist() if d}),
                     "pric": float(first["_pric"]) if (pric_col and pd.notna(first["_pric"])) else None,
+                    "unit": _clean_str(first.get(unit_col)) if unit_col else "",
+                    "order_id": _clean_str(first.get(order_col)) if order_col else "",
                     "who": who,
                     "refunds": int(netit.refund_count) if netit else 0,
                     "category": str(first["_category"]),
@@ -211,6 +215,10 @@ def create_executor(loader: DataLoader) -> Callable[..., str]:
                 parts.append(f"单价{it['pric']:.2f}×{q}")
             elif it["cnt"] != 1:
                 parts.append(f"×{q}")
+            if it["unit"]:
+                parts.append(f"单位={it['unit']}")
+            if it["order_id"]:
+                parts.append("医嘱关联=有")
             if it["who"]:
                 parts.append(f"[开单:{it['who']}]")
             note = f" [含{it['refunds']}次退费已抵消]" if it["refunds"] > 0 else ""

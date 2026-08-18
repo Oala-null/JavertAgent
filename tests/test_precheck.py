@@ -184,6 +184,41 @@ def test_presence_fully_refunded_target_fee_clean():
     assert run_precheck(_SPEC_PRESENCE, df).outcome == CLEAN
 
 
+def test_coexist_review_is_neutral_and_requires_both_groups():
+    spec = PrecheckSpec(a_items=["A型超声"], b_items=["B型超声"], mode="coexist_review")
+    a_only = _fee_df([{
+        "medins_list_name": "A型超声检查", "cnt": 1, "det_item_fee_sumamt": 15,
+    }])
+    both = _fee_df([
+        {"medins_list_name": "A型超声检查", "cnt": 1, "det_item_fee_sumamt": 15},
+        {"medins_list_name": "B型超声检查", "cnt": 1, "det_item_fee_sumamt": 30},
+    ])
+
+    assert run_precheck(spec, a_only).outcome == CLEAN
+    result = run_precheck(spec, both)
+    assert result.outcome == FACTS
+    assert result.precheck_tag == "A+B共存待核独立依据"
+    assert "不预设二者为附属" in result.fact_block
+    assert "应打包" not in result.fact_block
+
+
+def test_presence_review_short_circuits_to_external_review():
+    spec = PrecheckSpec(a_items=["床头心电图"], b_items=[], mode="presence_review")
+    no_target = _fee_df([{
+        "medins_list_name": "普通心电图", "cnt": 1, "det_item_fee_sumamt": 20,
+    }])
+    target = _fee_df([{
+        "medins_list_name": "床头心电图/次", "cnt": 1, "det_item_fee_sumamt": 43,
+    }])
+
+    assert run_precheck(spec, no_target).outcome == CLEAN
+    result = run_precheck(spec, target)
+    assert result.outcome == "review"
+    assert result.precheck_tag == "目标收费存在需外部资料复核"
+    assert "现场核查设备台账" in result.reason
+    assert result.evidence[0].locator == "床头心电图/次"
+
+
 # ========== 迁移解析 (Task 4.2) ==========
 _R191_ADDON = (
     "本规则关注: ...\n"

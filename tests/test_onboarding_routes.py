@@ -58,7 +58,7 @@ def test_manifest_view_only_shows_processable_spokes():
     view = manifest_view(load_manifest())
     keys = {v["key"] for v in view}
     assert keys == {"fees", "notes", "diagnoses", "surgeries", "labs", "examinations",
-                    "anesthesia", "pathology"}
+                    "anesthesia", "pathology", "orders"}
     # 每个展示的 spoke 都有处理路径 (tool 或 tabular)
     for v in view:
         assert v["tool"] is not None or v["is_tabular"]

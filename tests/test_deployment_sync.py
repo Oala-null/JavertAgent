@@ -3,6 +3,8 @@ from scripts.deployment_sync import DEPLOY_SCOPES, compare_head_state
 
 def test_runtime_scope_contains_promise_governance_assets():
     assert "tests/promise_cases" in DEPLOY_SCOPES
+    assert "截至20260401诊疗项目.xls" in DEPLOY_SCOPES
+    assert "截至20260701诊疗项目.xls" in DEPLOY_SCOPES
     assert "docs/templates/260611医保基金监管规则框架总表.xlsx" not in DEPLOY_SCOPES
 
 

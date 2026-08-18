@@ -19,6 +19,7 @@ from javert.data.loader import DataLoader
 from javert.onboarding.manifest_loader import Spoke, load_manifest
 
 from . import (
+    catalog_lookup,
     drug_audit_lookup,
     drug_indication,
     note_diagnosis,
@@ -28,6 +29,7 @@ from . import (
     search_fees,
     search_lab_results,
     search_notes,
+    search_orders,
     search_pathology,
 )
 from .tool_executor import ToolExecutor
@@ -71,12 +73,13 @@ def _spoke_tool_wiring(loader: DataLoader, cfg: JavertConfig) -> dict[str, tuple
     """tool 名 → (factory, 模块) — 各 spoke 工具的 bespoke 注入装配."""
     return {
         "search_notes": (lambda: search_notes.create_executor(loader), search_notes),
+        "search_orders": (lambda: search_orders.create_executor(loader), search_orders),
         "search_fees": (lambda: search_fees.create_executor(loader), search_fees),
         "note_diagnosis": (lambda: note_diagnosis.create_executor(loader), note_diagnosis),
         "search_lab_results": (
-            lambda: search_lab_results.create_executor(_get_lab_loader(cfg)), search_lab_results),
+            lambda: search_lab_results.create_executor(_get_lab_loader(cfg), loader), search_lab_results),
         "search_examinations": (
-            lambda: search_examinations.create_executor(_get_exam_loader(cfg)), search_examinations),
+            lambda: search_examinations.create_executor(_get_exam_loader(cfg), loader), search_examinations),
         "search_anesthesia": (
             lambda: search_anesthesia.create_executor(loader, cfg.ss_path), search_anesthesia),
         "search_pathology": (
@@ -119,6 +122,15 @@ def build_executor(loader: DataLoader, config: JavertConfig | None = None) -> To
         registered.add(tool)
 
     # ── 非 spoke 工具 (不挂在数据 spoke 上, 照常注册) ──
+    executor.register(
+        "catalog_lookup",
+        catalog_lookup.create_executor([
+            cfg.resolve("截至20260401诊疗项目.xls"),
+            cfg.resolve("截至20260701诊疗项目.xls"),
+        ]),
+        description=catalog_lookup.DESCRIPTION,
+        requires_patient_id=False,
+    )
     drug_map_path = cfg.resolve("configs") / "drug_indication_map.json"
     executor.register(
         "drug_indication",
@@ -174,6 +186,8 @@ def get_tool_input_schemas() -> dict[str, dict]:
     """返回每个工具的 JSON-Schema (供 prompt 文档化, 不强制传给 LLM)."""
     return {
         "search_notes": search_notes.INPUT_SCHEMA,
+        "search_orders": search_orders.INPUT_SCHEMA,
+        "catalog_lookup": catalog_lookup.INPUT_SCHEMA,
         "search_fees": search_fees.INPUT_SCHEMA,
         "note_diagnosis": note_diagnosis.INPUT_SCHEMA,
         "drug_indication": drug_indication.INPUT_SCHEMA,

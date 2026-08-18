@@ -35,10 +35,13 @@ _AMT_CANDIDATES = ("det_item_fee_sumamt", "unit_price", "pric", "金额")
 CLEAN = "clean"
 FACTS = "facts"
 SKIP = "skip"
+REVIEW = "review"
 
 COEXIST = "coexist"
 COMPANION = "companion"
 PRESENCE = "presence"
+PRESENCE_REVIEW = "presence_review"
+COEXIST_REVIEW = "coexist_review"
 
 
 @dataclass
@@ -164,6 +167,19 @@ def _build_presence_fact_block(a_hits: list[FeeHit]) -> str:
     return "\n".join(lines)
 
 
+def _build_coexist_review_fact_block(a_hits: list[FeeHit], b_hits: list[FeeHit]) -> str:
+    """中性共存事实：只确认两组费用在场，不注入 M1 附属/重复收费语义。"""
+    lines = ["【系统预检费用共存事实 (确定性, 已净退费)】"]
+    lines += _fact_lines("A 类命中", a_hits)
+    lines += _fact_lines("B 类命中", b_hits)
+    lines += [
+        "以上只证明两组目标费用同时存在，不预设二者为附属、重复或必然不合理。",
+        "请严格按当前规则调用相应工具，分别核实两组项目的临床目的、适用指征、部位和时间。",
+        "两组项目各有独立充分依据 → CLEAN；缺少独立依据 → 按规则进入人工复核或违规判断。",
+    ]
+    return "\n".join(lines)
+
+
 def _hits_to_evidence(hits: list[FeeHit]) -> list[Evidence]:
     """命中费用行 → Evidence(source=search_fees, locator=项目名); hit_resolver 据此 join 码+锚点."""
     out: list[Evidence] = []
@@ -229,6 +245,26 @@ def _coexist_result(a_hits: list[FeeHit], b_hits: list[FeeHit]) -> PrecheckResul
     )
 
 
+def _coexist_review_result(a_hits: list[FeeHit], b_hits: list[FeeHit]) -> PrecheckResult:
+    if not a_hits or not b_hits:
+        return PrecheckResult(
+            outcome=CLEAN,
+            precheck_tag="目标组合未共存",
+            reason="预检: 两组目标费用未同时命中, 组合复核规则不适用 → CLEAN",
+            a_hits=a_hits,
+            b_hits=b_hits,
+        )
+    return PrecheckResult(
+        outcome=FACTS,
+        precheck_tag="A+B共存待核独立依据",
+        reason="预检: 两组目标费用共存, 交 LLM 分别核实独立临床依据",
+        a_hits=a_hits,
+        b_hits=b_hits,
+        fact_block=_build_coexist_review_fact_block(a_hits, b_hits),
+        evidence=_hits_to_evidence(a_hits) + _hits_to_evidence(b_hits),
+    )
+
+
 def _companion_result(
     a_hits: list[FeeHit], b_hits: list[FeeHit], b_items: list[str]
 ) -> PrecheckResult:
@@ -271,19 +307,38 @@ def _presence_result(a_hits: list[FeeHit]) -> PrecheckResult:
     )
 
 
+def _presence_review_result(a_hits: list[FeeHit]) -> PrecheckResult:
+    """外部资料型规则：目标费用存在即进入人工复核，不把资料缺失交给 LLM 猜。"""
+    if not a_hits:
+        return PrecheckResult(
+            outcome=CLEAN,
+            precheck_tag="无目标收费",
+            reason="预检: 未见目标费用命中, 规则不适用 → CLEAN",
+        )
+    return PrecheckResult(
+        outcome=REVIEW,
+        precheck_tag="目标收费存在需外部资料复核",
+        reason="目标收费已确认存在，但机构级能力资料不在患者病历数据源中，需现场核查设备台账、维护校准和实际使用记录。",
+        a_hits=a_hits,
+        evidence=_hits_to_evidence(a_hits),
+    )
+
+
 def run_precheck(spec: PrecheckSpec, fee_df: pd.DataFrame | None) -> PrecheckResult:
     """对一条规则的 A/B 项目集 + 患者费用做确定性预检. 纯函数.
 
     mode=coexist (M1 重复收费, 缺省): A∩B 并存缺失 → clean, 并存 → facts.
     mode=companion (术式↔配套): A 无 → clean, A 有 B 无 → facts, 双有 → skip.
     mode=presence (目标收费存在性): A 无 → clean, A 有 → facts.
+    mode=presence_review (外部资料复核): A 无 → clean, A 有 → review.
+    mode=coexist_review (中性共存复核): A/B 缺一 → clean, 双有 → facts.
 
     Args:
         spec: 规则的 PrecheckSpec (a_items / b_items / mode；presence 可省略 B).
         fee_df: 该患者全量费用切片; None/空/缺列 → skip (fail-open).
     """
     mode = (spec.mode or COEXIST).lower()
-    if not spec.a_items or (mode != PRESENCE and not spec.b_items):
+    if not spec.a_items or (mode not in (PRESENCE, PRESENCE_REVIEW) and not spec.b_items):
         # 迁移不全的规则 → 无法预检, 走原路径
         return PrecheckResult(outcome=SKIP, reason="precheck spec 缺 A 或 B 项目集")
 
@@ -294,9 +349,13 @@ def run_precheck(spec: PrecheckSpec, fee_df: pd.DataFrame | None) -> PrecheckRes
     a_hits = _match_hits(spec.a_items, rows)
     if mode == PRESENCE:
         return _presence_result(a_hits)
+    if mode == PRESENCE_REVIEW:
+        return _presence_review_result(a_hits)
 
     b_hits = _match_hits(spec.b_items, rows)
 
     if mode == COMPANION:
         return _companion_result(a_hits, b_hits, spec.b_items)
+    if mode == COEXIST_REVIEW:
+        return _coexist_review_result(a_hits, b_hits)
     return _coexist_result(a_hits, b_hits)

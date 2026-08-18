@@ -34,9 +34,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger("etl_import")
 
-# ── shi_fee.csv 完整列序 (36 列, 与原始文件一致) ──
+# ── shi_fee.csv 完整列序 (兼容追加计价单位/医嘱关联) ──
 FEE_COLUMNS = [
-    "bah", "feedetl_sn", "fee_ocur_time", "cnt", "pric",
+    "bah", "feedetl_sn", "fee_ocur_time", "cnt", "unit", "order_id", "pric",
     "det_item_fee_sumamt", "pric_uplmt_amt", "selfpay_prop",
     "fulamt_ownpay_amt", "overlmt_amt", "preselfpay_amt", "inscp_scp_amt",
     "chrgitm_lv", "list_type", "med_list_codg", "medins_list_codg",
@@ -114,6 +114,8 @@ def transform_fees(src: pd.DataFrame, col_map: dict, hospital_code: str) -> pd.D
     out["fee_ocur_time"] = _col(src, col_map, "date")
     out["medins_chrgitm_type"] = _col(src, col_map, "category")
     out["cnt"] = _col(src, col_map, "quantity")
+    out["unit"] = _col(src, col_map, "unit")
+    out["order_id"] = _col(src, col_map, "order_id")
     out["pric"] = _col(src, col_map, "unit_price")
     out["spec"] = _col(src, col_map, "spec")
     out["medins_list_codg"] = _col(src, col_map, "item_code")

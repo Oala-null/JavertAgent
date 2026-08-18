@@ -52,6 +52,8 @@ spokes:
       - feedetl_sn
       - fee_ocur_time
       - cnt
+      - unit
+      - order_id
       - pric
       - det_item_fee_sumamt
       - pric_uplmt_amt
@@ -91,6 +93,8 @@ spokes:
       - {key: date,          name: 收费日期,   required: true,  targets: [fee_ocur_time], is_date: true}
       - {key: category,      name: 费用类别,   required: true,  targets: [medins_chrgitm_type]}
       - {key: quantity,      name: 数量,       required: false, targets: [cnt]}
+      - {key: unit,          name: 计价单位,   required: false, targets: [unit]}
+      - {key: order_id,      name: 医嘱关联,   required: false, targets: [order_id]}
       - {key: unit_price,    name: 单价,       required: false, targets: [pric]}
       - {key: spec,          name: 规格,       required: false, targets: [spec]}
       - {key: item_code,     name: 项目编码,   required: false, targets: [medins_list_codg]}
@@ -124,6 +128,14 @@ spokes:
       - {key: content,    name: 文书正文, required: true,  targets: [内容]}
       - {key: doc_name,   name: 文书标题, required: false, targets: [阶段]}
       - {key: time,       name: 文书时间, required: false, targets: [事件时间], is_date: true}
+
+  # ────────────── 医嘱视图 (复用 notes，结构化医嘱优先) ──────────────
+  orders:
+    name: 医嘱
+    status: view
+    loader: CsvLoader.get_notes
+    tool: search_orders
+    derived_from: [notes]
 
   # ────────────── 病案首页-诊断 (live) ──────────────
   diagnoses:

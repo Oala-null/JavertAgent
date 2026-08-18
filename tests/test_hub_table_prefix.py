@@ -20,17 +20,27 @@ def _capturing_q(sqls: list[str]):
         compact = " ".join(sql.split())
         sqls.append(compact)
         if "sys.tables" in compact:
-            assert params == ("desus_TB_HIS_ZY_FEE_DETAIL_EXT",)
+            assert params in {
+                ("desus_TB_HIS_ZY_FEE_DETAIL_EXT",),
+                ("desus_TB_CIS_DRADVICE_DETAIL",),
+            }
+            if params == ("desus_TB_CIS_DRADVICE_DETAIL",):
+                return pd.DataFrame([{"x": "1"}])
             return _empty(["x"])
         if "DIC_HOSPITAL" in compact:
             return _empty(["YLJGYQDM", "YYJC"])
         if "FEE_DETAIL_FS" in compact:
             return _empty([
-                "YLJGYQDM", "SFMXID", "STFBZ", "JZLSH", "MXFYLB", "FYFSSJ",
-                "MXXMBM", "MXXMBMYB", "MXXMMC", "MXXMDJ", "MXXMSL", "MXXMJE",
+                "YLJGYQDM", "SFMXID", "STFBZ", "JZLSH", "YZID", "MXFYLB", "FYFSSJ",
+                "MXXMBM", "MXXMBMYB", "MXXMMC", "MXXMDW", "MXXMDJ", "MXXMSL", "MXXMJE",
             ])
         if "MEDICAL_DOCUMENT" in compact:
             return _empty(["JZLSH", "JLSJ", "WSMC", "WSLB", "DLBT", "ZW"])
+        if "DRADVICE_DETAIL" in compact:
+            return _empty([
+                "JZLSH", "YZZH", "YZSM", "MXXMMC", "YZXDSJ", "YZZXSJ",
+                "YZZZSJ", "YZLB", "XMMXSL", "XMMXDW",
+            ])
         if "LEAVEHOSPITAL_SUMMARY" in compact:
             return _empty([
                 "JZLSH", "CYSJ", "YYZTBBT1", "YYZTB1", "YYZTBBT2", "YYZTB2",
@@ -93,7 +103,8 @@ def test_all_shared_fetchers_use_desus_table_family(monkeypatch):
     rendered = "\n".join(sqls)
     for base in (
         "TB_DIC_HOSPITAL", "TB_HIS_ZY_FEE_DETAIL_FS", "TB_CIS_MEDICAL_DOCUMENT",
-        "TB_CIS_LEAVEHOSPITAL_SUMMARY", "TB_IH_DIAGNOSIS_DETAIL", "TB_BA_SYJBK",
+        "TB_CIS_LEAVEHOSPITAL_SUMMARY", "TB_CIS_DRADVICE_DETAIL",
+        "TB_IH_DIAGNOSIS_DETAIL", "TB_BA_SYJBK",
         "TB_BA_SYZDK", "TB_OPERATION_DETAIL", "TB_BA_SYSSK", "TB_LIS_INDICATORS",
         "TB_LIS_REPORT", "TB_RIS_REPORT", "TB_RIS_REPORT2",
     ):
