@@ -179,6 +179,7 @@ def build_executor(loader: DataLoader, config: JavertConfig | None = None) -> To
         description=scan_progress_indications.DESCRIPTION,
         requires_patient_id=getattr(scan_progress_indications, "REQUIRES_PATIENT_ID", False),
     )
+    executor.set_tool_input_schemas(get_tool_input_schemas())
     return executor
 
 

@@ -10,6 +10,7 @@ Source: zadig_agent/src/llm_provider.py (snapshot @ 2026-05-08)
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from typing import Any
@@ -17,6 +18,34 @@ from typing import Any
 from javert.config import JavertConfig, get_config
 
 logger = logging.getLogger("javert.tools.llm_provider")
+
+
+def _native_tool_calls(message: dict[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
+    """OpenAI message.tool_calls → Runner 既有 {name, arguments} 契约。"""
+    calls: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for index, item in enumerate(message.get("tool_calls") or []):
+        function = item.get("function") or {}
+        name = str(function.get("name") or "").strip()
+        raw_arguments = function.get("arguments", {})
+        try:
+            arguments = (
+                json.loads(raw_arguments)
+                if isinstance(raw_arguments, str) and raw_arguments.strip()
+                else (raw_arguments or {})
+            )
+        except json.JSONDecodeError as exc:
+            errors.append(f"{name or 'unknown'} arguments JSON 非法: {exc}")
+            continue
+        if not name or not isinstance(arguments, dict):
+            errors.append(f"{name or 'unknown'} 缺少函数名或 arguments 不是对象")
+            continue
+        calls.append({
+            "id": str(item.get("id") or f"call_{index}"),
+            "name": name,
+            "arguments": arguments,
+        })
+    return calls, errors
 
 
 class LlmUnavailableError(RuntimeError):
@@ -99,9 +128,10 @@ class Qwen35Provider:
         data = resp.json()
         choice = data["choices"][0]
         msg = choice.get("message", {})
+        tool_calls, tool_call_errors = _native_tool_calls(msg)
         content = msg.get("content") or ""
         reasoning_content = msg.get("reasoning_content") or ""
-        if not content and reasoning_content:
+        if not content and reasoning_content and not tool_calls:
             logger.info("[Qwen35Provider] content 为空, fallback 到 reasoning_content")
             content = reasoning_content
 
@@ -117,6 +147,8 @@ class Qwen35Provider:
         return {
             "content": content,
             "reasoning_content": reasoning_content,
+            "tool_calls": tool_calls,
+            "tool_call_errors": tool_call_errors,
             "usage": usage,
             "finish_reason": choice.get("finish_reason"),
             "raw_response": data,

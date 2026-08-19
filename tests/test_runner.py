@@ -139,6 +139,92 @@ def test_happy_path_with_tool_then_verdict(cfg, executor):
     assert result.confidence == pytest.approx(0.9)
 
 
+def test_native_tool_protocol_uses_structured_calls_and_tool_messages(cfg, executor):
+    cfg.llm_tool_protocol = "native"
+
+    class NativeProvider:
+        model_name = "Qwen/Qwen3.8-27B-FP8"
+
+        def __init__(self):
+            self.calls = 0
+            self.seen: list[tuple[list[dict[str, Any]], dict[str, Any]]] = []
+
+        def chat_with_retry(self, messages, **kwargs):
+            self.seen.append(([dict(item) for item in messages], dict(kwargs)))
+            self.calls += 1
+            if self.calls == 1:
+                return {
+                    "content": "",
+                    "tool_calls": [{
+                        "id": "call_notes",
+                        "name": "search_notes",
+                        "arguments": {"keyword": "甲状腺"},
+                    }],
+                    "tool_call_errors": [],
+                    "finish_reason": "tool_calls",
+                }
+            return {
+                "content": (
+                    '```json\n{"verdict":"CLEAN","confidence":0.9,'
+                    '"evidence":[],"reasoning":"已核实"}\n```'
+                ),
+                "tool_calls": [],
+                "tool_call_errors": [],
+                "finish_reason": "stop",
+            }
+
+    provider = NativeProvider()
+    result = Runner(executor=executor, provider=provider, config=cfg).audit(
+        _make_rule(), "J66252"
+    )
+    assert result.verdict == "CLEAN"
+    assert [call.tool_name for call in result.tool_calls] == ["search_notes"]
+    assert provider.seen[0][1]["tools"]
+    second_messages = provider.seen[1][0]
+    assert any(message["role"] == "assistant" and message.get("tool_calls") for message in second_messages)
+    assert any(message["role"] == "tool" and message["tool_call_id"] == "call_notes" for message in second_messages)
+    assert "<tool_call>" not in second_messages[0]["content"]
+
+
+def test_native_tool_protocol_dedupes_and_caps_total_invocations(cfg, executor):
+    cfg.llm_tool_protocol = "native"
+
+    class NativeBurstProvider:
+        model_name = "Qwen/Qwen3.8-27B-FP8"
+
+        def __init__(self):
+            self.calls = 0
+
+        def chat_with_retry(self, _messages, **_kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                calls = [
+                    {
+                        "id": f"call_{i}",
+                        "name": "search_notes",
+                        "arguments": {"keyword": f"方向{i}"},
+                    }
+                    for i in range(6)
+                ]
+                calls.append({**calls[0], "id": "duplicate"})
+                return {"content": "", "tool_calls": calls, "tool_call_errors": []}
+            return {
+                "content": (
+                    '```json\n{"verdict":"CLEAN","confidence":0.9,'
+                    '"evidence":[],"reasoning":"预算内完成"}\n```'
+                ),
+                "tool_calls": [],
+                "tool_call_errors": [],
+            }
+
+    result = Runner(
+        executor=executor, provider=NativeBurstProvider(), config=cfg
+    ).audit(_make_rule(), "J66252")
+    assert result.verdict == "CLEAN"
+    assert len(result.tool_calls) == cfg.max_tool_calls
+    assert len({call.arguments["keyword"] for call in result.tool_calls}) == cfg.max_tool_calls
+
+
 def _make_drug_rule() -> Rule:
     return Rule(
         rule_id="RD04",

@@ -13,16 +13,26 @@ import json
 import logging
 import re
 import threading
+from copy import deepcopy
 from typing import Any, Callable
 
 logger = logging.getLogger("javert.tools.tool_executor")
 
 TOOL_CALL_PATTERN = re.compile(
-    r"<tool_call>\s*(\{.*?\})\s*</tool_call>",
+    r"(?:<tool_call>\s*)+(\{.*?\})\s*(?:</tool_call>\s*)+",
     re.DOTALL,
 )
 TOOL_CALL_ALT_PATTERN = re.compile(
     r"```tool_call\s*\n(\{.*?\})\s*\n```",
+    re.DOTALL,
+)
+TOOL_CALL_FUNCTION_PATTERN = re.compile(
+    r"(?:<tool_call>\s*)+<function=([A-Za-z_][\w.-]*)>\s*"
+    r"(.*?)</function>\s*(?:</tool_call>\s*)+",
+    re.DOTALL,
+)
+TOOL_CALL_PARAMETER_PATTERN = re.compile(
+    r"<parameter=([A-Za-z_][\w.-]*)>\s*(.*?)\s*</parameter>",
     re.DOTALL,
 )
 
@@ -40,6 +50,7 @@ class ToolExecutor:
     def __init__(self):
         self._tools: dict[str, Callable] = {}
         self._tool_descriptions: dict[str, str] = {}
+        self._tool_input_schemas: dict[str, dict[str, Any]] = {}
         self._requires_patient_id: dict[str, bool] = {}
         self._cache: dict[str, str] = {}
         self._patient_context: str | None = None
@@ -76,7 +87,40 @@ class ToolExecutor:
     def get_tool_definitions(self) -> list[dict[str, Any]]:
         return [{"name": n, "description": d} for n, d in self._tool_descriptions.items()]
 
-    def get_tools_prompt(self) -> str:
+    def set_tool_input_schemas(self, schemas: dict[str, dict[str, Any]]) -> None:
+        self._tool_input_schemas = deepcopy(schemas)
+
+    def get_openai_tools(self) -> list[dict[str, Any]]:
+        """把已注册工具投影为 OpenAI function tools；patient_id 由 Runner 上下文注入。"""
+        tools: list[dict[str, Any]] = []
+        for name, description in self._tool_descriptions.items():
+            schema = deepcopy(self._tool_input_schemas.get(name) or {
+                "type": "object", "properties": {},
+            })
+            schema.setdefault("type", "object")
+            schema.setdefault("properties", {})
+            if self._requires_patient_id.get(name):
+                schema["properties"].pop("patient_id", None)
+                if "required" in schema:
+                    schema["required"] = [
+                        item for item in schema["required"] if item != "patient_id"
+                    ]
+            tools.append({
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": description,
+                    "parameters": schema,
+                },
+            })
+        return tools
+
+    def get_tools_prompt(self, *, native: bool = False) -> str:
+        if native:
+            return (
+                "你可以使用系统提供的函数工具调查。需要证据时直接调用函数；"
+                "不要手写任何 XML/JSON 调用标签。"
+            )
         lines = [
             "你可以使用以下工具进行调查. 用 <tool_call>{\"name\": \"工具名\", \"arguments\": {...}}</tool_call> 格式调用.",
             "",
@@ -99,10 +143,23 @@ class ToolExecutor:
                     calls.append({"name": name, "arguments": arguments})
             except json.JSONDecodeError as exc:
                 logger.warning("tool_call JSON 解析失败: %s, 原文: %s", exc, match[:100])
+        for name, body in TOOL_CALL_FUNCTION_PATTERN.findall(text):
+            arguments: dict[str, Any] = {}
+            for key, raw_value in TOOL_CALL_PARAMETER_PATTERN.findall(body):
+                value = raw_value.strip()
+                try:
+                    arguments[key] = json.loads(value)
+                except json.JSONDecodeError:
+                    arguments[key] = value
+            calls.append({"name": name, "arguments": arguments})
         return calls
 
     def has_tool_calls(self, text: str) -> bool:
-        return bool(TOOL_CALL_PATTERN.search(text) or TOOL_CALL_ALT_PATTERN.search(text))
+        return bool(
+            TOOL_CALL_PATTERN.search(text)
+            or TOOL_CALL_ALT_PATTERN.search(text)
+            or TOOL_CALL_FUNCTION_PATTERN.search(text)
+        )
 
     def parse_errors(self, text: str) -> list[str]:
         """收集 <tool_call> 标签内 JSON 解析失败的错误串 (针对性反馈用).

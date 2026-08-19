@@ -127,6 +127,44 @@ def test_workbench_returning_user_banner(alice):
     assert "+15" in out
 
 
+def test_model_compare_template_renders_side_by_side(alice):
+    left = {
+        "run_id": "aud_left_compare",
+        "rule_id": "R191",
+        "verdict": "CLEAN",
+        "confidence": 0.9,
+        "reasoning": "左侧推理",
+        "evidence": [],
+        "tool_calls": [],
+        "duration_ms": 1000,
+        "gate_tag": "",
+    }
+    right = {
+        **left,
+        "run_id": "aud_right_compare",
+        "verdict": "INCONCLUSIVE",
+        "reasoning": "右侧推理",
+        "duration_ms": 2500,
+    }
+    out = render(
+        "model_compare.html",
+        title="模型对比",
+        current_user=alice,
+        active_patient="CASE-AB-001",
+        patient_id="CASE-AB-001",
+        batch_tag="ab3.8",
+        left_model="Qwen/Qwen3.6-35B-A3B-FP8",
+        right_model="Qwen/Qwen3.8-27B-FP8",
+        rows=[{"rule_id": "R191", "left": left, "right": right, "same": False}],
+        summary={"rules": 1, "same": 0, "different": 1, "missing": 0},
+        rule_meta={"R191": {"behavior_name": "合成重复收费"}},
+    )
+    assert "CASE-AB-001 · 双模型逐规则对比" in out
+    assert "左侧推理" in out and "右侧推理" in out
+    assert "需专家对比" in out
+    assert "ab3.8" in out
+
+
 def test_workbench_dismissed_banner(alice):
     out = render(
         "workbench.html",

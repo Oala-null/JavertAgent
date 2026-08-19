@@ -39,6 +39,26 @@ class _FakeStore:
         """No batch-profile routing in this CSV-only raw-access fixture."""
         return None
 
+    def list_model_comparison_runs(self, patient_id: str, batch_tag: str):
+        base = {
+            "patient_id": patient_id,
+            "rule_id": "R191",
+            "confidence": 0.9,
+            "reasoning": "合成推理",
+            "evidence": [],
+            "tool_calls": [],
+            "duration_ms": 1200,
+            "created_at": datetime.now(timezone.utc),
+            "batch_tag": batch_tag,
+            "gate_tag": "",
+        }
+        return [
+            {**base, "run_id": "aud_compare_q36", "verdict": "CLEAN",
+             "model": "Qwen/Qwen3.6-35B-A3B-FP8"},
+            {**base, "run_id": "aud_compare_q38", "verdict": "INCONCLUSIVE",
+             "model": "Qwen/Qwen3.8-27B-FP8"},
+        ]
+
 
 class _FakeLoader:
     """一行文书 + 空费用 → 走 csv 源, 不 404."""
@@ -104,6 +124,22 @@ def test_raw_access_log_failure_does_not_block(raw_client, monkeypatch):
     monkeypatch.setattr(store, "log_action", _boom)
     r = client.get("/api/patient/JTEST02/raw")
     assert r.status_code == 200  # 留痕失败不阻断响应
+
+
+def test_model_compare_is_authenticated_rendered_and_logged(raw_client):
+    client, store, login = raw_client
+    login(103)
+    response = client.get(
+        "/workbench/CASE-AB-001/model-compare?batch_tag=ab3.8"
+    )
+    assert response.status_code == 200
+    assert "双模型逐规则对比" in response.text
+    assert "Qwen/Qwen3.6-35B-A3B-FP8" in response.text
+    assert "Qwen/Qwen3.8-27B-FP8" in response.text
+    logs = [item for item in store.logs if item["action"] == "model_compare_access"]
+    assert len(logs) == 1
+    assert logs[0]["target_id"] == "CASE-AB-001"
+    assert logs[0]["payload"] == {"batch_tag": "ab3.8"}
 
 
 # =========================================================

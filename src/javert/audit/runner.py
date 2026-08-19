@@ -60,6 +60,35 @@ _TECHNICAL_FAILURE_MARKERS = (
 )
 
 
+def _native_tool_base_prompt(text: str) -> str:
+    """移除旧手写标签示例，避免与 OpenAI 原生 tools 的 chat template 冲突。"""
+    head, marker, tail = text.partition("# 工具调用格式")
+    if not marker:
+        return text
+    _legacy, verdict_marker, rest = tail.partition("# 最终裁决格式")
+    if not verdict_marker:
+        return text
+    return (
+        head
+        + "# 原生函数工具\n\n"
+        + "需要证据时直接调用系统提供的函数工具；不要手写任何 XML/JSON 调用标签。"
+        + "互不依赖的查询可在同一轮并列调用。\n\n"
+        + verdict_marker
+        + rest
+    )
+
+
+def _dedupe_tool_calls(calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for call in calls:
+        key = f"{call.get('name', '')}:{json.dumps(call.get('arguments') or {}, sort_keys=True, ensure_ascii=False)}"
+        if key not in seen:
+            seen.add(key)
+            out.append(call)
+    return out
+
+
 def _truncate(text: str, limit: int = _TRUNCATE) -> str:
     if len(text) <= limit:
         return text
@@ -423,7 +452,7 @@ class Runner:
         self,
         content: str,
         tool_calls: list[dict[str, Any]],
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         tool_records: list[ToolCall],
         *,
         audit_rule_id: str = "",
@@ -436,6 +465,8 @@ class Runner:
         不再丢弃. 成功次数供「至少 1 次成功 tool_call 才解锁裁决」判定.
         """
         tool_results_text: list[str] = []
+        native_results: list[dict[str, Any]] = []
+        native_protocol = bool(tool_calls) and all(call.get("id") for call in tool_calls)
         n_ok = 0
         for call in tool_calls:
             t0 = time.perf_counter()
@@ -474,9 +505,36 @@ class Runner:
                 f"({elapsed_ms}ms{', cached' if cached else ''})"
             )
             tool_results_text.append(f"工具 {call['name']} 返回:\n{truncated}")
+            if native_protocol:
+                native_results.append({
+                    "role": "tool",
+                    "tool_call_id": call["id"],
+                    "name": call["name"],
+                    "content": truncated,
+                })
         if feed_messages:
-            messages.append({"role": "assistant", "content": content})
-            messages.append({"role": "user", "content": "\n\n".join(tool_results_text)})
+            if native_protocol:
+                messages.append({
+                    "role": "assistant",
+                    "content": content or None,
+                    "tool_calls": [
+                        {
+                            "id": call["id"],
+                            "type": "function",
+                            "function": {
+                                "name": call["name"],
+                                "arguments": json.dumps(
+                                    call.get("arguments") or {}, ensure_ascii=False
+                                ),
+                            },
+                        }
+                        for call in tool_calls
+                    ],
+                })
+                messages.extend(native_results)
+            else:
+                messages.append({"role": "assistant", "content": content})
+                messages.append({"role": "user", "content": "\n\n".join(tool_results_text)})
         return n_ok
 
     # --- 确定性预检 (pilot-deterministic-precheck) ---
@@ -625,7 +683,10 @@ class Runner:
                 precheck_tag = pc.precheck_tag
                 precheck_evidence = pc.evidence
 
+        native_protocol = self.config.llm_tool_protocol == "native"
         base_prompt = load_base_prompt(self.config.prompts_path)
+        if native_protocol:
+            base_prompt = _native_tool_base_prompt(base_prompt)
         hospital_config = load_hospital_config(self.config.hospital_config_path)
         experience_doc = load_experience_doc(
             self.config.resolve("configs/experience.md")
@@ -633,11 +694,15 @@ class Runner:
         system_prompt = assemble_system_prompt(
             rule,
             base_prompt,
-            self.executor.get_tools_prompt(),
+            (
+                self.executor.get_tools_prompt(native=True)
+                if native_protocol
+                else self.executor.get_tools_prompt()
+            ),
             hospital_config=hospital_config,
             experience_doc=experience_doc,
         )
-        messages: list[dict[str, str]] = [
+        messages: list[dict[str, Any]] = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": initial_user_message(rule, patient_id, precheck_facts)},
         ]
@@ -682,9 +747,32 @@ class Runner:
             self.emit("[Oncology v2] 未发现 RD04 候选，确定性短路 CLEAN，跳过 LLM。")
 
         max_calls = 0 if oncology_no_candidate else self.config.max_tool_calls
+
+        native_tools = self.executor.get_openai_tools() if native_protocol else None
+
+        def response_tool_calls(response: dict[str, Any], text: str) -> tuple[list[dict[str, Any]], list[str]]:
+            errors = list(response.get("tool_call_errors") or [])
+            calls = (
+                list(response.get("tool_calls") or [])
+                if native_protocol
+                else self.executor.parse_tool_calls(text)
+            )
+            if native_protocol:
+                calls = _dedupe_tool_calls(calls)
+                remaining = max(0, max_calls - len(tool_records))
+                if len(calls) > remaining:
+                    self.emit(
+                        f"[Runner] 原生工具总预算 {max_calls}，"
+                        f"本轮 {len(calls)} 个调用仅执行前 {remaining} 个"
+                    )
+                    errors.append(f"工具调用总预算 {max_calls} 已达到上限")
+                    calls = calls[:remaining]
+            return calls, errors
+
+        provider_tool_kwargs = {"tools": native_tools} if native_tools else {}
         for turn in range(1, max_calls + 1):
             try:
-                resp = self.provider.chat_with_retry(messages)
+                resp = self.provider.chat_with_retry(messages, **provider_tool_kwargs)
             except LlmUnavailableError:
                 # 让上层决定是否重试 / skip — 此处直接抛
                 raise
@@ -693,7 +781,7 @@ class Runner:
             finish_reason = resp.get("finish_reason")
             self.emit(f"[LLM #{turn}] {content[:1500]}{'...' if len(content) > 1500 else ''}")
 
-            tool_calls = self.executor.parse_tool_calls(content)
+            tool_calls, tc_errors = response_tool_calls(resp, content)
             if tool_calls:
                 n_success += self._execute_and_record(
                     content,
@@ -717,7 +805,12 @@ class Runner:
                         "role": "user",
                         "content": (
                             "你必须在裁决前至少成功调用 1 次工具 (此前调用均失败或未调用). "
-                            "请换参数重发 <tool_call>; 若确实查不到证据可裁 INCONCLUSIVE."
+                            + (
+                                "请换参数调用系统函数工具；"
+                                if native_protocol
+                                else "请换参数重发 <tool_call>；"
+                            )
+                            + "若确实查不到证据可裁 INCONCLUSIVE。"
                         ),
                     })
                     continue
@@ -728,14 +821,18 @@ class Runner:
             # length 截断不回灌数万字残片, 改用短提示 + 小 token budget 收敛;
             # 其他畸形 tool_call 仍回传具体 JSON 解析错误.
             truncated = finish_reason == "length"
-            tc_errors = self.executor.parse_errors(content)
+            tc_errors.extend(self.executor.parse_errors(content))
             if truncated:
                 self.emit("[Runner] LLM 输出达到长度上限, 发起有界 repair")
                 if n_success == 0:
                     repair_prompt = (
                         "上一轮输出因达到长度上限被截断。禁止解释或复述；"
-                        "只输出一个简短、完整、合法的 <tool_call>{...}</tool_call>，"
-                        "先查询裁决所需的最关键证据。"
+                        + (
+                            "只调用一个最关键的系统函数工具。"
+                            if native_protocol
+                            else "只输出一个简短、完整、合法的 <tool_call>{...}</tool_call>。"
+                        )
+                        + "先查询裁决所需的最关键证据。"
                     )
                 else:
                     repair_prompt = (
@@ -745,15 +842,24 @@ class Runner:
                     )
             elif tc_errors:
                 self.emit(f"[Runner] tool_call JSON 畸形 ({tc_errors[0]}), 发起针对性 repair")
-                repair_prompt = (
-                    f"你的 tool_call JSON 非法: {tc_errors[0]}. "
-                    "请修正后重新发出 <tool_call> (仍可继续调查); 若已可裁决则只输出 ```json {...} ``` 块."
-                )
+                if native_protocol:
+                    repair_prompt = (
+                        f"你的工具调用非法: {tc_errors[0]}。请重新调用系统函数工具；"
+                        "若已可裁决则只输出 ```json {...} ``` 块。"
+                    )
+                else:
+                    repair_prompt = (
+                        f"你的 tool_call JSON 非法: {tc_errors[0]}. "
+                        "请修正后重新发出 <tool_call> (仍可继续调查); "
+                        "若已可裁决则只输出 ```json {...} ``` 块."
+                    )
             else:
                 self.emit("[Runner] 输出既无 tool_call 也无合法 verdict JSON, 发起 repair turn")
                 repair_prompt = (
-                    "你的输出无法解析. 请: 若需更多证据则发 <tool_call>; "
-                    "若已可裁决则只输出 ```json {...} ``` 块, 字段含 verdict/confidence/evidence/reasoning."
+                    "你的输出无法解析。若需更多证据则"
+                    + ("调用系统函数工具；" if native_protocol else "发 <tool_call>；")
+                    + "若已可裁决则只输出 ```json {...} ``` 块, "
+                    "字段含 verdict/confidence/evidence/reasoning."
                 )
             if not truncated:
                 messages.append({"role": "assistant", "content": content})
@@ -764,14 +870,18 @@ class Runner:
                     if truncated
                     else {}
                 )
-                resp_repair = self.provider.chat_with_retry(messages, **repair_kwargs)
+                resp_repair = self.provider.chat_with_retry(
+                    messages, **provider_tool_kwargs, **repair_kwargs
+                )
             except LlmUnavailableError:
                 raise
             content_repair = resp_repair["content"] or ""
             repair_finish_reason = resp_repair.get("finish_reason")
             self.emit(f"[LLM #{turn}-repair] {content_repair[:1500]}")
             # repair 响应含 tool_call → 执行并回主循环续跑, 不再丢弃直接 INCONCLUSIVE
-            repair_calls = self.executor.parse_tool_calls(content_repair)
+            repair_calls, _repair_errors = response_tool_calls(
+                resp_repair, content_repair
+            )
             if repair_calls:
                 n_success += self._execute_and_record(
                     content_repair,
@@ -815,7 +925,9 @@ class Runner:
                     ),
                 })
                 try:
-                    resp_deadline = self.provider.chat_with_retry(messages)
+                    resp_deadline = self.provider.chat_with_retry(
+                        messages, **provider_tool_kwargs
+                    )
                     content_deadline = resp_deadline["content"] or ""
                     deadline_finish_reason = resp_deadline.get("finish_reason")
                     self.emit(

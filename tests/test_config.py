@@ -57,6 +57,12 @@ def test_missing_file_uses_defaults(tmp_path: Path):
     cfg = load_config(tmp_path / "does_not_exist.yaml")
     assert cfg.llm_endpoint == "http://127.0.0.1:30000/v1"
     assert cfg.max_tool_calls == 10
+    assert cfg.llm_tool_protocol == "text"
+
+
+def test_native_tool_protocol_env_override(monkeypatch):
+    monkeypatch.setenv("JAVERT_LLM_TOOL_PROTOCOL", "native")
+    assert JavertConfig().llm_tool_protocol == "native"
 
 
 def test_invalid_yaml_top_level_raises(tmp_path: Path):

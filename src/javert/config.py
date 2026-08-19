@@ -52,6 +52,8 @@ class JavertConfig(BaseSettings):
     llm_max_tokens: int = 8192
     llm_timeout: int = 300
     llm_enable_thinking: bool = False
+    # text=现网兼容文本标签；native=OpenAI tools（Qwen3.8 / qwen3_coder parser）。
+    llm_tool_protocol: Literal["text", "native"] = "text"
 
     # Runner
     max_tool_calls: int = 10

@@ -153,6 +153,43 @@ def test_executor_lists_tools(stub_loader, drug_map_tmp):
     }
 
 
+def test_openai_tools_use_registered_schemas_without_patient_id(
+    stub_loader, drug_map_tmp
+):
+    tools = build_executor(stub_loader).get_openai_tools()
+    by_name = {item["function"]["name"]: item["function"] for item in tools}
+    search_notes = by_name["search_notes"]
+    assert search_notes["parameters"]["type"] == "object"
+    assert "keyword" in search_notes["parameters"]["properties"]
+    assert "patient_id" not in search_notes["parameters"]["properties"]
+    assert "patient_id" not in search_notes["parameters"].get("required", [])
+
+
+def test_qwen38_function_parameter_text_fallback_is_parseable():
+    from javert.tools.tool_executor import ToolExecutor
+
+    text = (
+        "<tool_call><function=search_fees>"
+        "<parameter=keyword>麻醉</parameter>"
+        "<parameter=category>\"手术类\"</parameter>"
+        "</function></tool_call>"
+    )
+    assert ToolExecutor().parse_tool_calls(text) == [{
+        "name": "search_fees",
+        "arguments": {"keyword": "麻醉", "category": "手术类"},
+    }]
+
+
+def test_duplicate_open_tool_tags_keep_legacy_json_parseable():
+    from javert.tools.tool_executor import ToolExecutor
+
+    text = (
+        '<tool_call><tool_call>{"name":"search_notes",'
+        '"arguments":{"keyword":"诊断"}}</tool_call>'
+    )
+    assert ToolExecutor().parse_tool_calls(text)[0]["name"] == "search_notes"
+
+
 def test_registry_wires_all_four_assets_from_configured_published_release(
     stub_loader, tmp_path: Path, monkeypatch
 ):

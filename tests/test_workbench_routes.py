@@ -87,6 +87,35 @@ def test_group_runs_missing_meta_falls_to_unclassified():
     assert groups[0]["alias"] == "未分类"
 
 
+def test_model_comparison_store_returns_full_latest_model_rows(monkeypatch):
+    import json
+
+    from javert.store.sqlserver_store import SqlServerStore
+
+    rows = [(
+        "aud_compare001", "R191", "CASE-AB-001", "CLEAN", 0.9,
+        "合成推理", json.dumps([{"source": "note", "text": "合成证据"}]),
+        json.dumps([{"tool_name": "search_notes", "arguments": {}}]),
+        1234, "Qwen/Qwen3.8-27B-FP8", datetime.now(timezone.utc),
+        "ab3.8", "",
+    )]
+
+    class Connection:
+        def __enter__(self): return self
+        def __exit__(self, *_args): return None
+        def execute(self, statement, params):
+            assert "PARTITION BY rule_id, model" in str(statement)
+            assert params == {"pid": "CASE-AB-001", "tag": "ab3.8"}
+            return SimpleNamespace(fetchall=lambda: rows)
+
+    store = SqlServerStore()
+    monkeypatch.setattr(store, "get_engine", lambda: SimpleNamespace(connect=Connection))
+    out = store.list_model_comparison_runs("CASE-AB-001", "ab3.8")
+    assert out[0]["model"] == "Qwen/Qwen3.8-27B-FP8"
+    assert out[0]["evidence"][0]["text"] == "合成证据"
+    assert out[0]["tool_calls"][0]["tool_name"] == "search_notes"
+
+
 def test_group_runs_alias_compresses_long_violation_type():
     runs = [_mkrun("R1", "VIOLATION")]
     meta = {"R1": {

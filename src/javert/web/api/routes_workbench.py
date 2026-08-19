@@ -361,6 +361,91 @@ def workbench_patient(
     ))
 
 
+def _log_model_compare_access(
+    request: Request,
+    patient_id: str,
+    batch_tag: str,
+) -> None:
+    try:
+        user = current_user(request)
+        ip, ua = request_meta(request)
+        get_sqlserver_store().log_action(
+            user_id=user.id if user else None,
+            action="model_compare_access",
+            target_id=patient_id,
+            payload={"batch_tag": batch_tag},
+            ip=ip,
+            user_agent=ua,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "model_compare_access 留痕失败 patient=%s tag=%s: %s",
+            patient_id,
+            batch_tag,
+            exc,
+        )
+
+
+@router.get("/workbench/{patient_id}/model-compare", response_class=HTMLResponse)
+def workbench_model_compare(
+    request: Request,
+    patient_id: str,
+    batch_tag: str = Query(default="ab3.8", pattern=r"^[A-Za-z0-9._-]{1,20}$"),
+):
+    user = current_user(request)
+    if user is None:
+        return RedirectResponse(
+            url=f"/login?next=/workbench/{patient_id}/model-compare",
+            status_code=302,
+        )
+    store = get_sqlserver_store()
+    runs = store.list_model_comparison_runs(patient_id, batch_tag)
+    models = sorted({run["model"] for run in runs})
+    left_model = next((model for model in models if "3.6" in model), None)
+    right_model = next((model for model in models if "3.8" in model), None)
+    if left_model is None or right_model is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"批次 {batch_tag} 尚无完整 Qwen3.6/Qwen3.8 配对",
+        )
+
+    by_key = {(run["rule_id"], run["model"]): run for run in runs}
+    rule_ids = sorted({run["rule_id"] for run in runs})
+    rows = []
+    for rule_id in rule_ids:
+        left = by_key.get((rule_id, left_model))
+        right = by_key.get((rule_id, right_model))
+        rows.append({
+            "rule_id": rule_id,
+            "left": left,
+            "right": right,
+            "same": bool(left and right and left["verdict"] == right["verdict"]),
+        })
+    summary = {
+        "rules": len(rows),
+        "same": sum(row["same"] for row in rows),
+        "different": sum(
+            bool(row["left"] and row["right"] and not row["same"])
+            for row in rows
+        ),
+        "missing": sum(not row["left"] or not row["right"] for row in rows),
+    }
+    _log_model_compare_access(request, patient_id, batch_tag)
+    return HTMLResponse(render(
+        "model_compare.html",
+        title=f"{patient_id} · 双模型对比",
+        current_user=user,
+        active_patient=patient_id,
+        patient_id=patient_id,
+        batch_tag=batch_tag,
+        left_model=left_model,
+        right_model=right_model,
+        rows=rows,
+        summary=summary,
+        rule_meta=load_rule_meta(),
+    ))
+
+
 # =========================================================
 # Review 提交
 # =========================================================

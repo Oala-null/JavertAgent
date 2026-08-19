@@ -1160,6 +1160,75 @@ class SqlServerStore:
             logger.debug("fetch_anchors_for_patient miss patient=%s: %s", patient_id, e)
             return {}
 
+    def list_model_comparison_runs(
+        self,
+        patient_id: str,
+        batch_tag: str,
+    ) -> list[dict[str, Any]]:
+        """同患者/批次按 rule+model 取最新一条，供登录后的专家 A/B HTML。"""
+        engine = self.get_engine()
+        if engine is None:
+            return []
+        from sqlalchemy import text
+
+        sql = """
+            WITH ranked AS (
+                SELECT run_id, rule_id, patient_id, verdict, confidence,
+                       reasoning, evidence_json, tool_calls_json, duration_ms,
+                       model, created_at, batch_tag, gate_tag,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY rule_id, model
+                           ORDER BY created_at DESC, id DESC
+                       ) AS rn
+                FROM javert_audit_runs
+                WHERE patient_id = :pid AND batch_tag = :tag AND model IS NOT NULL
+            )
+            SELECT run_id, rule_id, patient_id, verdict, confidence,
+                   reasoning, evidence_json, tool_calls_json, duration_ms,
+                   model, created_at, batch_tag, gate_tag
+            FROM ranked WHERE rn = 1
+            ORDER BY rule_id ASC, model ASC
+        """
+
+        def parse_list(raw: str | None) -> list:
+            try:
+                value = json.loads(raw) if raw else []
+                return value if isinstance(value, list) else []
+            except (TypeError, json.JSONDecodeError):
+                return []
+
+        try:
+            with engine.connect() as conn:
+                rows = conn.execute(
+                    text(sql), {"pid": patient_id, "tag": batch_tag}
+                ).fetchall()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "list_model_comparison_runs 失败 patient=%s tag=%s: %s",
+                patient_id,
+                batch_tag,
+                exc,
+            )
+            return []
+        return [
+            {
+                "run_id": row[0],
+                "rule_id": row[1],
+                "patient_id": row[2],
+                "verdict": row[3],
+                "confidence": float(row[4] or 0.0),
+                "reasoning": row[5] or "",
+                "evidence": parse_list(row[6]),
+                "tool_calls": parse_list(row[7]),
+                "duration_ms": int(row[8] or 0),
+                "model": row[9] or "",
+                "created_at": row[10],
+                "batch_tag": row[11],
+                "gate_tag": row[12] or "",
+            }
+            for row in rows
+        ]
+
     def list_reviews_for_run(self, run_id: str) -> list[ReviewRecord]:
         """单 run 的全部历史 review (含 is_latest=0)."""
         engine = self.get_engine()

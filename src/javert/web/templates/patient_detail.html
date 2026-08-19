@@ -13,6 +13,12 @@
         ⬇ 导出此病人 (xlsx)
       </a>
       <button class="btn-secondary" type="button" onclick="showRawData('{{ active_patient }}')">查看原始病历</button>
+      {% if runs | selectattr('batch_tag', 'equalto', 'ab3.8') | list %}
+      <a class="btn-primary"
+         href="/workbench/{{ active_patient }}/model-compare?batch_tag=ab3.8">
+        ↔ Qwen3.6 / 3.8 对比
+      </a>
+      {% endif %}
     </div>
 
     {% if overview %}

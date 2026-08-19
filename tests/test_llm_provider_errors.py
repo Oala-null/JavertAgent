@@ -13,10 +13,17 @@ from javert.tools.llm_provider import (
 
 
 class _FakeResponse:
-    def __init__(self, status_code: int, text: str = "", finish_reason: str = "stop"):
+    def __init__(
+        self,
+        status_code: int,
+        text: str = "",
+        finish_reason: str = "stop",
+        message: dict | None = None,
+    ):
         self.status_code = status_code
         self.text = text
         self.finish_reason = finish_reason
+        self.message = message or {"content": "ok"}
 
     def raise_for_status(self):
         if self.status_code >= 400:
@@ -25,7 +32,7 @@ class _FakeResponse:
     def json(self):
         return {
             "choices": [{
-                "message": {"content": "ok"},
+                "message": self.message,
                 "finish_reason": self.finish_reason,
             }],
             "usage": None,
@@ -36,9 +43,11 @@ class _FakeClient:
     def __init__(self, responses: list[_FakeResponse]):
         self.responses = responses
         self.n_posts = 0
+        self.last_json = None
 
     def post(self, url, json=None):
         self.n_posts += 1
+        self.last_json = json
         return self.responses[min(self.n_posts - 1, len(self.responses) - 1)]
 
 
@@ -87,3 +96,28 @@ def test_chat_surfaces_finish_reason(monkeypatch):
     p = _provider_with(monkeypatch, client)
     out = p.chat([{"role": "user", "content": "hi"}])
     assert out["finish_reason"] == "length"
+
+
+def test_chat_normalizes_native_tool_calls(monkeypatch):
+    client = _FakeClient([_FakeResponse(200, message={
+        "content": None,
+        "tool_calls": [{
+            "id": "call_1",
+            "type": "function",
+            "function": {
+                "name": "search_fees",
+                "arguments": '{"keyword":"麻醉"}',
+            },
+        }],
+    })])
+    provider = _provider_with(monkeypatch, client)
+    tools = [{"type": "function", "function": {"name": "search_fees"}}]
+    out = provider.chat([{"role": "user", "content": "查费用"}], tools=tools)
+    assert out["content"] == ""
+    assert out["tool_calls"] == [{
+        "id": "call_1",
+        "name": "search_fees",
+        "arguments": {"keyword": "麻醉"},
+    }]
+    assert out["tool_call_errors"] == []
+    assert client.last_json["tools"] == tools
