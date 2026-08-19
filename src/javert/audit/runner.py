@@ -760,13 +760,28 @@ class Runner:
             if native_protocol:
                 calls = _dedupe_tool_calls(calls)
                 remaining = max(0, max_calls - len(tool_records))
-                if len(calls) > remaining:
+                per_tool_counts: dict[str, int] = {}
+                for record in tool_records:
+                    per_tool_counts[record.tool_name] = (
+                        per_tool_counts.get(record.tool_name, 0) + 1
+                    )
+                accepted = []
+                for call in calls:
+                    name = call.get("name", "")
+                    if per_tool_counts.get(name, 0) >= 3:
+                        errors.append(f"工具 {name} 已达到每规则 3 次上限")
+                        continue
+                    if len(accepted) >= remaining:
+                        errors.append("NATIVE_TOTAL_TOOL_BUDGET_EXHAUSTED")
+                        continue
+                    accepted.append(call)
+                    per_tool_counts[name] = per_tool_counts.get(name, 0) + 1
+                if len(accepted) < len(calls):
                     self.emit(
                         f"[Runner] 原生工具总预算 {max_calls}，"
-                        f"本轮 {len(calls)} 个调用仅执行前 {remaining} 个"
+                        f"本轮 {len(calls)} 个调用执行 {len(accepted)} 个"
                     )
-                    errors.append(f"工具调用总预算 {max_calls} 已达到上限")
-                    calls = calls[:remaining]
+                calls = accepted
             return calls, errors
 
         provider_tool_kwargs = {"tools": native_tools} if native_tools else {}
@@ -782,6 +797,32 @@ class Runner:
             self.emit(f"[LLM #{turn}] {content[:1500]}{'...' if len(content) > 1500 else ''}")
 
             tool_calls, tc_errors = response_tool_calls(resp, content)
+            if (
+                native_protocol
+                and not tool_calls
+                and "NATIVE_TOTAL_TOOL_BUDGET_EXHAUSTED" in tc_errors
+            ):
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "工具调用总预算已用尽，禁止继续调用工具。只基于已有工具结果，"
+                        "输出一个完整 fenced JSON；字段仅含 verdict、confidence、"
+                        "evidence、reasoning。"
+                    ),
+                })
+                final_resp = self.provider.chat_with_retry(
+                    messages,
+                    max_tokens=min(1024, self.config.llm_max_tokens),
+                )
+                final_content = final_resp["content"] or ""
+                self.emit(f"[LLM #{turn}-budget-final] {final_content[:1500]}")
+                verdict_data = _parse_verdict_block(final_content)
+                if verdict_data is not None and n_success > 0:
+                    final_reason = "native tool budget exhausted (final verdict accepted)"
+                else:
+                    verdict_data = None
+                    final_reason = "native tool budget exhausted (final verdict malformed)"
+                break
             if tool_calls:
                 n_success += self._execute_and_record(
                     content,

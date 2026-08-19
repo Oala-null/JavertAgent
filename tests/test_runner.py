@@ -198,13 +198,17 @@ def test_native_tool_protocol_dedupes_and_caps_total_invocations(cfg, executor):
         def chat_with_retry(self, _messages, **_kwargs):
             self.calls += 1
             if self.calls == 1:
+                names = [
+                    "search_notes", "search_fees", "note_diagnosis",
+                    "search_notes", "search_fees", "note_diagnosis",
+                ]
                 calls = [
                     {
                         "id": f"call_{i}",
-                        "name": "search_notes",
+                        "name": name,
                         "arguments": {"keyword": f"方向{i}"},
                     }
-                    for i in range(6)
+                    for i, name in enumerate(names)
                 ]
                 calls.append({**calls[0], "id": "duplicate"})
                 return {"content": "", "tool_calls": calls, "tool_call_errors": []}
@@ -223,6 +227,48 @@ def test_native_tool_protocol_dedupes_and_caps_total_invocations(cfg, executor):
     assert result.verdict == "CLEAN"
     assert len(result.tool_calls) == cfg.max_tool_calls
     assert len({call.arguments["keyword"] for call in result.tool_calls}) == cfg.max_tool_calls
+
+
+def test_native_total_budget_forces_final_verdict_without_tools(cfg, executor):
+    cfg.llm_tool_protocol = "native"
+
+    class BudgetProvider:
+        model_name = "Qwen/Qwen3.8-27B-FP8"
+
+        def __init__(self):
+            self.calls = 0
+
+        def chat_with_retry(self, _messages, **kwargs):
+            self.calls += 1
+            if self.calls <= 3:
+                return {
+                    "content": "",
+                    "tool_calls": [{
+                        "id": f"call_{self.calls}_{i}",
+                        "name": "search_notes" if i < 2 else "search_fees",
+                        "arguments": {"keyword": f"方向{self.calls}-{i}"},
+                    } for i in range(3)],
+                    "tool_call_errors": [],
+                }
+            assert "tools" not in kwargs
+            assert kwargs["max_tokens"] <= 1024
+            return {
+                "content": (
+                    '```json\n{"verdict":"INCONCLUSIVE","confidence":0.55,'
+                    '"evidence":[],"reasoning":"预算内已完成调查"}\n```'
+                ),
+                "tool_calls": [],
+                "tool_call_errors": [],
+            }
+
+    provider = BudgetProvider()
+    result = Runner(executor=executor, provider=provider, config=cfg).audit(
+        _make_rule(), "J66252"
+    )
+    assert result.verdict == "INCONCLUSIVE"
+    assert result.confidence == pytest.approx(0.55)
+    assert len(result.tool_calls) == cfg.max_tool_calls
+    assert provider.calls == 4
 
 
 def _make_drug_rule() -> Rule:
