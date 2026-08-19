@@ -882,13 +882,19 @@ class Runner:
                         "字段仅含 verdict、confidence、evidence、reasoning。"
                     )
             elif tc_errors:
-                self.emit(f"[Runner] tool_call JSON 畸形 ({tc_errors[0]}), 发起针对性 repair")
                 if native_protocol:
+                    self.emit(
+                        f"[Runner] 原生工具调用受限 ({tc_errors[0]}), 发起收敛"
+                    )
                     repair_prompt = (
                         f"你的工具调用非法: {tc_errors[0]}。请重新调用系统函数工具；"
                         "若已可裁决则只输出 ```json {...} ``` 块。"
                     )
                 else:
+                    self.emit(
+                        f"[Runner] tool_call JSON 畸形 ({tc_errors[0]}), "
+                        "发起针对性 repair"
+                    )
                     repair_prompt = (
                         f"你的 tool_call JSON 非法: {tc_errors[0]}. "
                         "请修正后重新发出 <tool_call> (仍可继续调查); "
