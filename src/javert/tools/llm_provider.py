@@ -95,6 +95,7 @@ class Qwen35Provider:
         max_tokens: int | None = None,
         temperature: float | None = None,
         tools: list[dict] | None = None,
+        response_format: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """同步 chat completion，返回正文、usage、finish_reason 和原始响应。"""
         client = self._get_http_client()
@@ -109,6 +110,8 @@ class Qwen35Provider:
             body["chat_template_kwargs"] = {"enable_thinking": False}
         if tools:
             body["tools"] = tools
+        if response_format:
+            body["response_format"] = response_format
 
         try:
             resp = client.post(url, json=body)

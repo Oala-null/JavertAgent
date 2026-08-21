@@ -121,3 +121,19 @@ def test_chat_normalizes_native_tool_calls(monkeypatch):
     }]
     assert out["tool_call_errors"] == []
     assert client.last_json["tools"] == tools
+
+
+def test_chat_forwards_response_format(monkeypatch):
+    client = _FakeClient([_FakeResponse(200)])
+    provider = _provider_with(monkeypatch, client)
+    response_format = {
+        "type": "json_schema",
+        "json_schema": {"name": "verdict", "schema": {"type": "object"}},
+    }
+
+    provider.chat(
+        [{"role": "user", "content": "输出裁决"}],
+        response_format=response_format,
+    )
+
+    assert client.last_json["response_format"] == response_format

@@ -252,6 +252,7 @@ def test_native_total_budget_forces_final_verdict_without_tools(cfg, executor):
                 }
             assert "tools" not in kwargs
             assert kwargs["max_tokens"] <= 1024
+            assert kwargs["response_format"]["type"] == "json_schema"
             return {
                 "content": (
                     '```json\n{"verdict":"INCONCLUSIVE","confidence":0.55,'
@@ -452,6 +453,55 @@ def test_malformed_json_repaired(cfg, executor):
     runner = Runner(executor=executor, provider=FakeProvider(contents), config=cfg)
     result = runner.audit(_make_rule(), "J66252")
     assert result.verdict == "CLEAN"
+
+
+def test_native_malformed_verdict_repair_uses_json_schema_without_tools(
+    cfg, executor
+):
+    cfg.llm_tool_protocol = "native"
+
+    class NativeRepairProvider:
+        model_name = "Qwen/Qwen3.8-27B-FP8"
+
+        def __init__(self):
+            self.calls = 0
+
+        def chat_with_retry(self, _messages, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return {
+                    "content": "",
+                    "tool_calls": [{
+                        "id": "call_notes",
+                        "name": "search_notes",
+                        "arguments": {"keyword": "甲状腺"},
+                    }],
+                    "tool_call_errors": [],
+                }
+            if self.calls == 2:
+                return {
+                    "content": "{verdict: CLEAN}",
+                    "tool_calls": [],
+                    "tool_call_errors": [],
+                }
+            assert "tools" not in kwargs
+            assert kwargs["response_format"]["type"] == "json_schema"
+            return {
+                "content": (
+                    '{"verdict":"CLEAN","confidence":0.9,'
+                    '"evidence":[],"reasoning":"已核实"}'
+                ),
+                "tool_calls": [],
+                "tool_call_errors": [],
+            }
+
+    provider = NativeRepairProvider()
+    result = Runner(executor=executor, provider=provider, config=cfg).audit(
+        _make_rule(), "J66252"
+    )
+
+    assert result.verdict == "CLEAN"
+    assert provider.calls == 3
 
 
 def test_repair_also_fails_inconclusive(cfg, executor):

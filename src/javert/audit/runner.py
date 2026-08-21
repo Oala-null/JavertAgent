@@ -46,6 +46,40 @@ logger = logging.getLogger("javert.audit.runner")
 _JSON_BLOCK_PATTERN = re.compile(r"```(?:json)?\s*\n(.*?)\n```", re.DOTALL)
 _TRUNCATE = 2000  # 单工具结果存储上限 (默认; 实际用 config.tool_result_max_chars)
 
+_VERDICT_RESPONSE_FORMAT: dict[str, Any] = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "javert_verdict",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "verdict": {
+                    "type": "string",
+                    "enum": ["VIOLATION", "CLEAN", "INCONCLUSIVE"],
+                },
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                "evidence": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "source": {"type": "string"},
+                            "locator": {"type": "string"},
+                            "text": {"type": "string"},
+                        },
+                        "required": ["source", "locator", "text"],
+                        "additionalProperties": False,
+                    },
+                },
+                "reasoning": {"type": "string"},
+            },
+            "required": ["verdict", "confidence", "evidence", "reasoning"],
+            "additionalProperties": False,
+        },
+    },
+}
+
 # 分段截断标记 (fix-drug-audit-precision D1): 工具把「必留头部」放标记之前、
 # 「可截明细」放标记之后; 无此标记的工具结果维持旧尾截断行为.
 RETAIN_HEAD_MARKER = "====[必留头部结束]===="
@@ -813,6 +847,7 @@ class Runner:
                 final_resp = self.provider.chat_with_retry(
                     messages,
                     max_tokens=min(1024, self.config.llm_max_tokens),
+                    response_format=_VERDICT_RESPONSE_FORMAT,
                 )
                 final_content = final_resp["content"] or ""
                 self.emit(f"[LLM #{turn}-budget-final] {final_content[:1500]}")
@@ -912,13 +947,18 @@ class Runner:
                 messages.append({"role": "assistant", "content": content})
             messages.append({"role": "user", "content": repair_prompt})
             try:
-                repair_kwargs = (
-                    {"max_tokens": min(512, self.config.llm_max_tokens)}
-                    if truncated
-                    else {}
-                )
+                repair_kwargs: dict[str, Any] = {}
+                if truncated:
+                    repair_kwargs["max_tokens"] = min(
+                        512, self.config.llm_max_tokens
+                    )
+                if native_protocol and n_success > 0:
+                    repair_kwargs["response_format"] = _VERDICT_RESPONSE_FORMAT
+                    repair_tool_kwargs = {}
+                else:
+                    repair_tool_kwargs = provider_tool_kwargs
                 resp_repair = self.provider.chat_with_retry(
-                    messages, **provider_tool_kwargs, **repair_kwargs
+                    messages, **repair_tool_kwargs, **repair_kwargs
                 )
             except LlmUnavailableError:
                 raise
@@ -972,8 +1012,13 @@ class Runner:
                     ),
                 })
                 try:
+                    deadline_kwargs = (
+                        {"response_format": _VERDICT_RESPONSE_FORMAT}
+                        if native_protocol
+                        else provider_tool_kwargs
+                    )
                     resp_deadline = self.provider.chat_with_retry(
-                        messages, **provider_tool_kwargs
+                        messages, **deadline_kwargs
                     )
                     content_deadline = resp_deadline["content"] or ""
                     deadline_finish_reason = resp_deadline.get("finish_reason")
