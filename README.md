@@ -44,6 +44,26 @@
 `RD10-RD37` 在当前 authoring change 中为 `drafting/migration-pending`，不进入
 默认执行集。知识 authoring、专家 Excel 和 142 门禁见 `docs/oncology/operations.md`。
 
+**Evidence/Evaluation Contract v0.1（本地、未接生产）**：`src/javert/evidence/` 定义
+Fact/Assertion/Source/Evidence/Provenance、最小 Ontology 和可复用 paired A/B 合同。
+oncology A/B 只有同一 immutable source snapshot 的 legacy A 与 structured B 才算 paired；
+历史 `shadow_comparison.json` 继续明确为 `historical_unpaired`。验收不使用单一总分，而分别门禁
+安全错误、正确自动化、证据/locator/provenance、重复稳定性和盲化专家可理解性；PASS 不等于部署授权。
+合成命令入口为 `scripts/oncology_paired_evaluation.py`，真实病例工件不得进入 Git。
+完整的实验单位、指标公式、三档阈值、专家盲化和持久化工件见
+`docs/oncology/ab_evaluation_standard.md`。
+
+**Diagnosis Evidence Shadow v0.1（默认关闭）**：复用同一 contract，从 canonical 诊断行与
+文书精确 span 产生可验证 Assertion，写独立 append-only SQLite ledger，并以旧聚合输出 A /
+新逐证据输出 B 做 CONFORMANCE。它不接审计主链、不改变旧 `note_diagnosis` 文本，也不产生
+临床优效结论；合成命令、0700/0600、retention 和真实数据启用门禁见
+`docs/diagnosis_evidence_shadow.md`。
+
+**Hub Evidence Snapshot v0.1（只读、未接生产）**：默认从已验证 DML=false 的
+`sh_yb_platform-readonly` profile 物化 raw/canonical/lineage/manifest；当前可写的 TP 凭据会被
+权限门禁拒绝。A/B 必须共用同一个 snapshot ID，READ COMMITTED 窗口固定标为
+`atomic_snapshot=false`。命令和五候选无 PHI smoke 见 `docs/hub_evidence_snapshot.md`。
+
 **v0.7 (2026-05-27)**: **外部医院数据接入** — ETL (`scripts/etl_import.py`) + 列名映射 + `【段落】` 自动拆分, 首次跑外部院真数据验证不依赖 shi 数据结构. 详见 `docs/数据接入清单.md`.
 
 **v0.6 (2026-05-21)**: 🟢 **审核工作台上线** — 实装专家审核 web 工作台 (FastAPI + Jinja2 + SSE), 部署到 192.168.31.62:8090. 注册关闭走运维分配账号 + 自助改密. 106 病人 / 5016 audit_runs / 529 V 待审. 详见 [审核工作台](#审核工作台-v06).

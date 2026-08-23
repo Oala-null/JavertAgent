@@ -236,6 +236,31 @@ PYTHONPATH=src .venv/bin/python -m pytest -q \
 | `shadow` | 旧 verdict 不变；结构化比较保存在 `tool_calls_json[].structured_output` |
 | `on` | RD04 的净正收费候选采用确定性双轴结果，并写入 `eligibility_json`；R007 排除相同肿瘤医保臂 |
 
+### paired A/B 验收标准
+
+`off/shadow/on` 是运行模式，不等于比较设计。只有同一 immutable source snapshot、同一候选分母、
+同一次 shadow 运行中同时得到 legacy A 和 structured B，并固定代码/配置/模型/知识/ontology 版本，
+才属于 `same_input_paired`。既有 `docs/oncology/shadow_comparison.json` 是
+`historical_unpaired`，只能作方向性背景，不能进入效果差、置信区间或 promotion gate。
+
+公共 Evaluation Contract 固定三档 profile：CONFORMANCE 用合成病例验证语义；SHADOW 至少需要
+30 个完成盲化裁定的 paired case 且实际出现的每个 reference class 至少 5 个；PROMOTION 至少
+100 个且每类至少 20 个。三档都要求配对/输入完整率 100%、schema/PHI/技术错误为 0、B 不新增
+safety-critical regression、provenance/proof/version 完整率与 B 重复稳定性 100%。详细阈值以
+versioned `EvaluationPlan` 为准；样本不足必须是 `INSUFFICIENT_EVIDENCE`。
+指标定义、盲化 reference、持久化工件和解释口径统一见 `docs/oncology/ab_evaluation_standard.md`。
+
+合成、去标识 paired 包可运行：
+
+```bash
+PYTHONPATH=src .venv/bin/python scripts/oncology_paired_evaluation.py \
+  --input tests/fixtures/evidence_contract/oncology_paired_ab.json \
+  --output-dir /tmp/javert-oncology-paired-synthetic
+```
+
+真实病例 plan/observations/adjudications 必须位于批准的 0700/0600 Git 外路径，至少两名盲化专家
+独立判断，分歧另行 adjudication。任何 PASS 都不自动切换 feature flag、publish release 或部署。
+
 ### 生效期闸（`JAVERT_ONCOLOGY_ENFORCE_EFFECTIVE_DATE`）
 
 控制是否按知识资产声明的生效期过滤候选。**代码默认 `true`（只审就诊日落在声明窗口内的候选）；62 的受控运行值为 `false`（不分时间全部生效）。**审核状态闸（`review_status=approved`）与本开关无关，始终生效。

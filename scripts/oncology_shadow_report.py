@@ -802,6 +802,24 @@ def build_direct_report(
     }
 
 
+def build_same_run_paired_evaluation(
+    *,
+    evaluation_id: str,
+    plan,
+    paired_rows: Iterable[dict[str, Any]],
+    adjudications=(),
+):
+    """生成严格 paired evaluation；绝不回退读取历史 old verdict。"""
+    from javert.oncology.evaluation_adapter import build_oncology_paired_package
+
+    return build_oncology_paired_package(
+        evaluation_id=evaluation_id,
+        plan=plan,
+        rows=list(paired_rows),
+        adjudications=tuple(adjudications),
+    )
+
+
 def load_rows(db_path: Path) -> list[dict[str, Any]]:
     if not db_path.exists():
         return []

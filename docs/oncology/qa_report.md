@@ -92,6 +92,13 @@ RD04/专家复核。应用调用链只有 `SELECT`；当前账号本身未被脚
 窗口、规则和候选集合。矩阵与专家一致率只能作探索性方向参考，不能宣称 paired shadow
 性能。
 
+后续同输入 A/B 统一使用 Evidence/Evaluation Contract v0.1：主要临床比较单位是 patient-level
+legacy A 与同一次 shadow 的 patient-level structured B；drug/policy scope 只作为 evidence/proof
+诊断分母，禁止把一个 patient verdict 复制成多个样本。报告必须持久化每个 rate 的 numerator、
+denominator 与 95% interval，并分别展示 safety、correct automation、abstention、grounding、
+locator/provenance、重复稳定性和盲化专家可理解性，不生成单一总分。当前仓库只完成合成
+CONFORMANCE；尚未运行获授权的真实 paired SHADOW/PROMOTION，不能写成临床优效结论。
+
 公开产物：
 
 | 产物 | SHA-256 |

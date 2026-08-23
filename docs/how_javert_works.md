@@ -238,6 +238,36 @@ validate/preflight/服务端校验和 DRAFT 物化。专家批准、生产 publi
 和新方案 paired shadow 仍未执行；以 `docs/oncology/authoring/142_draft_seed_import_report.md`
 为当前实库事实记录。
 
+### 3.7 Evidence Contract 与可复用 A/B 验收
+
+Javert 把“医学命题”和“谁依据什么证据作出声明”分开：`Fact` 只表示规范化 proposition，
+`Assertion` 保存 TRUE/FALSE/UNKNOWN、来源类型、双时间、Evidence、Provenance 与 Ontology 版本。
+任何自动结论都必须能回到 immutable SourceArtifact 的 row/span/checksum；上游 HIS 主键只在
+确实保留时作为额外 locator，不能猜测。
+
+架构 A/B 使用同一公共 Evaluation Contract：冻结 cohort/source snapshot、候选查询、A/B
+代码/配置/模型/知识版本和重复次数，持久化 plan、case、arm observation、专家裁定、report 与
+manifest 的 canonical JSON/checksum。oncology 的 A 是 legacy patient verdict，B 是同一次
+`shadow` 运行的 structured patient eligibility projection；历史旧 verdict 不共享输入，仍只能作
+`historical_unpaired` 背景。
+
+验收采用不可补偿的多门禁，不生成总分：配对与技术有效性 → false V/C 和 unsafe auto-decision
+→ correct automation/abstention → evidence grounding/locator/proof/provenance → 重复运行稳定性 →
+盲化专家定位成功率、解释评分与复核耗时。样本不足返回 `INSUFFICIENT_EVIDENCE`；SHADOW/PROMOTION
+通过也只获得进入下一次人工决策的资格，不自动改 flag、规则状态或生产部署。
+
+首个运行切片是默认关闭的 Diagnosis shadow：现有 `shi_zd` 与 `note_diagnosis` 保持原样，新纯
+extractor 旁路生成 row/span locator、Fact/Assertion 和 provenance，经本地 ontology validator
+后写独立 append-only ledger。projection 可从 cursor 0 重建，多来源同义诊断共用 Fact 但保留
+Assertion；同一命题正反并列为 Conflict；未映射与技术失败分开。该路径没有被 Runner/Web/API
+导入，运行和 retention 见 `docs/diagnosis_evidence_shadow.md`。
+
+数据库输入采用独立 Hub Evidence Snapshot：正式默认源是 `sh_yb_platform-readonly`，连接前逐表
+验证 SELECT-only；原始表按稳定 PK 排序成为 SourceArtifact，现有 `shi_fee/case_notes/shi_zd`
+作为兼容 projection，lineage sidecar 保留原表/主键/字段。Manifest 固定每表和 projection digest
+及 composite snapshot ID，A/B 两臂只读同一目录。当前库无 snapshot isolation/CDC/rowversion，
+故只能诚实标记 `atomic_snapshot=false`；详情见 `docs/hub_evidence_snapshot.md`。
+
 ---
 
 ## 四、数据流转
