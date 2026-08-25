@@ -14,6 +14,7 @@ example: |                             # 可空; 违规示例 (清单 0325 内�
   示例: 某医院..., 在收取了肿瘤全身断层显像的同时, 还另外收取了人工报告费.
 status: drafting                       # 必填; drafting/ready/validated/abandoned
 priority: P3                           # P0/P1/P2/P3; P0 最高
+handling_level: 可疑（警告）             # 违规（阻断）/可疑（警告）/提醒（引导）
 prompt_addon: ""                       # 由操作者编写; 给 LLM 的额外指引
 trigger_keywords: []                   # 关键词列表; **router B v2 用它弹性匹配 fee_name + diagnoses 决定本病案是否需要 LLM 审**
 trigger_codes: []                      # 医保码/院内码/类别 token; 与关键词命中取并集
@@ -55,7 +56,8 @@ applicable_departments: []             # ["骨科", "肿瘤内科"] — 仅这�
 | 字段 | 关键点 |
 |------|--------|
 | `status` | 状态机: drafting → ready → validated; abandoned 任意可达. 用 `javert mark` 改, 不要手改. |
-| `priority` | `P0` 最高、`P3` 最低；由规则分级决定，不代表已通过验证。 |
+| `priority` | `P0` 最高、`P3` 最低；控制规则筛选和先审/先跑顺序，不代表违规程度或已通过验证。 |
+| `handling_level` | 规则静态处理等级：`违规（阻断）` 可直接形成拦截类结论，`可疑（警告）` 需专家复核，`提醒（引导）` 用于补资料或现场核查。它不等于患者运行时 `verdict`，也不替代 `priority`。 |
 | `prompt_addon` | 给 LLM 的「这条规则要注意什么」自然语言指引. 1-3 段为佳, 太长 LLM 抓不到重点. |
 | `trigger_keywords` | **双重用途** (v0.5 起): (1) LLM 搜证据的提示关键词; (2) router B 用它弹性匹配 patient fee_name + diagnoses 决定本病案是否需要 LLM 审. 写得太严会假阴性 (router 漏过本病案), 太宽会噪声 (router 跑了 LLM 浪费). 例: R191 = ["人工报告", "断层显像", "全身断层"]. router 弹性策略: ≥3 字 keyword 用 60% prefix (e.g. "病理检查" → "病理"); ≤2 字精确包含. |
 | `trigger_codes` | Router 的编码/类别补充召回条件，与 `trigger_keywords` 取并集；适合不同医院项目名不一致但编码稳定的场景。 |

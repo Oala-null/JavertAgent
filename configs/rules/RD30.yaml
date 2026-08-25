@@ -5,6 +5,7 @@ question: 申请医保支付的「葡萄糖酸钙片」，用于存在该药说�
 example: ''
 status: drafting
 priority: P1
+handling_level: 可疑（警告）
 prompt_addon: |+
   本规则关注: 葡萄糖酸钙片 (禁忌症) 是否存在超出适应症 / 医保限定支付范围的用药.
   本规则聚焦单一药品「葡萄糖酸钙片」.

@@ -5,6 +5,7 @@ question: 申请医保支付的「聚桂醇注射液」，超出医保限定支�
 example: ''
 status: drafting
 priority: P1
+handling_level: 可疑（警告）
 prompt_addon: |+
   本规则关注: 聚桂醇注射液 (限适应症) 是否存在超出适应症 / 医保限定支付范围的用药.
   本规则聚焦单一药品「聚桂醇注射液」.

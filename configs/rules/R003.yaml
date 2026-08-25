@@ -5,6 +5,7 @@ question: 套用模版病历下达虚假医嘱、虚构检查检验项目、开�
 example: 示例：某医院眼科护士，在未对患者提供诊疗服务的情况下，套用模板下达医嘱，虚构检查检验、诊疗用药等项目，存在虚构医药服务项目问题。
 status: drafting
 priority: P2
+handling_level: 提醒（引导）
 prompt_addon: ''
 trigger_keywords: []
 suggested_tools: []

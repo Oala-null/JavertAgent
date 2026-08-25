@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 Status = Literal["drafting", "ready", "validated", "abandoned"]
 Priority = Literal["P0", "P1", "P2", "P3"]
+HandlingLevel = Literal["违规（阻断）", "可疑（警告）", "提醒（引导）"]
 
 
 class PrecheckSpec(BaseModel):
@@ -47,6 +48,10 @@ class Rule(BaseModel):
     example: str = Field(default="", description="违规参考示例 (从 0325 表 copy, 可空)")
     status: Status = Field(default="drafting", description="状态")
     priority: Priority = Field(default="P3", description="审计优先级 (P0 最高/P3 最低, 由专家标注)")
+    handling_level: HandlingLevel = Field(
+        default="可疑（警告）",
+        description="规则静态处理等级；与患者运行时 verdict、审计 priority 分离",
+    )
     prompt_addon: str = Field(default="", description="规则特定 prompt 片段, 由操作者编写")
     trigger_keywords: list[str] = Field(default_factory=list, description="触发关键词列表")
     trigger_codes: list[str] = Field(

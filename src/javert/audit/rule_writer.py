@@ -21,6 +21,7 @@ _FIELD_ORDER = [
     "example",
     "status",
     "priority",
+    "handling_level",
     "prompt_addon",
     "trigger_keywords",
     "trigger_codes",

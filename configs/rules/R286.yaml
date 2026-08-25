@@ -5,6 +5,7 @@ question: 虚构服务频次，记录的诊疗、护理、检查频次或总服�
 example: 示例：某医院精神科B类量表（测查时间30-60分钟）和C类量表（60分钟以上）总次数按时间换算后，超过所有精神科医师可提供的工作总时长。
 status: drafting
 priority: P2
+handling_level: 提醒（引导）
 prompt_addon: ''
 trigger_keywords: []
 suggested_tools: []

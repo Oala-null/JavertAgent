@@ -5,6 +5,7 @@ question: 将分值、权重低的病组高编、高套为分值、权重高的�
 example: 示例：某医院对未使用脊柱融合耗材的脊柱手术病例，高套为分值较高的“脊柱融合手术”病组；对未使用人工关节耗材的关节置换病例，高套为分值较高的“关节置换术”病组
 status: drafting
 priority: P2
+handling_level: 提醒（引导）
 prompt_addon: ''
 trigger_keywords: []
 suggested_tools: []

@@ -5,6 +5,7 @@ question: 将腹部体表良性病变切除，串换为腹壁肿瘤切除术收�
 example: 示例：某省《诊疗目录》规定，腹壁肿瘤指腹壁皮下及肌肉内肿物，不包括体表良性病变。某医院为患者开展腹部体表良性病变切除，按照“腹壁肿瘤切除术”对应收费，属于串换项目。
 status: drafting
 priority: P2
+handling_level: 提醒（引导）
 prompt_addon: ''
 trigger_keywords: []
 suggested_tools: []

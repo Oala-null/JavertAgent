@@ -5,6 +5,7 @@ question: 申请医保支付的「禁忌症类药品」，用于存在该药说�
 example: ''
 status: ready
 priority: P1
+handling_level: 可疑（警告）
 prompt_addon: |+
   本规则关注: 存在说明书疾病禁忌的药品 (全覆盖该患者命中药) 是否存在超出适应症 / 医保限定支付范围的用药.
   本规则覆盖该患者全部命中「禁忌症」类型的药品 (工具 bulk 驱动).

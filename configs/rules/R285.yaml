@@ -5,6 +5,7 @@ question: 对未实施或仅部分实施的心理治疗、精神监护、工娱�
 example: 示例：某医院对所有住院患者每周统一收取“暴露疗法”“暗示疗法”费用，但视频监控显示治疗室无人进出，医生承认未实施。
 status: drafting
 priority: P2
+handling_level: 提醒（引导）
 prompt_addon: ''
 trigger_keywords: []
 suggested_tools: []

@@ -5,6 +5,7 @@ question: 医院部分科室将B型钠尿肽、B型钠尿肽前体等测定作�
 example: 示例：B型纳尿肽定量（BNP)、B型钠尿肽前体（proBNP）一般用于心衰诊断、危险分级、疗效监测和预后评估，常适用于心血管疾病，肺部疾病，其他肾病、肺病等疾病。医院为住院患者普遍无指征开展BNP、pro-BNP测定，属于过度检查。
 status: ready
 priority: P0
+handling_level: 可疑（警告）
 prompt_addon: |+
   本规则关注: 患者本次住院里, 是否被无指征收取了「BNP / NT-proBNP (B 型钠尿肽 / N 端 B 型钠尿肽前体)」检查/检验.
   按诊疗规范, BNP / NT-proBNP 用于心衰诊断 / 分级 / 监测疗效, 不应作为普通入院常规.

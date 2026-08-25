@@ -5,6 +5,7 @@ question: 将前列腺特异性抗原作为普通人群入院常规检查，对�
 example: 示例：前列腺特异性抗原（PSA）是一种与前列腺癌相关的抗原，具有较强的器官特异性，用于辅助前列腺癌及前列腺良性病变的鉴别诊断。某医院为非前列腺相关疾病的患者常规开展前列腺特异性抗原、游离前列腺特异性抗原检测，属于过度检查。
 status: ready
 priority: P0
+handling_level: 可疑（警告）
 prompt_addon: "本规则关注: 患者本次住院里, 是否被无指征收取了「前列腺特异性抗原 (PSA, 游离 PSA, 总 PSA)」检查/检验.\n按诊疗规范, PSA 用于前列腺增生 / 前列腺癌筛查与随访, 仅限男性, 不应作为普通入院常规.\n\n审计步骤:\n1. 用 note_diagnosis 列出该患者全部诊断 (入院/出院/术前/术后/病理).\n2. 用 search_fees(category=\"检查类\") 或 search_fees(keyword=...) 查该检查是否做过, 记录出现次数 count.\n   检索关键词: \"前列腺特异性抗原\" / \"PSA\" / \"游离 PSA\" / \"fPSA\" / \"总 PSA\" / \"tPSA\"\n3. 若 count == 0 → CLEAN (规则不适用, 患者根本没做该检查).\n4. 检查 note_diagnosis 中是否含以下指征任一:\n   - 前列腺增生 / 良性前列腺增生 BPH\n   - 前列腺癌 / 前列腺肿瘤\n   - 前列腺炎\n   - 男性泌尿系疾病\n   - 排尿困难 / 尿潴留\n   - 血尿 (男性)\n   - 直肠指检异常\n   - 前列腺癌家族史\n   \n5. 若有任一指征命中 → CLEAN (有指征).\n6. 若无任一指征命中, 且 count >= 1 → VIOLATION,\n   evidence: 引诊断完整列表 + 该检查项目名 × count.\n7. 诊断为「待查」「疑似」「排除」等中间状态 → INCONCLUSIVE.\n\n特殊注意:\n- 女性患者收 PSA → 直接 VIOLATION, 无任何医学合理性 (PSA 是男性专属标志物).\n- 判性别可从 note_diagnosis 或基本人口学信息推断; 若无法判定性别, 退 INCONCLUSIVE.\n\n\U0001F4CC 专家共识触发器 (v0.7, wangxin/jiweihui 加权 9C/4V/0I):\n\nCLEAN 触发器:\n- 男性 + note_diagnosis 含任何恶性肿瘤 + PSA 收费 ≤ 2 次\n  → wangxin: \"肿瘤病人查肿瘤标志物属于正常诊疗行为, 不予认定\"\
   \n  → jiweihui: \"男性肿瘤标志物可查一次\"\n\n反例 (仍 V): 女性 / 无任何肿瘤诊断的男性 + PSA / 反复查 ≥3 次.\n"
 trigger_keywords:
