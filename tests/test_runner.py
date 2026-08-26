@@ -341,6 +341,8 @@ def test_gate_downgrade_normalizes_confidence(cfg, executor):
     assert "[gate:" in result.reasoning
     assert "原 conf=0.80" in result.reasoning        # 原值留档
     assert "初判违规" in result.reasoning            # 原 reasoning 保留
+    assert "待人工复核" in result.headline
+    assert "支持违规结论" not in result.headline
 
 
 def test_max_tool_calls_returns_inconclusive(cfg, executor):
@@ -704,6 +706,7 @@ def test_gate_single_instance_downgrades_violation_to_clean(cfg, executor):
     assert result.verdict == "CLEAN"
     assert result.gate_tag == "单次放过"
     assert "gate:" in result.reasoning
+    assert "未支持违规" in result.headline
 
 
 def test_gate_off_passthrough(cfg, executor):
@@ -849,6 +852,7 @@ def test_all_tool_calls_failed_does_not_unlock_verdict(cfg, executor):
     assert result.verdict != "VIOLATION"      # 全失败的 V 不被接受
     assert result.verdict == "CLEAN"
     assert result.gate_tag == TOOL_FAILURE_GATE_TAG
+    assert result.headline == "未形成可复核异常证据，本规则不输出风险判定"
     assert any("无成功 tool_call" in m for m in emitted)
 
 
@@ -866,6 +870,24 @@ def test_one_successful_tool_call_unlocks_verdict(cfg, executor):
     result = runner.audit(_make_rule(), "J66252")
     assert result.verdict == "CLEAN"
     assert len(result.tool_calls) == 2        # 1 失败 + 1 成功都记录
+
+
+def test_same_llm_verdict_json_supplies_public_headline_without_extra_call(cfg, executor):
+    headline = "脑功能成像项目存在重复收费，现有证据支持违规结论"
+    provider = FakeProvider([
+        '<tool_call>{"name": "search_notes", "arguments": {"patient_id": "J66252"}}</tool_call>',
+        '```json\n{"verdict":"VIOLATION","confidence":0.91,'
+        f'"headline":"{headline}",'
+        '"evidence":[{"source":"note","locator":"入院诊断","text":"x"}],'
+        '"reasoning":"完整推理"}\n```',
+    ])
+    cfg.verdict_gate = "off"
+    result = Runner(executor=executor, provider=provider, config=cfg).audit(
+        _make_rule(), "J66252"
+    )
+    assert provider.calls == 2
+    assert result.headline == headline
+    assert result.reasoning == "完整推理"
 
 
 def test_parse_verdict_bare_json_with_braces_in_reasoning():
@@ -927,6 +949,7 @@ def test_precheck_clean_short_circuits_no_llm(cfg, executor):
     result = runner.audit(_precheck_rule(a_items=["全身断层"], b_items=["图文报告"]), "J66252")
     assert result.verdict == "CLEAN"
     assert result.precheck_tag == "无A项"
+    assert "未支持违规" in result.headline
     assert provider.calls == 0          # 关键: 没调 LLM
     assert result.tool_calls == []
 
@@ -964,6 +987,7 @@ def test_bedside_ecg_target_fee_short_circuits_to_review_without_llm(cfg, execut
 
     assert result.verdict == "INCONCLUSIVE"
     assert result.confidence == pytest.approx(0.5)
+    assert "待人工复核" in result.headline
     assert provider.calls == 0
     assert result.tool_calls == []
     assert "现场核查设备台账" in result.reasoning

@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 
+from javert.audit.headline import finalize_audit_headline
 from javert.audit.result import AuditResult, TOOL_FAILURE_GATE_TAG
 from javert.audit.rule import Rule
 from javert.config import get_config
@@ -172,7 +173,15 @@ def persist_one(
 
         # 0. 重跑漂移防护 (recover-deterministic-recall): 老 V 新 C → 就地改判 I (写前).
         if str(cfg.drift_guard).lower() != "off":
+            verdict_before_drift = result.verdict
             _apply_drift_guard(result, sqlite_store, cfg.sql_enabled)
+            if result.verdict != verdict_before_drift:
+                finalized = finalize_audit_headline(
+                    result,
+                    rule,
+                    patient_id=result.patient_id,
+                )
+                result.headline = finalized.headline
 
         # 1. 本地写 (source-of-truth)
         sqlite_store.write(result, batch_tag=tag, replay_key=replay_key)

@@ -107,6 +107,7 @@ class HistoricalRun(BaseModel):
     run_id: str
     verdict: str
     confidence: float
+    headline: str = ""
     reasoning: str
     batch_tag: str | None = None
     created_at: datetime
@@ -123,6 +124,7 @@ class RunWithReviews(BaseModel):
     patient_id: str
     verdict: str
     confidence: float
+    headline: str = ""
     reasoning: str
     evidence_json: str | None = None
     tool_calls_json: str | None = None

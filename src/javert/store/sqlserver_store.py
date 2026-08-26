@@ -333,13 +333,13 @@ class SqlServerStore:
                         """
                         INSERT INTO javert_audit_runs (
                             run_id, rule_id, patient_id, verdict, confidence,
-                            reasoning, evidence_json, tool_calls_json,
+                            headline, reasoning, evidence_json, tool_calls_json,
                             eligibility_json, promise_trace_json, anchors_json,
                             duration_ms, model, rule_yaml_snapshot, rule_status,
                             triggered_by, started_at, batch_tag, gate_tag, replay_key
                         ) VALUES (
                             :run_id, :rule_id, :patient_id, :verdict, :confidence,
-                            :reasoning, :evidence_json, :tool_calls_json,
+                            :headline, :reasoning, :evidence_json, :tool_calls_json,
                             :eligibility_json, :promise_trace_json, :anchors_json,
                             :duration_ms, :model, :rule_yaml_snapshot, :rule_status,
                             :triggered_by, :started_at, :batch_tag, :gate_tag, :replay_key
@@ -352,6 +352,7 @@ class SqlServerStore:
                         "patient_id": result.patient_id,
                         "verdict": result.verdict,
                         "confidence": float(result.confidence),
+                        "headline": result.headline or None,
                         "reasoning": result.reasoning or "",
                         "evidence_json": evidence_json,
                         "tool_calls_json": tool_calls_json,
@@ -437,7 +438,7 @@ class SqlServerStore:
                     text(
                         "SELECT run_id, rule_id, patient_id, verdict, confidence, "
                         "reasoning, evidence_json, tool_calls_json, duration_ms, model, "
-                        "started_at, gate_tag, eligibility_json, promise_trace_json, anchors_json "
+                        "started_at, gate_tag, eligibility_json, promise_trace_json, anchors_json, headline "
                         "FROM javert_audit_runs WHERE run_id = :rid"
                     ),
                     {"rid": run_id},
@@ -460,6 +461,7 @@ class SqlServerStore:
                 patient_id=row[2],
                 verdict=row[3],
                 confidence=float(row[4] or 0.0),
+                headline=(row[15] or "") if len(row) > 15 else "",
                 reasoning=row[5] or "",
                 evidence=[
                     Evidence.model_validate(item)
@@ -1016,7 +1018,7 @@ class SqlServerStore:
             SELECT run_id, rule_id, patient_id, verdict, confidence,
                    reasoning, evidence_json, tool_calls_json,
                    duration_ms, model, started_at, created_at, triggered_by, batch_tag,
-                   gate_tag, eligibility_json, promise_trace_json
+                   gate_tag, eligibility_json, promise_trace_json, headline
             FROM javert_audit_runs
             WHERE patient_id = :pid
             ORDER BY rule_id ASC, created_at DESC
@@ -1082,6 +1084,7 @@ class SqlServerStore:
                         run_id=h[0],
                         verdict=h[3],
                         confidence=float(h[4] or 0.0),
+                        headline=(h[17] or "") if len(h) > 17 else "",
                         reasoning=h[5] or "",
                         batch_tag=h[13],
                         created_at=h[11],
@@ -1105,6 +1108,7 @@ class SqlServerStore:
                     patient_id=latest[2],
                     verdict=latest[3],
                     confidence=float(latest[4] or 0.0),
+                    headline=(latest[17] or "") if len(latest) > 17 else "",
                     reasoning=latest[5] or "",
                     evidence_json=latest[6],
                     tool_calls_json=latest[7],
@@ -1175,7 +1179,7 @@ class SqlServerStore:
             WITH ranked AS (
                 SELECT run_id, rule_id, patient_id, verdict, confidence,
                        reasoning, evidence_json, tool_calls_json, duration_ms,
-                       model, created_at, batch_tag, gate_tag,
+                       model, created_at, batch_tag, gate_tag, headline,
                        ROW_NUMBER() OVER (
                            PARTITION BY rule_id, model
                            ORDER BY created_at DESC, id DESC
@@ -1185,7 +1189,7 @@ class SqlServerStore:
             )
             SELECT run_id, rule_id, patient_id, verdict, confidence,
                    reasoning, evidence_json, tool_calls_json, duration_ms,
-                   model, created_at, batch_tag, gate_tag
+                   model, created_at, batch_tag, gate_tag, headline
             FROM ranked WHERE rn = 1
             ORDER BY rule_id ASC, model ASC
         """
@@ -1225,6 +1229,7 @@ class SqlServerStore:
                 "created_at": row[10],
                 "batch_tag": row[11],
                 "gate_tag": row[12] or "",
+                "headline": row[13] or "",
             }
             for row in rows
         ]
@@ -1340,7 +1345,7 @@ class SqlServerStore:
                 rows = conn.execute(
                     text(
                         f"SELECT TOP ({limit_int}) run_id, patient_id, rule_id, verdict, "
-                        "confidence, created_at, eligibility_json, promise_trace_json "
+                        "confidence, created_at, eligibility_json, promise_trace_json, headline "
                         "FROM javert_audit_runs "
                         "WHERE created_at > :last_seen "
                         "ORDER BY created_at ASC"
@@ -1361,6 +1366,7 @@ class SqlServerStore:
                         "promise_trace": (
                             json.loads(r[7]) if len(r) > 7 and r[7] else None
                         ),
+                        "headline": (r[8] or "") if len(r) > 8 else "",
                     }
                     for r in rows
                 ]
@@ -1416,7 +1422,7 @@ class SqlServerStore:
                 rows = conn.execute(
                     text(
                         f"SELECT TOP ({limit_int}) id, run_id, patient_id, rule_id, "
-                        "verdict, confidence, created_at, eligibility_json, promise_trace_json "
+                        "verdict, confidence, created_at, eligibility_json, promise_trace_json, headline "
                         "FROM javert_audit_runs "
                         "WHERE id > :last_id "
                         "ORDER BY id ASC"
@@ -1438,6 +1444,7 @@ class SqlServerStore:
                         "promise_trace": (
                             json.loads(r[8]) if len(r) > 8 and r[8] else None
                         ),
+                        "headline": (r[9] or "") if len(r) > 9 else "",
                     }
                     for r in rows
                 ]

@@ -114,5 +114,6 @@ def test_persist_one_on_downgrades_and_stores_inconclusive(store: SqliteStore, m
         assert new.verdict == "INCONCLUSIVE"
         latest = store.find_by_rule_patient_latest(new.rule_id, new.patient_id)
         assert latest.verdict == "INCONCLUSIVE" and latest.gate_tag == DRIFT_TAG
+        assert "待人工复核" in latest.headline
     finally:
         cfgmod.reset_config_cache()

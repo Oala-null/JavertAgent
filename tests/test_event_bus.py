@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
-from javert.web.api.routes_sse import EventBus, _eligibility_sse_fields
+from javert.web.api.routes_sse import AuditWatcher, EventBus, _eligibility_sse_fields
 
 
 @pytest.mark.asyncio
@@ -128,3 +130,46 @@ def test_eligibility_sse_summary_is_additive_and_old_rows_remain_nullable():
         "GUIDELINE_INDICATION",
     ]
     assert "future_consumer_field" not in summary
+
+
+@pytest.mark.asyncio
+async def test_audit_watcher_adds_top_level_and_public_headline(monkeypatch):
+    watcher = AuditWatcher(poll_interval_s=0.001, error_backoff_s=0.001)
+    rows = [{
+        "id": 11,
+        "run_id": "aud_SSEHEADLINE1",
+        "patient_id": "CASE-DEID-SSE",
+        "rule_id": "R191",
+        "verdict": "INCONCLUSIVE",
+        "confidence": 0.5,
+        "headline": "重复收费核查依据不足，相关收费事实待人工复核",
+        "eligibility_evaluation": None,
+        "promise_trace": None,
+    }]
+    calls = 0
+
+    def fetch_runs_since_id(_last_id, _limit):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return rows
+        watcher._stop.set()
+        return []
+
+    fake_store = SimpleNamespace(
+        fetch_runs_since_id=fetch_runs_since_id,
+        has_other_runs=lambda *_args: False,
+    )
+    publish = AsyncMock()
+    monkeypatch.setattr(
+        "javert.web.api.routes_sse.get_sqlserver_store", lambda: fake_store
+    )
+    monkeypatch.setattr("javert.web.api.routes_sse.event_bus.publish", publish)
+
+    await watcher._loop()
+
+    event, payload = publish.await_args.args
+    assert event == "new_audit_run"
+    assert payload["headline"] == rows[0]["headline"]
+    assert payload["public_explanation"]["headline"] == rows[0]["headline"]
+    assert payload["verdict"] == "INCONCLUSIVE"

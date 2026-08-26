@@ -67,7 +67,7 @@ class AuditStore(ABC):
 class SqliteStore(AuditStore):
     """SQLite 实现."""
 
-    SCHEMA_VERSION = 8
+    SCHEMA_VERSION = 9
 
     def __init__(self, db_path: Path):
         self.db_path = db_path
@@ -103,7 +103,7 @@ class SqliteStore(AuditStore):
         logger.info("audit_store schema 已初始化 (v%d): %s", self.SCHEMA_VERSION, self.db_path)
 
     def _ensure_v2_columns(self) -> None:
-        """累积 migration: 给 audit_runs 幂等补齐 v2-v8 可空列.
+        """累积 migration: 给 audit_runs 幂等补齐 v2-v9 可空列.
 
         幂等. 老库 (v1) 缺这三列 → ALTER TABLE 补; 新库 (v2) 已含 → 跳过.
         最后无条件 CREATE INDEX IF NOT EXISTS idx_audit_unsynced.
@@ -136,6 +136,9 @@ class SqliteStore(AuditStore):
         # v8 (OCR pipeline): caseRef/version 派生安全重放键
         if "replay_key" not in existing_cols:
             migrations.append("ALTER TABLE audit_runs ADD COLUMN replay_key TEXT")
+        # v9 (add-public-audit-headline-contract): 旧行保持 NULL，不批量回填
+        if "headline" not in existing_cols:
+            migrations.append("ALTER TABLE audit_runs ADD COLUMN headline TEXT")
 
         with self.conn as c:
             for sql in migrations:
@@ -196,10 +199,10 @@ class SqliteStore(AuditStore):
                 """
                 INSERT INTO audit_runs (
                     run_id, rule_id, patient_id, verdict, confidence,
-                    reasoning, evidence_json, tool_calls_json,
+                    headline, reasoning, evidence_json, tool_calls_json,
                     duration_ms, model, started_at, batch_tag, gate_tag,
                     eligibility_json, promise_trace_json, anchors_json, replay_key
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     result.run_id,
@@ -207,6 +210,7 @@ class SqliteStore(AuditStore):
                     result.patient_id,
                     result.verdict,
                     result.confidence,
+                    result.headline or None,
                     result.reasoning,
                     evidence_json,
                     tool_calls_json,
@@ -241,6 +245,7 @@ class SqliteStore(AuditStore):
             patient_id=row["patient_id"],
             verdict=row["verdict"],
             confidence=row["confidence"] or 0.0,
+            headline=(row["headline"] or "") if "headline" in cols else "",
             reasoning=row["reasoning"] or "",
             evidence=evidence,
             tool_calls=tool_calls,

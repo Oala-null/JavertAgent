@@ -121,6 +121,22 @@ def test_presenter_does_not_publish_charge_assertion_without_charge_anchor():
     assert any("未形成可公开的收费项目锚点" in item for item in public["review_needs"])
 
 
+def test_old_row_headline_fallback_uses_rule_metadata_not_reasoning():
+    result = _locked_result().model_copy(update={
+        "promise_trace": None,
+        "verdict": "INCONCLUSIVE",
+        "headline": "",
+        "reasoning": "散文中出现虚构药品名和虚构收费事实，不得反解析进标题。",
+    })
+    public = present_public_explanation(
+        result,
+        {"violation_type": "重复收费", "behavior_name": "重复收费"},
+        [],
+    )
+    assert public["headline"] == "重复收费核查：现有依据不足，待人工复核"
+    assert "虚构药品名" not in public["headline"]
+
+
 def test_public_sanitizer_removes_internal_ids_tools_verdicts_and_reason_codes():
     text = sanitize_public_text(
         "根据规则 RD04，search_fees 与 gate 得出 VIOLATION，原因 PROMISE_CONFLICT。"

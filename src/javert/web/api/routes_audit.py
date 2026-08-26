@@ -69,6 +69,7 @@ def _format_sse(event: str, data: Any) -> str:
 def _result_payload(result: Any) -> dict:
     """AuditResult → result 事件 payload（单条 / 批量共用）。"""
     meta = load_rule_meta().get(result.rule_id)
+    public_explanation = present_public_explanation(result, meta, [])
     return {
         "run_id": result.run_id,
         "rule_id": result.rule_id,
@@ -76,6 +77,7 @@ def _result_payload(result: Any) -> dict:
         "patient_id": result.patient_id,
         "verdict": result.verdict,
         "confidence": result.confidence,
+        "headline": public_explanation["headline"],
         "reasoning": result.reasoning,
         "evidence": [e.model_dump() for e in result.evidence],
         "tool_calls": [tc.model_dump() for tc in result.tool_calls],
@@ -87,7 +89,7 @@ def _result_payload(result: Any) -> dict:
             if result.eligibility_evaluation is not None
             else None
         ),
-        "public_explanation": present_public_explanation(result, meta, []),
+        "public_explanation": public_explanation,
         "promise": public_promise_summary(result.promise_trace),
     }
 
@@ -334,7 +336,7 @@ def list_audit_runs(
         conn.row_factory = sqlite3.Row
         sql = (
             "SELECT run_id, rule_id, patient_id, verdict, confidence, "
-            "       duration_ms, model, started_at, eligibility_json "
+            "       duration_ms, model, started_at, eligibility_json, headline "
             f"FROM audit_runs{where_clause} "
             "ORDER BY started_at DESC LIMIT ?"
         )
@@ -355,6 +357,7 @@ def list_audit_runs(
                 patient_id=row["patient_id"],
                 verdict=row["verdict"],
                 confidence=row["confidence"] or 0.0,
+                headline=row["headline"] or "",
                 duration_ms=row["duration_ms"] or 0,
                 model=row["model"] or "",
                 started_at=started,
@@ -956,6 +959,7 @@ def _results_2c_payload(syxh: str, *, include_hits: bool) -> dict[str, Any]:
                             hit_codes.append(code)
                         if name and name not in hit_names:
                             hit_names.append(name)
+                public_explanation = present_public_explanation(r, meta, hit_items)
                 results.append({
                     "run_id": r.run_id,
                     "rule_id": r.rule_id,
@@ -966,6 +970,7 @@ def _results_2c_payload(syxh: str, *, include_hits: bool) -> dict[str, Any]:
                     "verdict": r.verdict,
                     "verdict_label": _VERDICT_LABEL.get(r.verdict, r.verdict),
                     "confidence": r.confidence,
+                    "headline": public_explanation["headline"],
                     "reasoning": display_reasoning,
                     "diagnostic_code": diagnostic_code,
                     "retryable": result_retryable,
@@ -974,9 +979,7 @@ def _results_2c_payload(syxh: str, *, include_hits: bool) -> dict[str, Any]:
                         if r.eligibility_evaluation is not None
                         else None
                     ),
-                    "public_explanation": present_public_explanation(
-                        r, meta, hit_items
-                    ),
+                    "public_explanation": public_explanation,
                     "promise": public_promise_summary(r.promise_trace),
                     "evidence": [
                         {"source": e.source, "locator": e.locator, "text": e.text}
@@ -1278,6 +1281,7 @@ def results_2c_v2(syxh: str):
                 applicability, applicability_label = _v2_applicability(
                     item["verdict"], run.reasoning
                 )
+                public_explanation = present_public_explanation(run, meta, hit_items)
                 card = {
                     "card_id": run.run_id,
                     "run_id": run.run_id,
@@ -1308,6 +1312,7 @@ def results_2c_v2(syxh: str):
                     "applicability": applicability,
                     "applicability_label": applicability_label,
                     "confidence": item["confidence"],
+                    "headline": public_explanation["headline"],
                     "reasoning": item["reasoning"],
                     "diagnostic_code": item["diagnostic_code"],
                     "retryable": item["retryable"],
@@ -1320,9 +1325,7 @@ def results_2c_v2(syxh: str):
                     "hits": hits,
                     "evidence": item["evidence"],
                     "eligibility_evaluation": item["eligibility_evaluation"],
-                    "public_explanation": present_public_explanation(
-                        run, meta, hit_items
-                    ),
+                    "public_explanation": public_explanation,
                     "promise": public_promise_summary(run.promise_trace),
                     "finished_at": item["finished_at"],
                 }
@@ -1554,6 +1557,9 @@ def get_audit_run(run_id: str) -> AuditRunDetail:
         patient_id=result.patient_id,
         verdict=result.verdict,
         confidence=result.confidence,
+        headline=present_public_explanation(
+            result, load_rule_meta().get(result.rule_id), []
+        )["headline"],
         duration_ms=result.duration_ms,
         model=result.model,
         started_at=result.started_at,

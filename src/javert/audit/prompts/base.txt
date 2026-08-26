@@ -90,6 +90,7 @@
 {
   "verdict": "VIOLATION",            // 三选一: VIOLATION / CLEAN / INCONCLUSIVE
   "confidence": 0.85,                // 0.0~1.0 浮点
+  "headline": "脑功能成像重复收费，现有证据支持违规复核", // 15~60 字公开单行短标题
   "evidence": [
     {"source": "fee", "locator": "脑功能成像", "text": "费用明细中出现 ¥80 脑功能成像项"},
     {"source": "note", "locator": "出院诊断", "text": "甲状腺乳头状癌术后"}
@@ -111,6 +112,7 @@
   - **conf = 0.00 仅在极端情况**: 工具全部 fail / 关键信息完全缺失 (例如 fee 表为空 + 文书为空 + 检验为空 + 检查为空). 一般情况绝不应该是 0.0.
   - **边界**: 命中部分指征但不充分 → INCONCLUSIVE conf 0.50 ~ 0.60, **不要因谨慎而写 0.0**.
   - **ETL 缺失警告触发的 INCONCLUSIVE**: conf 0.50 (中性保守, 单据本身存在只是未数字化, 按 wangxin 规则不应 V).
+- **headline**: 15~60 字单行中文短标题，概括审核对象与主要违规方式或关键证据缺口；多对象最多点名两个，其余写“等 N 项”。必须与最终 verdict 一致：INCONCLUSIVE 使用“疑似/待核查/依据不足”，CLEAN 使用“未发现违规/未支持违规”，VIOLATION 不使用待核语义。不得包含患者姓名/编号、规则代号、工具名、英文 verdict、gate/precheck、run/ownership 标识、处置建议、完整证据列表或分析过程。
 - **evidence**: 每条必须 source ∈ {note, fee, order, catalog, drug_indication, etl_warning, examination, lab}, locator 用记录可定位的字符串 (子阶段名 / 项目名 / 医嘱项目 / 目录项目 / 药品名 / "ETL_GAP: <section>" / 检查项名+日期 / 检验项名+日期), text 摘录 ≤ 500 字
 - **reasoning**: 引用 evidence 的链式推理. 严禁不引用 evidence 的"猜想".
   **行文要求 (对外可读)**: reasoning 会直接展示给医院管理者, 必须全中文自然语言:

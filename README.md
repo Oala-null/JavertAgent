@@ -8,7 +8,7 @@
 
 **data-hub (2026-07-03)**: 🟢 **数据中台三链打通** — 对接 `Scriv/Data_Hub` 46 张国标 TB_* 表: **回填** (`scripts/build_data_hub_filled.py`, sy 3309 + szx 全量 4701 患者 → 23 表 631 万记录, 含 通用文书/费用医保分解/手术医保双码 3 张扩展表) → **推送** (`scripts/push_data_hub_filled.py` → 142 `TP_data_hub` 库) → **反向取数** (`scripts/etl_from_data_hub.py`, 流B, zadig_agent 零改动). 双链路对照 J66252 裁决 16/18 一致无 V 级差异. 同库隔离表族可用 `JAVERT_HUB_TABLE_PREFIX`（如 `desus_`）选择，默认空值仍读 `TB_*`；混合 workbench 用 `JAVERT_HUB_RAW_PROFILES` 按 latest batch tag 选择独立只读源，不全局切源。交接文档 `Scriv/data_hub_filled/_report.md`, 接入指引 `docs/数据接入清单.md` §四.
 
-**2C 对接 v3**：新接入使用 `/api/audit/v3/submit` 与 `/api/audit/v3/results/{SYXH}`；在完整规则卡片上按实际收费明细行返回数量、单价、开单科室编码/名称和开单医生工号/名称。`public_explanation.narrative` 是保留持久化 reasoning 语义的只加字段，严格客户端须允许可选/未知字段。`status=running` 时 cards 只是增量结果，必须轮询到 `done`。详见 `docs/2c对接_javert审计服务_v3.md`。
+**2C 对接 v3**：新接入使用 `/api/audit/v3/submit` 与 `/api/audit/v3/results/{SYXH}`；完整规则卡片 additive 返回 15–60 字公开 `headline`（顶层与 `public_explanation.headline` 一致）、原 `reasoning/evidence`，并按实际收费明细行返回数量、单价、开单科室编码/名称和开单医生工号/名称。旧行 headline 为 NULL 时只用规则元数据与最终 verdict 确定性回退，不从 reasoning 猜事实；严格客户端须允许可选/未知字段。`status=running` 时 cards 只是增量结果，必须轮询到 `done`。详见 `docs/2c对接_javert审计服务_v3.md`。
 
 **临床证据工具补洞（2026-08-18）**：费用契约保留计价单位和医嘱关联；`search_orders` 结构化医嘱优先、OCR 医嘱全文兜底；`catalog_lookup` 按服务日期查询 2026-04/07 两版诊疗目录；检查/检验结构化表为空时返回明确标注的全文报告候选。新增眼科专家扩展 R319-R322，覆盖计价次数、睑板腺治疗执行、床头心电图现场核查和 A/B 超联合指征；设备资料缺失由 `presence_review` 零模型进入人工复核。
 
@@ -98,7 +98,8 @@ v0.8 历史验收见 `docs/sample_drug_audit.md`，当前所有权、专家维�
 | 文件 | 用途 |
 |------|------|
 | `docs/how_javert_works.md` | 技术架构说明（面向院方管理层/信息科/投资方；工具、Router 与 8 模板工作原理；规则库存以 `javert list` 为准） |
-| `docs/2c对接_javert审计服务_v3.md` | 2C 新接入契约：异步轮询、完整 cards、收费明细行量价及开单科室/医生字段 |
+| `docs/2c对接_javert审计服务_v3.md` | 2C 新接入契约：异步轮询、公开 headline、完整 cards、收费明细行量价及开单科室/医生字段 |
+| `docs/2c_headline_handoff.md` | headline nullable schema、去标识 v3 fixture 与 2C 渐进式披露前置门禁 |
 | `docs/做不了163规则可行性分析.md` | 163 条完整分析报告 (含 4 工具能力深潜 + 7 tier 分类 + pilot 选单) |
 | `docs/163规则可行性分析表.csv` | 给医保领域专家做 Y/N 标注 (4 优先级 + 留空 Y/N 列) |
 | `docs/templates/模板{1-7}.md` | 7 大模板的完整设计 + 全 109 条 Y personalization 数据 |
@@ -186,7 +187,7 @@ uv run python scripts/test_router_smoke.py
 | `/account/password` | 自助改密 (旧 + 新 + 确认), 改完强制重登 |
 | `/workbench` | sidebar 100+ 病人 (V/I/C 计数 + 已审 N/M 进度 + **v0.9 主诊/¥金额/更新时间富卡片**), filter 4 档, **v0.9 facet (tag/费用区间/主诊关键词/更新时间, 纯前端叠加)**, welcome banner |
 | `/workbench/{pid}` | 病案概览 (主诊/手术/费用结构/科室/医师) + 违规卡 + 三态决策 form + 其他专家行 (**v0.9 长评语 hover 全文**) + 原始病历 modal |
-| **公开解释与命中项目** | 默认展示完整中文化“审核说明”（保留持久化 reasoning 语义）以及结论、核查项目、收费事实、依据、临床证据和复核事项；结构化事实不从说明反解析，费用/药品命中必须关联患者实际净正收费行，不展示内部规则号或原始 evidence JSON |
+| **公开解释与命中项目** | 完整结果契约含已门控短标题和完整中文化“审核说明”（保留持久化 reasoning 语义），以及结论、核查项目、收费事实、依据、临床证据和复核事项；结构化事实不从说明反解析，费用/药品命中必须关联患者实际净正收费行，不展示内部规则号或原始 evidence JSON |
 | **原文对照面板** | 点命中项目后先按锚点懒加载文书/费用/检验目标页签，再定位高亮；源暂不可用可重试，真实无数据与定位失效分别提示 |
 | **v0.9 费用类别展开** | 费用类别表手风琴, 点类别就地展开明细 (编码·名称·次数·金额) |
 | 原始病历 modal | 文书 / 费用 / 检验记录按页签加载，支持 Ctrl+F 搜索与高亮跳转 |

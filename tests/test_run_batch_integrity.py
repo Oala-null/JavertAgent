@@ -143,9 +143,12 @@ def test_normal_path_result_payload_keeps_legacy_fields_and_adds_public_projecti
         "eligibility_evaluation": None,
     }
     assert {key: results[0][key] for key in expected} == expected
-    assert set(results[0]) == {*expected, "public_explanation", "promise"}
+    assert set(results[0]) == {
+        *expected, "handling_level", "headline", "public_explanation", "promise"
+    }
+    assert results[0]["headline"] == results[0]["public_explanation"]["headline"]
     assert set(results[0]["public_explanation"]) == {
-        "conclusion", "narrative", "audit_items", "charge_facts", "basis",
+        "headline", "conclusion", "narrative", "audit_items", "charge_facts", "basis",
         "clinical_evidence", "review_needs",
     }
     assert results[0]["promise"] is None

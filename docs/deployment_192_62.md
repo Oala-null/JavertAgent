@@ -775,6 +775,28 @@ openspec validate close-clinical-audit-tool-gaps --strict
 回滚到上一受控 HEAD 即恢复旧工具/规则；不删除目录、不回写历史 audit_runs。已生成的新规则
 结果保留审计追溯，需要业务撤回时走专家 review，不做数据库删除。
 
+### 10.14 公开审核 headline additive 合同（待授权发布）
+
+本节是 `add-public-audit-headline-contract` 的发布准备清单，不代表已在 62 执行。未经单独授权，
+不得远程安装、运行 schema、重启服务或触发患者审计。
+
+1. 从已提交 HEAD 按 §10 生成并安装受控 artifact，先确认本地定向/全量测试和 OpenSpec strict；
+2. 在重启前运行 `.venv/bin/javert ensure-mssql-schema`，确认
+   `zadig.dbo.javert_audit_runs.headline NVARCHAR(120) NULL` 仅出现一次；SQLite 启动迁移确认
+   `audit_runs.headline TEXT NULL`，抽查旧行仍为 NULL；
+3. 重拉 `javert-web.service`，验证 systemd active、登录页 200、两端 HEAD 相等、62 工作树 clean，
+   并逐值核对旧进程固化的 SQL/Hub/LLM/肿瘤开关没有被代码默认覆盖；
+4. 先用空数组验证 v3 submit HTTP 202，再用不存在的去标识号验证 results HTTP 200/unknown；
+5. 用授权的去标识 fixture 验证 v3 card 同时 additive 返回顶层 `headline`、
+   `public_explanation.headline`、原 `reasoning` 和 `evidence`，两处 headline 相等，长度 15–60、
+   单行、无内部术语，`matched_items`/三态/端点语义不变；
+6. 检查 headline 指标只记录生成数、回退数和原因枚举，journal 不得出现 headline、reasoning、
+   患者、run/ownership 标识或证据原文；
+7. Javert schema/API 证据交付 2C 并确认严格 DTO 允许新增/未知字段后，才发布 2C 首屏消费。
+
+回滚时客户端停止消费 headline，应用回到上一受控 HEAD；nullable 列保留，不做 DROP、不回填
+旧行、不重写历史 reasoning/evidence，也不运行无范围的 `sync-to-mssql --pending-only`。
+
 ## 11. 实测性能 (2026-05-21 50 病人 batch)
 
 ```

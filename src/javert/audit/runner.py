@@ -35,6 +35,7 @@ from .precheck import (
     PrecheckResult,
     run_precheck,
 )
+from .headline import finalize_audit_headline
 from .result import AuditResult, Evidence, ToolCall, TOOL_FAILURE_GATE_TAG
 from .rule import Rule
 from .run_id import new_run_id
@@ -72,9 +73,10 @@ _VERDICT_RESPONSE_FORMAT: dict[str, Any] = {
                         "additionalProperties": False,
                     },
                 },
+                "headline": {"type": "string", "minLength": 15, "maxLength": 60},
                 "reasoning": {"type": "string"},
             },
-            "required": ["verdict", "confidence", "evidence", "reasoning"],
+            "required": ["verdict", "confidence", "headline", "evidence", "reasoning"],
             "additionalProperties": False,
         },
     },
@@ -425,7 +427,12 @@ class Runner:
             self.executor.set_patient_context(patient_id)
 
         try:
-            return self._audit_body(rule, patient_id, run_id, started, t_start)
+            result = self._audit_body(rule, patient_id, run_id, started, t_start)
+            return finalize_audit_headline(
+                result,
+                rule,
+                patient_id=patient_id,
+            )
         finally:
             if manage_patient_context:
                 self.executor.clear_patient_context()
@@ -841,7 +848,7 @@ class Runner:
                     "content": (
                         "工具调用总预算已用尽，禁止继续调用工具。只基于已有工具结果，"
                         "输出一个完整 fenced JSON；字段仅含 verdict、confidence、"
-                        "evidence、reasoning。"
+                        "headline、evidence、reasoning。"
                     ),
                 })
                 final_resp = self.provider.chat_with_retry(
@@ -914,7 +921,7 @@ class Runner:
                     repair_prompt = (
                         "上一轮输出因达到长度上限被截断。已有工具证据；"
                         "禁止解释或继续调用工具，只输出一个简短、完整的 fenced JSON，"
-                        "字段仅含 verdict、confidence、evidence、reasoning。"
+                        "字段仅含 verdict、confidence、headline、evidence、reasoning。"
                     )
             elif tc_errors:
                 if native_protocol:
@@ -923,7 +930,8 @@ class Runner:
                     )
                     repair_prompt = (
                         f"你的工具调用非法: {tc_errors[0]}。请重新调用系统函数工具；"
-                        "若已可裁决则只输出 ```json {...} ``` 块。"
+                        "若已可裁决则只输出 ```json {...} ``` 块，字段必须含 "
+                        "verdict、confidence、headline、evidence、reasoning。"
                     )
                 else:
                     self.emit(
@@ -933,7 +941,8 @@ class Runner:
                     repair_prompt = (
                         f"你的 tool_call JSON 非法: {tc_errors[0]}. "
                         "请修正后重新发出 <tool_call> (仍可继续调查); "
-                        "若已可裁决则只输出 ```json {...} ``` 块."
+                        "若已可裁决则只输出 ```json {...} ``` 块，字段必须含 "
+                        "verdict、confidence、headline、evidence、reasoning。"
                     )
             else:
                 self.emit("[Runner] 输出既无 tool_call 也无合法 verdict JSON, 发起 repair turn")
@@ -941,7 +950,7 @@ class Runner:
                     "你的输出无法解析。若需更多证据则"
                     + ("调用系统函数工具；" if native_protocol else "发 <tool_call>；")
                     + "若已可裁决则只输出 ```json {...} ``` 块, "
-                    "字段含 verdict/confidence/evidence/reasoning."
+                    "字段含 verdict/confidence/headline/evidence/reasoning."
                 )
             if not truncated:
                 messages.append({"role": "assistant", "content": content})
@@ -1007,6 +1016,7 @@ class Runner:
                     "content": (
                         f"已用尽 {max_calls} 轮工具调用 budget, 你不能再发 <tool_call>. "
                         "请立即基于已收集到的 tool result 输出最终裁决 (fenced JSON 块). "
+                        "JSON 字段必须含 verdict、confidence、headline、evidence、reasoning；"
                         "若证据真不足支持 V/C, 输出 INCONCLUSIVE conf 0.40~0.60 + evidence 引已查工具结果即可, "
                         "不要输出 conf=0.00. 此轮只接受 ```json ... ``` 输出, tool_call 一律忽略."
                     ),
@@ -1205,6 +1215,7 @@ class Runner:
             patient_id=patient_id,
             verdict=verdict,
             confidence=confidence,
+            headline=str((verdict_data or {}).get("headline", "")),
             reasoning=reasoning,
             evidence=evidence,
             tool_calls=tool_records,

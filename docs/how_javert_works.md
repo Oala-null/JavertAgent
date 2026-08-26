@@ -48,6 +48,7 @@ Javert 是基于大语言模型 (LLM) 的**医保违规智能审计系统**。
 │ 患者: DEID-PATIENT-001                                 │
 │ 结论: VIOLATION (违规)                                  │
 │ 置信度: 0.90                                            │
+│ 标题: 全身断层显像重复收取报告费，现有证据支持违规结论   │
 │ 证据:                                                   │
 │   [1] 费用: "全身断层显像" ¥3,200 × 1 (2026-03-15)    │
 │   [2] 费用: "图文报告" ¥50 × 1 (2026-03-15)           │
@@ -63,8 +64,10 @@ Javert 是基于大语言模型 (LLM) 的**医保违规智能审计系统**。
 阶段的增量 cards 当作完整结果。字段定义见 `docs/2c对接_javert审计服务_v3.md`。
 v2/v3 在同一 attempt 内按 run 增量复用卡片投影，并对同 attempt 并发查询做单飞保护；
 该有界进程内缓存只优化轮询延迟，不改变审计结果或接口契约。
-公开 presenter 还提供默认展示的 `public_explanation.narrative`，完整保留持久化 reasoning 的
-中文语义；其他结构化事实不从这段说明反解析，调用方应允许未知的 additive 字段。
+每张 card 还 additive 返回 15–60 字、与最终 verdict 一致的顶层 `headline` 和
+`public_explanation.headline`，完整 `reasoning/evidence` 保持不变。公开 presenter 的
+`narrative` 完整保留持久化 reasoning 中文语义；其他结构化事实不从这段说明反解析，调用方
+应允许未知字段。
 
 ---
 
@@ -87,9 +90,9 @@ v2/v3 在同一 attempt 内按 run 增量复用卡片投影，并对同 attempt 
 │       │                                                      │
 │       ├── 调用工具 ──→ 费用查询 / 文书查询 / 诊断 / 药品    │
 │       ├── 分析证据                                           │
-│       └── 输出裁决 (V / C / I + 置信度 + 证据链)             │
+│       └── 输出裁决 (V / C / I + headline + 置信度 + 证据链)  │
 │       ↓                                                      │
-│  ⑥ verdict gate → 结果存储 (SQLite + SQL Server)             │
+│  ⑥ verdict/质量 gate → headline finalizer → 双库存储         │
 │       ↓                                                      │
 │  ⑦ 公开 presenter → 专家工作台 / 2C (内部字段兼容保留)       │
 │                                                              │
@@ -120,10 +123,11 @@ v2/v3 在同一 attempt 内按 run 增量复用卡片投影，并对同 attempt 
   │          → 返回: "核医学科影像报告: PET-CT 全身断层…"
   │
   └─ Turn 4: LLM → 输出裁决 JSON
-             → VIOLATION, confidence=0.90, 证据 3 条
+             → VIOLATION, headline, confidence=0.90, 证据 3 条
 
-步骤 4: verdict gate → 存储裁决、可空 Promise trace 与证据链
-步骤 5: public presenter 投影医生可读解释；内部追溯字段继续兼容保存
+步骤 4: verdict/结构化/质量门控完成后，以最终 verdict 门控 headline；失败只做确定性回退
+步骤 5: nullable headline、裁决、Promise trace 与证据链双库存储
+步骤 6: public presenter 投影医生可读解释；内部追溯字段继续兼容保存
 ```
 
 **关键设计**: 需要 LLM 的规则不会盲目跑完所有工具，而是根据规则内容**自主决策**先查什么、

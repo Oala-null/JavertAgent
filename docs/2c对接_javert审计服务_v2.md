@@ -137,6 +137,7 @@ v2 结果按当前 `attempt_id + run_id` 增量复用已生成 cards。HTTP 请�
     "title": "超范围支付"
   },
   "public_explanation": {
+    "headline": "肿瘤医保限定用药核对未发现违规",
     "conclusion": {"label": "未发现违规", "summary": "现有结构化事实未支持违规结论。"},
     "narrative": "经核对收费事实、诊断与现有文书，保留完整的中文审核说明。",
     "audit_items": ["申请医保支付的肿瘤药，超出医保药品目录限定支付范围。"],
@@ -161,6 +162,7 @@ v2 结果按当前 `attempt_id + run_id` 增量复用已生成 cards。HTTP 请�
   "applicability": "APPLICABLE",
   "applicability_label": "适用",
   "confidence": 1.0,
+  "headline": "肿瘤医保限定用药核对未发现违规",
   "reasoning": "患者用药及现有证据符合当前医保限定条件。",
   "diagnostic_code": "",
   "retryable": false,
@@ -228,19 +230,23 @@ v2 结果按当前 `attempt_id + run_id` 增量复用已生成 cards。HTTP 请�
 | `verdict_label` | 普通 CLEAN 为“合规”；规则不适用的 CLEAN 为“不适用” |
 | `applicability` | `APPLICABLE / NOT_APPLICABLE`；不改变既有三态 verdict |
 | `applicability_label` | `适用 / 不适用` |
+| `headline` | 15–60 字单行公开短标题，与最终 verdict 一致；首屏优先读取本字段 |
 | `reasoning` | 兼容中文摘要；v2 清除“暂未描述”占位短语，新医生界面优先展示 `public_explanation` |
 | `matched_items` | 费用/药品命中关联的唯一真相源 |
 | `hits` | Web 命中块所需的完整解析结果，含 fee/drug/note/lab/exam 及定位锚点 |
 | `evidence` | 模型裁决引用的证据摘要 |
 | `eligibility_evaluation` | RD04 完整肿瘤资格结构；非 RD04 或历史空行返回 `null` |
-| `public_explanation` | 固定含 7 个字段：`conclusion/narrative/audit_items/charge_facts/basis/clinical_evidence/review_needs`；`narrative` 保留持久化 reasoning 的完整中文化摘要，其余字段只投影有确定来源的事实 |
+| `public_explanation` | 固定含 8 个字段：`headline/conclusion/narrative/audit_items/charge_facts/basis/clinical_evidence/review_needs`；headline 与顶层一致，`narrative` 保留持久化 reasoning 的完整中文化摘要，其余字段只投影有确定来源的事实 |
 | `promise` | 可空公开摘要；仅含 `locked/historical_conflict`，不暴露内部 Promise 标识、原因码或 facts |
 
-`public_explanation` 与 `promise` 是 additive 字段，`narrative` 相对最初六字段公开解释也属于
-只加字段。v2 既有字段名、每条规则一张 card、三态结果和 `matched_items` 对齐语义不变；
-下游 BFF 应优先展示公开解释，但不得删除或改写旧字段，严格 DTO 应把 `narrative` 建模为可选
+`headline`、`public_explanation.headline` 与 `promise` 是 additive 字段。v2 既有字段名、每条规则
+一张 card、三态结果和 `matched_items` 对齐语义不变；下游 BFF 应优先展示 headline 并保留完整
+reasoning/evidence 展开，但不得删除或改写旧字段，严格 DTO 应把新增字段建模为可选
 并允许未知字段。公开 fee/drug hit 必须关联患者实际净正收费行，无实际收费的搜索词不再生成
 假命中。
+
+部署必须先由 Javert 增加 nullable headline 列并上线 additive API，再由 2C 消费；回滚 2C 时忽略
+headline 即可，服务端保留可空列，不执行破坏性降级。
 
 ## 5. code/name/time 一一对应标准
 

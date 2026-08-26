@@ -155,6 +155,9 @@ class AuditWatcher:
                 )
                 for row in rows:
                     eligibility_evaluation = row.get("eligibility_evaluation")
+                    public_explanation = present_public_explanation(
+                        row, load_rule_meta().get(row["rule_id"]), []
+                    )
                     is_new_p = not await loop.run_in_executor(
                         None, store.has_other_runs, row["patient_id"], row["run_id"],
                     )
@@ -164,11 +167,10 @@ class AuditWatcher:
                         "rule_id": row["rule_id"],
                         "verdict": row["verdict"],
                         "confidence": row["confidence"],
+                        "headline": public_explanation["headline"],
                         "eligibility_evaluation": eligibility_evaluation,
                         **_eligibility_sse_fields(eligibility_evaluation),
-                        "public_explanation": present_public_explanation(
-                            row, load_rule_meta().get(row["rule_id"]), []
-                        ),
+                        "public_explanation": public_explanation,
                         "promise": public_promise_summary(row.get("promise_trace")),
                         "is_new_patient": is_new_p,
                     })

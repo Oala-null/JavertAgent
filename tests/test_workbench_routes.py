@@ -97,7 +97,7 @@ def test_model_comparison_store_returns_full_latest_model_rows(monkeypatch):
         "合成推理", json.dumps([{"source": "note", "text": "合成证据"}]),
         json.dumps([{"tool_name": "search_notes", "arguments": {}}]),
         1234, "Qwen/Qwen3.8-27B-FP8", datetime.now(timezone.utc),
-        "ab3.8", "",
+        "ab3.8", "", "合成收费项目核查未发现违规，现有事实充分",
     )]
 
     class Connection:
@@ -113,6 +113,7 @@ def test_model_comparison_store_returns_full_latest_model_rows(monkeypatch):
     out = store.list_model_comparison_runs("CASE-AB-001", "ab3.8")
     assert out[0]["model"] == "Qwen/Qwen3.8-27B-FP8"
     assert out[0]["evidence"][0]["text"] == "合成证据"
+    assert out[0]["headline"] == "合成收费项目核查未发现违规，现有事实充分"
     assert out[0]["tool_calls"][0]["tool_name"] == "search_notes"
 
 

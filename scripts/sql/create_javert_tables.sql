@@ -33,6 +33,7 @@ BEGIN
         patient_id          NVARCHAR(50)   NOT NULL,
         verdict             NVARCHAR(20)   NOT NULL,
         confidence          FLOAT          NULL,
+        headline            NVARCHAR(120)  NULL,
         reasoning           NVARCHAR(MAX)  NULL,
         evidence_json       NVARCHAR(MAX)  NULL,
         tool_calls_json     NVARCHAR(MAX)  NULL,
@@ -52,6 +53,20 @@ BEGIN
 END
 ELSE
     PRINT 'Table javert_audit_runs already exists, skip CREATE';
+GO
+
+-- add-public-audit-headline-contract: 可空公开短标题；旧行不回填
+IF NOT EXISTS (
+    SELECT 1 FROM sys.columns
+    WHERE Name = N'headline'
+      AND Object_ID = Object_ID(N'javert_audit_runs')
+)
+BEGIN
+    ALTER TABLE javert_audit_runs ADD headline NVARCHAR(120) NULL;
+    PRINT 'Added column headline to javert_audit_runs';
+END
+ELSE
+    PRINT 'Column headline already exists on javert_audit_runs';
 GO
 
 -- add-evolving-promise-harness: 可空、去标识终局 Promise trace (幂等迁移)

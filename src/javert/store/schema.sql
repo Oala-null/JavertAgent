@@ -1,4 +1,4 @@
--- Javert audit store schema (v8: 加安全 replay_key)
+-- Javert audit store schema (v9: 加 nullable 公开 headline)
 -- 一张主表 + 一张元数据表 + 索引
 -- v2 升级: synced_at / sync_attempts / sync_last_error 三列, migration 由 init_schema 兼容处理
 
@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS audit_runs (
     patient_id TEXT NOT NULL,
     verdict TEXT NOT NULL CHECK (verdict IN ('VIOLATION', 'CLEAN', 'INCONCLUSIVE')),
     confidence REAL,
+    headline TEXT,
     reasoning TEXT,
     evidence_json TEXT,
     tool_calls_json TEXT,
@@ -43,4 +44,4 @@ CREATE TABLE IF NOT EXISTS _meta (
     value TEXT NOT NULL
 );
 
-INSERT OR IGNORE INTO _meta(key, value) VALUES ('schema_version', '8');
+INSERT OR IGNORE INTO _meta(key, value) VALUES ('schema_version', '9');

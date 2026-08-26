@@ -50,6 +50,8 @@ class AuditResult(BaseModel):
     patient_id: str
     verdict: Verdict
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    # add-public-audit-headline-contract: 公开短标题；旧行/旧构造默认空，由展示层确定性回退。
+    headline: str = Field(default="")
     reasoning: str = Field(default="")
     evidence: list[Evidence] = Field(default_factory=list)
     tool_calls: list[ToolCall] = Field(default_factory=list)

@@ -82,6 +82,7 @@
       "verdict": "VIOLATION",
       "verdict_label": "违规",
       "confidence": 0.85,
+      "headline": "麻醉后复苏监护项目存在重复收费，现有证据支持违规结论",
       "reasoning": "全中文自然语言裁决理由 (无内部术语)…",
       "diagnostic_code": "",
       "retryable": false,
@@ -101,6 +102,7 @@
         }
       ],
       "public_explanation": {
+        "headline": "麻醉后复苏监护项目存在重复收费，现有证据支持违规结论",
         "conclusion": {"label": "发现需核查行为", "summary": "现有结构化事实支持该项进入医保合规复核。"},
         "narrative": "经核对收费事实、诊断与现有文书，保留完整的中文审核说明。",
         "audit_items": ["核查同一收费项目是否重复计费。"],
@@ -131,6 +133,7 @@
 | results[].behavior_code | 行为认定编码；与 `behavior_name` 组成公开类别键。显式例外可为空，不得据内部类型臆造编码 |
 | results[].behavior_name | **行为认定名称** (监管规则框架总表口径, 如"重复收费"/"超范围支付"), 前端展示用这个, 可不显示 rule_id |
 | results[].confidence | 0~1 置信度 |
+| results[].headline | 15–60 字单行公开短标题，与最终 verdict 一致；新行来自已门控同轮模型输出，旧行由规则元数据确定性回退，不从 reasoning 猜事实 |
 | results[].reasoning | 兼容裁决摘要；新建医生界面应优先展示 `public_explanation`，不要从本字段反解析结构化事实 |
 | results[].diagnostic_code | 规则级诊断码；正常为空，格式异常为 `LLM_OUTPUT_MALFORMED`，长度截断为 `LLM_OUTPUT_TRUNCATED` |
 | results[].retryable | 当前规则是否适合重试；模型格式/截断失败为 `true` |
@@ -139,21 +142,29 @@
 | results[].hit_codes | 命中项目编码扁平数组 (国家医保码优先, 缺则院内码; 仅 V/I 非空), 直接挂明细用 |
 | results[].hit_names | 命中项目名称扁平数组 (费用明细原始项目名; 与 hit_codes 同源去重) |
 | results[].hits | 命中项目明细数组 (含编码/名称/限定/复核提示): 仅 V/I 有值, CLEAN 恒 `[]`。见下表 |
-| results[].public_explanation | 医生可读公开投影，固定含 `conclusion/narrative/audit_items/charge_facts/basis/clinical_evidence/review_needs`；`narrative` 是已持久化 reasoning 的完整中文化兼容摘要，其余结构化字段只使用有确定来源的事实 |
+| results[].public_explanation | 医生可读公开投影，固定含 `headline/conclusion/narrative/audit_items/charge_facts/basis/clinical_evidence/review_needs`；headline 与顶层一致，`narrative` 是已持久化 reasoning 的完整中文化兼容摘要，其余结构化字段只使用有确定来源的事实 |
 | results[].promise | 可空公开摘要；有 trace 时仅含 `locked` 与 `historical_conflict`，不公开 Promise ID、kind、reason code 或 facts |
 | results[].run_id | 审计运行 ID, 疑议追溯用 |
 
 ### 公开解释的兼容边界
 
-`handling_level`、`public_explanation`、`promise` 和 `behavior_code` 均为 additive 字段；既有 `rule_id`、
+`headline`、`handling_level`、`public_explanation`、`promise` 和 `behavior_code` 均为 additive 字段；既有 `rule_id`、
 `reasoning`、`evidence`、`hits` 等字段不删、不改名。新建医生界面应优先展示
-`public_explanation`：默认展示 `narrative` 以保留收费、诊断、证据缺口和裁决理由，但不要把
+顶层 `headline` 作为首屏标题，并保留 `public_explanation.narrative`/`reasoning` 作为完整展开；不要把
 `narrative` 或旧 `reasoning/evidence` 反解析为结构化事实，也不要默认展示内部规则号、
 工具名、gate/run 术语、英文 verdict、内部 reason code 或原始 evidence JSON。
 
 公开 fee/drug 命中只表示已关联到患者实际净正收费行；检索词、未命中 locator 和患者无对应
 收费行的名称不能作为“命中项目”。这会让部分旧卡片的公开 hits 变少，但不改变单规则结果数、
 三态 verdict 或内部追溯字段。
+
+headline 门控禁止换行、内部规则/工具/gate/precheck/run/ownership 术语、英文 verdict 和当前患者
+标识；INCONCLUSIVE 必须使用“疑似/待核查/依据不足”等语义，CLEAN 不得声称已确认违规。
+headline 不合格只回退标题，不重试模型，也不改变 verdict、reasoning 或 evidence。
+
+发布顺序固定为：先部署 Javert nullable schema 与生产代码，运行 `ensure-mssql-schema`，重启并
+验证 v3 同时返回 headline/reasoning/evidence；2C 严格 DTO 确认允许未知字段后，再部署首屏
+headline 消费。旧客户端忽略新增字段即可继续运行。
 
 ### eligibility_evaluation（RD04，可空）
 

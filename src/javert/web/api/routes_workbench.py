@@ -335,12 +335,13 @@ def workbench_patient(
     meta_map = load_rule_meta()
     anchors_map = store.fetch_anchors_for_patient(patient_id)
     hits_by_run = _resolve_hits_for_runs(patient_id, runs, meta_map, anchors_map)
-    public_explanations = {
-        run.run_id: present_public_explanation(
+    public_explanations = {}
+    for run in runs:
+        public = present_public_explanation(
             run, meta_map.get(run.rule_id), hits_by_run.get(run.run_id, [])
         )
-        for run in runs
-    }
+        run.headline = public["headline"]
+        public_explanations[run.run_id] = public
     # 按细类分组 + 组内 V 前 I 后 (D5) — 模板按 run_groups 渲染可折叠 section + 顶部 chip
     run_groups = _group_runs_by_violation_type(runs, meta_map)
 

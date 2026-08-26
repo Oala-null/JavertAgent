@@ -86,6 +86,7 @@ class AuditRunSummary(BaseModel):
     patient_id: str
     verdict: str
     confidence: float
+    headline: str = ""
     duration_ms: int
     model: str
     started_at: datetime

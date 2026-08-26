@@ -7,6 +7,7 @@ import re
 from typing import Any, Iterable
 from collections.abc import Mapping
 
+from javert.audit.headline import deterministic_headline, validate_headline
 from javert.promises.models import PromiseTrace
 from javert.web.reasoning_zh import humanize_reasoning
 
@@ -75,6 +76,13 @@ def present_public_explanation(
         except (TypeError, ValueError):
             trace = None
     verdict = str(_get(run, "verdict", ""))
+    headline, _headline_error = validate_headline(
+        _get(run, "headline", ""),
+        verdict,
+        patient_id=str(_get(run, "patient_id", "") or ""),
+    )
+    if not headline:
+        headline = deterministic_headline(verdict, meta, run)
 
     if verdict == "VIOLATION":
         conclusion = {
@@ -159,6 +167,7 @@ def present_public_explanation(
         review_needs.append("当前缺少可公开投影的结构化事实，请查阅原始资料确认。")
 
     return {
+        "headline": headline,
         "conclusion": conclusion,
         "narrative": public_reasoning_narrative(_get(run, "reasoning", "")),
         "audit_items": audit_items,
