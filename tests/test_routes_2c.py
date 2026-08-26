@@ -308,6 +308,13 @@ def test_v3_results_unknown_has_versioned_empty_cards(client):
     assert body["status"] == "unknown"
     assert body["progress"] == {"total": 0, "completed": 0, "failed": 0}
     assert body["cards"] == []
+
+
+def test_v3_rule_handling_levels_are_current_rule_metadata(client):
+    body = client.get("/api/audit/v3/rules").json()
+    assert body["api_version"] == "3.0"
+    assert body["rules"]["R191"] == "违规（阻断）"
+    assert body["rules"]["R007"] == "可疑（警告）"
     assert "results" not in body
 
 

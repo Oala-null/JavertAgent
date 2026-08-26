@@ -1472,6 +1472,19 @@ def _log_v3_outbound(
     )
 
 
+@router.get("/v3/rules")
+def rule_handling_levels_2c():
+    """2C v3：当前规则静态处理等级目录；历史结果按 rule_id 复用。"""
+    metas = load_rule_meta()
+    return {
+        "api_version": "3.0",
+        "rules": {
+            rule_id: meta["handling_level"]
+            for rule_id, meta in sorted(metas.items())
+        },
+    }
+
+
 @router.get("/v3/results/{syxh}")
 def results_2c_v3(syxh: str):
     """2C v3：在完整 v2 卡片上追加逐收费行量价、科室和医生字段。"""
