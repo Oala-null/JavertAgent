@@ -176,6 +176,7 @@ v3 card 保留 v2 的大类、规则、裁决、推理、证据、适用性和�
   "card_id": "aud_Ab3xY9kQw2Lm",
   "run_id": "aud_Ab3xY9kQw2Lm",
   "rule_id": "RD04",
+  "handling_level": "可疑（警告）",
   "title": "超范围支付",
   "description": "申请医保支付的肿瘤药，超出医保药品目录限定支付范围。",
   "category": {
@@ -198,6 +199,7 @@ v3 card 保留 v2 的大类、规则、裁决、推理、证据、适用性和�
     "question": "申请医保支付的肿瘤药，超出医保药品目录限定支付范围。",
     "domain": "药品",
     "priority": "P1",
+    "handling_level": "可疑（警告）",
     "template": "M8",
     "drug_rule_type": "限适应症"
   },
@@ -219,6 +221,9 @@ v3 card 保留 v2 的大类、规则、裁决、推理、证据、适用性和�
   "finished_at": "2026-07-27T08:12:30+08:00"
 }
 ```
+
+`handling_level` 是规则静态处理等级，只允许 `违规（阻断） / 可疑（警告） / 提醒（引导）`；
+它不随患者运行时 `verdict` 改变。顶层字段与 `rule.handling_level` 值相同。
 
 规则没有实际费用命中时，card 仍然返回，`matched_items` 和三个 `hit_*` 数组为空。不得因为 `matched_items=[]` 丢弃 CLEAN、不适用或其他卡片。
 

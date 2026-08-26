@@ -346,6 +346,7 @@ def test_results_done_with_runs(client):
     assert body["summary"] == {"total": 1, "violation": 1, "inconclusive": 0, "clean": 0}
     (item,) = body["results"]
     assert item["rule_id"] == "R191"
+    assert item["handling_level"] == "违规（阻断）"
     assert item["verdict"] == "VIOLATION"
     assert item["verdict_label"] == "违规"
     assert item["evidence"] == [{
@@ -637,6 +638,8 @@ def test_v2_precheck_not_applicable_is_not_labeled_compliant(client):
     (card,) = client.get("/api/audit/v2/results/CASE-V2-001").json()["cards"]
 
     assert card["verdict"] == "CLEAN"
+    assert card["handling_level"] == "违规（阻断）"
+    assert card["rule"]["handling_level"] == "违规（阻断）"
     assert card["verdict_label"] == "不适用"
     assert card["applicability"] == "NOT_APPLICABLE"
     assert card["applicability_label"] == "不适用"
@@ -645,6 +648,8 @@ def test_v2_precheck_not_applicable_is_not_labeled_compliant(client):
         "/api/audit/v3/results/CASE-V2-001"
     ).json()["cards"]
     assert v3_card["rule_id"] == "R191"
+    assert v3_card["handling_level"] == "违规（阻断）"
+    assert v3_card["rule"]["handling_level"] == "违规（阻断）"
     assert v3_card["matched_items"] == []
     assert v3_card["hit_codes"] == []
     assert v3_card["hit_names"] == []

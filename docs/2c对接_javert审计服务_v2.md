@@ -129,6 +129,7 @@ v2 结果按当前 `attempt_id + run_id` 增量复用已生成 cards。HTTP 请�
   "card_id": "aud_Ab3xY9kQw2Lm",
   "run_id": "aud_Ab3xY9kQw2Lm",
   "rule_id": "RD04",
+  "handling_level": "可疑（警告）",
   "title": "超范围支付",
   "description": "申请医保支付的肿瘤药，超出医保药品目录限定支付范围。",
   "category": {
@@ -151,6 +152,7 @@ v2 结果按当前 `attempt_id + run_id` 增量复用已生成 cards。HTTP 请�
     "question": "申请医保支付的肿瘤药，超出医保药品目录限定支付范围。",
     "domain": "药品",
     "priority": "P0",
+    "handling_level": "可疑（警告）",
     "template": "M8",
     "drug_rule_type": "限适应症"
   },
@@ -210,6 +212,9 @@ v2 结果按当前 `attempt_id + run_id` 增量复用已生成 cards。HTTP 请�
   "finished_at": "2026-07-24T08:12:30+08:00"
 }
 ```
+
+`handling_level` 是规则静态处理等级，只允许 `违规（阻断） / 可疑（警告） / 提醒（引导）`；
+它不随患者运行时 `verdict` 改变。顶层字段与 `rule.handling_level` 值相同，便于严格 DTO 和规则元数据视图分别消费。
 
 字段说明：
 

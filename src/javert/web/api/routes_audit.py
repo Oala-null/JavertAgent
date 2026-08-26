@@ -72,6 +72,7 @@ def _result_payload(result: Any) -> dict:
     return {
         "run_id": result.run_id,
         "rule_id": result.rule_id,
+        "handling_level": meta["handling_level"] if meta else None,
         "patient_id": result.patient_id,
         "verdict": result.verdict,
         "confidence": result.confidence,
@@ -959,6 +960,7 @@ def _results_2c_payload(syxh: str, *, include_hits: bool) -> dict[str, Any]:
                     "run_id": r.run_id,
                     "rule_id": r.rule_id,
                     "rule_name": meta["violation_type"] if meta else "",
+                    "handling_level": meta["handling_level"] if meta else None,
                     "behavior_name": meta["behavior_name"] if meta else "",
                     "behavior_code": meta["behavior_code"] if meta else "",
                     "verdict": r.verdict,
@@ -1280,6 +1282,7 @@ def results_2c_v2(syxh: str):
                     "card_id": run.run_id,
                     "run_id": run.run_id,
                     "rule_id": run.rule_id,
+                    "handling_level": meta["handling_level"] if meta else None,
                     "title": category_title,
                     "description": meta["question"] if meta else "",
                     "category": {
@@ -1292,6 +1295,7 @@ def results_2c_v2(syxh: str):
                         "question": meta["question"] if meta else "",
                         "domain": meta["domain"] if meta else "",
                         "priority": meta["priority"] if meta else "",
+                        "handling_level": meta["handling_level"] if meta else None,
                         "template": meta["template"] if meta else None,
                         "drug_rule_type": meta["drug_rule_type"] if meta else None,
                     },

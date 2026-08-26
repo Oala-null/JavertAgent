@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Rule metadata 缓存 — 进程内 lazy load, 给前端展示 domain/violation_type/priority/template.
+"""Rule metadata 缓存 — 进程内 lazy load, 给前端展示规则静态元数据.
 
 行为认定名称 (configs/behavior_names.yaml, 源自 260611医保基金监管规则框架总表.xlsx):
 对外展示 (2C 出参 + 工作台 chip/组标题) 统一用 behavior_name, 不再露 M 模板名/R 代号.
@@ -23,6 +23,7 @@ class RuleMeta(TypedDict):
     domain: str
     violation_type: str
     priority: str
+    handling_level: str
     template: str | None  # M1..M7 / None
     question: str
     subtitle: str  # 临床检验.过度检查.P0.模板M2
@@ -107,6 +108,7 @@ def load_rule_meta() -> dict[str, RuleMeta]:
                 domain=rule.domain,
                 violation_type=rule.violation_type,
                 priority=rule.priority,
+                handling_level=rule.handling_level,
                 template=rule.derived_from_template,
                 question=rule.question,
                 subtitle=_build_subtitle(

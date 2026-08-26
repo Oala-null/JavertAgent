@@ -76,6 +76,7 @@
       "run_id": "aud_Ab3xY9kQw2Lm",
       "rule_id": "R191",
       "rule_name": "重复收费-静脉输液",
+      "handling_level": "违规（阻断）",
       "behavior_code": "T380301",
       "behavior_name": "重复收费",
       "verdict": "VIOLATION",
@@ -125,6 +126,7 @@
 | progress | 规则进度 `{total, completed, failed}`；患者级前置失败可能均为 0 |
 | error | (可选, 仅异常时出现) 脱敏的审计中断简述；不得只看 HTTP 200 或 results 是否为空 |
 | summary | 三档裁决计数 |
+| results[].handling_level | 规则静态处理等级：`违规（阻断） / 可疑（警告） / 提醒（引导）`。它不等于患者运行时 `verdict` |
 | results[].verdict | **`VIOLATION`(违规) / `INCONCLUSIVE`(待人工复核) / `CLEAN`(合规)** |
 | results[].behavior_code | 行为认定编码；与 `behavior_name` 组成公开类别键。显式例外可为空，不得据内部类型臆造编码 |
 | results[].behavior_name | **行为认定名称** (监管规则框架总表口径, 如"重复收费"/"超范围支付"), 前端展示用这个, 可不显示 rule_id |
@@ -143,7 +145,7 @@
 
 ### 公开解释的兼容边界
 
-`public_explanation`、`promise` 和 `behavior_code` 均为 additive 字段；既有 `rule_id`、
+`handling_level`、`public_explanation`、`promise` 和 `behavior_code` 均为 additive 字段；既有 `rule_id`、
 `reasoning`、`evidence`、`hits` 等字段不删、不改名。新建医生界面应优先展示
 `public_explanation`：默认展示 `narrative` 以保留收费、诊断、证据缺口和裁决理由，但不要把
 `narrative` 或旧 `reasoning/evidence` 反解析为结构化事实，也不要默认展示内部规则号、
