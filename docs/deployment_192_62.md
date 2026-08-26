@@ -775,10 +775,10 @@ openspec validate close-clinical-audit-tool-gaps --strict
 回滚到上一受控 HEAD 即恢复旧工具/规则；不删除目录、不回写历史 audit_runs。已生成的新规则
 结果保留审计追溯，需要业务撤回时走专家 review，不做数据库删除。
 
-### 10.14 公开审核 headline additive 合同（待授权发布）
+### 10.14 公开审核 headline additive 合同（2026-08-26 已部署 Javert upstream）
 
-本节是 `add-public-audit-headline-contract` 的发布准备清单，不代表已在 62 执行。未经单独授权，
-不得远程安装、运行 schema、重启服务或触发患者审计。
+`add-public-audit-headline-contract` 已经单独授权并按本节顺序部署到 62。这里只代表 Javert
+upstream 的 schema/API 已上线；2C 后端与 app3 仍需发布到其实际目标主机，禁止把 2C 直接部署到 62。
 
 1. 从已提交 HEAD 按 §10 生成并安装受控 artifact，先确认本地定向/全量测试和 OpenSpec strict；
 2. 在重启前运行 `.venv/bin/javert ensure-mssql-schema`，确认
@@ -793,6 +793,38 @@ openspec validate close-clinical-audit-tool-gaps --strict
 6. 检查 headline 指标只记录生成数、回退数和原因枚举，journal 不得出现 headline、reasoning、
    患者、run/ownership 标识或证据原文；
 7. Javert schema/API 证据交付 2C 并确认严格 DTO 允许新增/未知字段后，才发布 2C 首屏消费。
+
+**2026-08-26 生产记录**：
+
+- 发布运行时 commit 为 `f24071e338c65b82369a71ee947795e928f35cc5`，62 分支
+  `production-62`；发布前远端 `1e3ce697` 的 runtime tree 与本地 `22d1b51` 相同，故受控增量仅为
+  15 个 headline DDL/store/web 文件。发布 artifact SHA-256 为
+  `63681374043f077bab5560e2c954966b2b312f671aafb6049b653e2392f0e94c`。
+- installer 备份位于 `/home/admin2/backup/javert-git-20260826-161703-1808757`（目录 0700，
+  `.env`、`process.environ`、`runtime.tgz` 均 0600）。实际 SQLite 另以原生 `.backup` 保存为该目录下
+  `audit-before.sqlite`（0600，`PRAGMA integrity_check=ok`，26,755 行）。上一生产 runtime 的回滚
+  artifact 为 `/tmp/javert-git-rollback-1e3ce69.tgz`，SHA-256
+  `c43561aa8e419a3959c3fdec5a20c4bb509a3c9a3d29e723cfabe6f3335f0a76`。
+- 先安装新代码、加载 `/home/admin2/javert/.env`，再运行 `ensure-mssql-schema`，最后才重拉服务。
+  SQL Server `dbo.javert_audit_runs.headline` 实测恰 1 列、`nvarchar`、`max_length=240`、nullable；
+  52,198 条既有行全部为 NULL。SQLite 启动迁移后恰 1 列 `TEXT NULL`，26,755 条既有行全部为 NULL，
+  未批量回填历史标题。
+- MainPID 从 `1561562` 变为 `1810843`；systemd active/running，`/login` 与 `/api/health` 均为
+  HTTP 200，SQL health 为 true，Hub `SELECT 1` 成功。新旧进程 29 个 `JAVERT_*` 键逐键一致，
+  环境指纹保持 `b8173eae147447cdfed173bcd686930426dd35fddf44978ae861e7482d07f021`，
+  `JAVERT_ONCOLOGY_RELEASE_DIR` 未设置。
+- v3 不存在的合成号 GET 实测 HTTP 200、`api_version=3.0`、unknown、0 cards。另在 62 新代码中
+  关闭 SQL/Hub、使用 `/tmp` 临时 SQLite 运行进程内合成 completed-card 合同：标题门控与确定性回退、
+  SQLite 往返、顶层/public headline 相等、15–60 字单行校验、reasoning/evidence 保留、
+  matched_items 三数组对齐及日志不含业务原文全部通过；测试退出后临时文件已删除。
+- 官方 `deployment_sync.py check --json` 返回 `synced=true`、两端 HEAD 均为 `f24071e`、远端分支
+  `production-62`、受控 tracked dirty 为空。远端原有的未跟踪 Scriv/缓存/备份文件被原样保留，
+  不属于本次 artifact，也未执行 `git clean`；这是既有部署债务，不能把 tracked clean 误写成完整
+  工作树无未跟踪文件。
+- 部署后 journal 新增 error/traceback 为 0。因为没有获授权的去标识生产 completed case，本次没有
+  触发真实患者审计，也未声明生产新行的 SQLite→SQL Server 双写验收完成；空数组 v3 submit POST
+  同样留待显式接口调用授权后执行。2C 的 OCR headline 开关继续保持 false，直到目标 2C 只读账号
+  验证列存在且有 SELECT 权限。
 
 回滚时客户端停止消费 headline，应用回到上一受控 HEAD；nullable 列保留，不做 DROP、不回填
 旧行、不重写历史 reasoning/evidence，也不运行无范围的 `sync-to-mssql --pending-only`。

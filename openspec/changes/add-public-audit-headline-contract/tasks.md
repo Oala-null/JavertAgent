@@ -31,13 +31,17 @@
 - [x] 5.1 运行 runner/result/store/public presenter/2C routes/SSE/Workbench 定向测试与受影响组合测试
 - [x] 5.2 运行仓库全量门禁，按 AGENTS.md 原样记录 collected/pass/skip/fail/error 和既有债务排除情况
 - [x] 5.3 运行 OpenSpec strict validation，确认 proposal/design/spec/tasks 与真实验证命令一致
-- [x] 5.4 按 62 runbook 准备“代码 → ensure-mssql-schema → 重启 → v3 additive 合同”发布清单，但未经单独授权不执行远程部署
+- [x] 5.4 按 62 runbook 准备“代码 → ensure-mssql-schema → 重启 → v3 additive 合同”发布清单
 - [x] 5.5 向 2C 交付 nullable schema 已就绪证据和去标识 v3 fixture，作为 `add-progressive-audit-disclosure` 开始 OCR 查询升级的门禁
+- [x] 5.6 经单独授权将 Javert upstream 发布到 62，验证 schema、进程环境、健康状态、unknown GET 与隔离合成 v3 completed-card 合同；未触发真实患者
 
-## 验证记录（2026-08-26，本地；未执行 62 部署）
+## 验证记录（2026-08-26，本地与 62）
 
 - 定向/组合：`.venv/bin/pytest -q tests/test_headline.py tests/test_runner.py tests/test_drift_guard.py tests/test_audit_store.py tests/test_headline_sqlserver_store.py tests/test_public_presenter.py tests/test_routes_2c.py tests/test_run_batch_integrity.py tests/test_event_bus.py tests/test_workbench_routes.py tests/test_workbench_templating.py tests/test_web_api.py tests/test_oncology_result.py tests/test_promise_runtime.py tests/test_heartbeat.py` → `206 passed, 1 skipped`。
 - 全量：`.venv/bin/pytest -q` → `1200 collected / 1199 passed / 1 skipped / 0 failed / 0 errors`；唯一 skip 为既有 `test_deadline_skipped_when_no_tool_called`（当前 runner 结构下不可达的理论分支），未排除任何测试。
 - 端到端/fixture：`.venv/bin/javert list` 成功；`python -m json.tool` 校验 `tests/fixtures/headline_golden.json` 与 `docs/fixtures/v3_headline_contract_fixture.json` 成功。
 - OpenSpec：`openspec validate add-public-audit-headline-contract --strict` → `Change 'add-public-audit-headline-contract' is valid`。
-- 生产：仅准备 `docs/deployment_192_62.md` §10.14 清单；未连接、安装、迁移、重启或验证 62。
+- 生产：Javert runtime `f24071e338c65b82369a71ee947795e928f35cc5` 已按
+  `docs/deployment_192_62.md` §10.14 完成 artifact/install、SQL Server 与 SQLite nullable schema、
+  重拉、环境逐键一致、登录/健康/Hub、unknown GET 和隔离合成 v3 completed-card 合同验证；官方
+  sync check 通过。未调用业务 submit、未触发真实患者，生产新行双写仍待已授权去标识 case。
