@@ -1287,6 +1287,7 @@ def results_2c_v2(syxh: str):
                     "run_id": run.run_id,
                     "rule_id": run.rule_id,
                     "handling_level": meta["handling_level"] if meta else None,
+                    "handling_level_code": meta["handling_level_code"] if meta else None,
                     "title": category_title,
                     "description": meta["question"] if meta else "",
                     "category": {
@@ -1300,6 +1301,7 @@ def results_2c_v2(syxh: str):
                         "domain": meta["domain"] if meta else "",
                         "priority": meta["priority"] if meta else "",
                         "handling_level": meta["handling_level"] if meta else None,
+                        "handling_level_code": meta["handling_level_code"] if meta else None,
                         "template": meta["template"] if meta else None,
                         "drug_rule_type": meta["drug_rule_type"] if meta else None,
                     },
@@ -1484,6 +1486,11 @@ def rule_handling_levels_2c():
         "rules": {
             rule_id: meta["handling_level"]
             for rule_id, meta in sorted(metas.items())
+        },
+        "rule_level_codes": {
+            rule_id: meta["handling_level_code"]
+            for rule_id, meta in sorted(metas.items())
+            if meta["handling_level_code"] is not None
         },
     }
 

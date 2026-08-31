@@ -24,6 +24,7 @@ class RuleMeta(TypedDict):
     violation_type: str
     priority: str
     handling_level: str
+    handling_level_code: int | None
     template: str | None  # M1..M7 / None
     question: str
     subtitle: str  # 临床检验.过度检查.P0.模板M2
@@ -36,6 +37,17 @@ class RuleMeta(TypedDict):
 _CACHE: dict[str, RuleMeta] | None = None
 _BEHAVIOR_CACHE: dict[str, dict] | None = None
 _BEHAVIOR_REL = "configs/behavior_names.yaml"
+
+_HANDLING_LEVEL_CODES = {
+    "违规（阻断）": 1,
+    "可疑（警告）": 2,
+    "提醒（引导）": 3,
+}
+
+
+def handling_level_code(handling_level: str | None) -> int | None:
+    """规则静态处理等级字符串 → 稳定 code；未知值不猜测。"""
+    return _HANDLING_LEVEL_CODES.get(handling_level or "")
 
 
 def load_behavior_map() -> dict[str, dict]:
@@ -109,6 +121,7 @@ def load_rule_meta() -> dict[str, RuleMeta]:
                 violation_type=rule.violation_type,
                 priority=rule.priority,
                 handling_level=rule.handling_level,
+                handling_level_code=handling_level_code(rule.handling_level),
                 template=rule.derived_from_template,
                 question=rule.question,
                 subtitle=_build_subtitle(

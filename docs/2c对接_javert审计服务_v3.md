@@ -23,9 +23,10 @@ v3 在 v2 完整规则卡片基础上，将命中项目细化到实际收费明�
 > v3 免登录路由，而会返回 `401 {"error":"未登录"}`。HTTP 202 只证明 submit 成功，调用方
 > 还必须记录并核对实际轮询 URL。
 
-历史结果需要按当前规则静态等级补齐时，可读取 `GET /api/audit/v3/rules`。响应仅包含
-`{"api_version":"3.0","rules":{"R191":"违规（阻断）"}}` 形式的
-`rule_id → handling_level` 目录，不触发审核，也不改写历史 verdict。
+历史结果需要按当前规则静态等级补齐时，可读取 `GET /api/audit/v3/rules`。响应同时包含
+`rules` 字符串目录与 additive `rule_level_codes` 数值目录，例如
+`{"api_version":"3.0","rules":{"R191":"违规（阻断）"},"rule_level_codes":{"R191":1}}`。
+读取目录不触发审核，也不改写历史 verdict。
 
 ## 2. 提交审计
 
@@ -181,6 +182,7 @@ v3 card 保留 v2 的大类、规则、裁决、推理、证据、适用性和�
   "run_id": "aud_Ab3xY9kQw2Lm",
   "rule_id": "RD04",
   "handling_level": "可疑（警告）",
+  "handling_level_code": 2,
   "title": "超范围支付",
   "description": "申请医保支付的肿瘤药，超出医保药品目录限定支付范围。",
   "category": {
@@ -205,6 +207,7 @@ v3 card 保留 v2 的大类、规则、裁决、推理、证据、适用性和�
     "domain": "药品",
     "priority": "P1",
     "handling_level": "可疑（警告）",
+    "handling_level_code": 2,
     "template": "M8",
     "drug_rule_type": "限适应症"
   },
@@ -229,7 +232,9 @@ v3 card 保留 v2 的大类、规则、裁决、推理、证据、适用性和�
 ```
 
 `handling_level` 是规则静态处理等级，只允许 `违规（阻断） / 可疑（警告） / 提醒（引导）`；
-它不随患者运行时 `verdict` 改变。顶层字段与 `rule.handling_level` 值相同。
+additive `handling_level_code` 的固定顺序为 `1=违规（阻断）`、`2=警告（可疑（警告））`、
+`3=提醒（引导）`。顶层字段与 `rule` 子对象中的对应字段值相同。静态等级与患者运行时
+`verdict` 相互独立，调用方不得根据 verdict 改写或补猜等级。
 
 规则没有实际费用命中时，card 仍然返回，`matched_items` 和三个 `hit_*` 数组为空。不得因为 `matched_items=[]` 丢弃 CLEAN、不适用或其他卡片。
 

@@ -315,7 +315,21 @@ def test_v3_rule_handling_levels_are_current_rule_metadata(client):
     assert body["api_version"] == "3.0"
     assert body["rules"]["R191"] == "违规（阻断）"
     assert body["rules"]["R007"] == "可疑（警告）"
+    assert body["rules"]["R003"] == "提醒（引导）"
+    assert body["rule_level_codes"]["R191"] == 1
+    assert body["rule_level_codes"]["R007"] == 2
+    assert body["rule_level_codes"]["R003"] == 3
     assert "results" not in body
+
+
+def test_handling_level_code_maps_only_the_three_contract_values():
+    from javert.web.rule_meta import handling_level_code
+
+    assert handling_level_code("违规（阻断）") == 1
+    assert handling_level_code("可疑（警告）") == 2
+    assert handling_level_code("提醒（引导）") == 3
+    assert handling_level_code("未知等级") is None
+    assert handling_level_code(None) is None
 
 
 def test_results_done_with_runs(client):
@@ -658,7 +672,9 @@ def test_v2_precheck_not_applicable_is_not_labeled_compliant(client):
     ).json()["cards"]
     assert v3_card["rule_id"] == "R191"
     assert v3_card["handling_level"] == "违规（阻断）"
+    assert v3_card["handling_level_code"] == 1
     assert v3_card["rule"]["handling_level"] == "违规（阻断）"
+    assert v3_card["rule"]["handling_level_code"] == 1
     assert v3_card["matched_items"] == []
     assert v3_card["hit_codes"] == []
     assert v3_card["hit_names"] == []
