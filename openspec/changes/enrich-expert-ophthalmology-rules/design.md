@@ -27,6 +27,8 @@ R319–R322 是已有 ready 专家扩展规则。预检按费用名子串匹配�
 
 ## Migration Plan
 
+PDF导入纠正：新增 `onboarding/reviewed_pdf.py`，只校验人工复核的完整包，不重造OCR服务。页分类及每页费用行数必须来自原页复核；所有费用和总额使用Decimal校验。发布前调用门禁，备份overlay后按单个去标识病例替换notes/fees，其他行逐字段保持不变；仅新增重跑审计，旧裁决保留。编码不经过文本NER，不能以匹配目录或凑总额方式补造无法读清的字段。
+
 新规则从 drafting 使用 javert mark 升到 ready，重建 Router 与 mapping。生产上线由后续工作按目标环境 runbook 从已提交版本发布；本期无生产迁移。需撤回时按规则状态机回退并重建索引，不改历史裁决。
 
 ## Open Questions

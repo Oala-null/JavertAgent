@@ -49,3 +49,18 @@ R325 SHALL 核查眼内穿刺及球后/球旁注射的净正收费、当地服�
 #### Scenario: Numeric codes in both CSV sources
 - **WHEN** 主CSV和overlay费用含有全数字且以零开头的国家/院内编码
 - **THEN** 审计工具及工作台命中保留完整编码，数量和金额的数值语义不变。
+
+### Requirement: Reviewed PDF imports are complete and separated
+PDF人工复核导入 MUST 按来源页区分临床文书和财务页面；费用页明细 SHALL 全量逐行导入，并与独立复核的每页行数及原单总额一致，不能把规则命中切片作为整份病例发布。不同源行同一药品允许重复，源页/行ID不得重复；数字与编码异常 MUST 拒绝。
+
+#### Scenario: Target fee subset masquerades as complete case
+- **WHEN** 原单多页费用但发布包仅包含某规则命中的三个项目
+- **THEN** 因页行数或总额不一致拒绝发布。
+
+#### Scenario: Financial page in notes
+- **WHEN** 来源页为费用/结算页面，或文书含费用总账标题
+- **THEN** 校验拒绝，不允许通过更改文书标题绕过。
+
+#### Scenario: Two separate source rows for same drug
+- **WHEN** 同药两行的源页/行ID不同，数量和单价不同
+- **THEN** 两行均保留，不能按名称合并或误删。

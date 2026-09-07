@@ -434,3 +434,5 @@ oncology 历史分组计数与外部门禁见 `docs/oncology/qa_report.md`。
 ## 架构 / 设计取舍
 
 详见 `CLAUDE.md` 与 `openspec/changes/bootstrap-javert-mvp/design.md`.
+
+**PDF导入验收纠正**：专家样例第一版仅发布三项收费切片且混入财务文书，不能作为完整病例导入验收。现已按原页复核62条费用并对齐总额，增加人工复核PDF导入门禁；详情及待核字段见[纠正记录](docs/expert_ophthalmology_rules_qa.md#pdf导入纠正)。

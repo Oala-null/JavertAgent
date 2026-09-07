@@ -50,3 +50,5 @@
 - **眼科专家规则实案门禁 (2026-09-07 UTC)**：用户授权的一份30页PDF经本机OCR、62内网实体识别和本机脱敏后，R326真实审计命中三项中医治疗费用，结论I/0.50，提示补逐次执行记录。修复R323/RD38未注册行为类别阻断Runner启动，以及CsvLoader对国家/院内数字编码丢失前导零的问题（主文件与overlay同步修复）。组合181 collected / 180 passed / 1 skipped / 0 failed / 0 errors，skip为既有真实数据快照缺失；未运行全量套件。只提交隔离规则发布范围，原工作树慢病等未提交代码保留。→ `docs/expert_ophthalmology_rules_qa.md`
 
 - **专家眼科规则已发布62（2026-09-07 UTC）**：功能提交 `b620eac` 已按commit→push→artifact/install部署；生产进程配置、Git HEAD/受控clean、schema/systemd/SQL/Hub/v3验收通过。工作台“眼科”新增R326待复核结果，31段脱敏文书和3项已核实费用可读，编码前导零完整。仅发布最终一次验证，无历史pending处理。→ `docs/expert_ophthalmology_rules_qa.md` + `docs/deployment_192_62.md` §14
+
+- **专家PDF完整导入纠正**：修正上次临时发布脚本将财务页写入notes、只结构化三项目标费用的问题；人工逐页复核后23段临床文书、62条费用，总额与原单一致。新增reviewed_pdf完整性门禁，拒绝页混用、费用切片、源行重复、金额不平和编码NER污染；同名不同源行保留，4项编码与2项遮挡名称待核，不猜填。完整费用重跑R326仍I/0.50，相关组合114 passed / 1 skipped。见 `docs/expert_ophthalmology_rules_qa.md`。
