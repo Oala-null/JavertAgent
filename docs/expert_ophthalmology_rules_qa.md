@@ -38,3 +38,11 @@ PYTHONPATH=src python -m pytest \
 按用户要求先commit、push，再从已提交HEAD通过 `deployment_sync.py artifact/install` 发布62；固定production-62分支，先保留进程实际环境、代码及.env备份，安装后schema、重启及状态/SQL/Hub/v3验收。仅将这一次验证结果以“眼科”tag写入工作台，原始页/完整OCR不进入Git，工作台使用脱敏文书与已核实三项收费切片。
 
 发布完成事实追加到change任务及部署记录；本文的病例验证结果不替代生产验收。
+
+## 已完成的生产验收
+
+功能提交 `b620eacd562f1c30913a1a8b6cc9bc652e5ec2ed` 已推送隔离发布分支，并按规定顺序安装62。官方部署check返回synced，两端HEAD相等，受控tracked clean；进程29个JAVERT环境键及所核对生效配置保持一致。
+
+schema命令成功、systemd active、登录200、v3空数组submit202、不存在的合成号results200/unknown，SQL/Hub健康。最终一次R326结果已双写并标记“眼科”；线上v3实读1张I卡、3项完整收费编码，工作台待复核查询可读，原文源实读31段脱敏文书、3项核实收费。原overlay的251段文书和4315行费用逐行保留。没有把首轮中间结果、原PDF或未脱敏OCR发布到工作台。
+
+生产代码/.env/旧进程环境和SQLite备份按runbook保留；敏感临时产物清理，不纳入Git。后续临床核验边界仍按上文，仅R326有本次真实病例证据。

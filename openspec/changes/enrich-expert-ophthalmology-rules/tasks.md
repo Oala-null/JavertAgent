@@ -21,10 +21,12 @@
 
 - [x] 3.1 定位一份PDF，完整提取与原页核对，构造受控去标识审计输入。
 - [x] 3.2 在隔离发布工作树运行规则组合测试及真实病例LLM验证，核查召回、证据、最终结论和命中。
-- [ ] 3.3 记录去标识验证结果及发布范围，仅提交并推送本次变更。
-- [ ] 3.4 从已提交HEAD受控部署62，保留生产实际环境及备份，完成schema/restart/HEAD/clean/SQL/Hub/v3验收。
-- [ ] 3.5 将本次结果及可核对的去标识原文/费用发布工作台tag“眼科”，确认双写和工作台可见后清理敏感临时文件。
+- [x] 3.3 记录去标识验证结果及发布范围，仅提交并推送本次变更。
+- [x] 3.4 从已提交HEAD受控部署62，保留生产实际环境及备份，完成schema/restart/HEAD/clean/SQL/Hub/v3验收。
+- [x] 3.5 将本次结果及可核对的去标识原文/费用发布工作台tag“眼科”，确认双写和工作台可见后清理敏感临时文件。
 
 追加进度：已在隔离工作树 `/tmp/javert-eye-release`（`codex/expert-ophthalmology-rules`）准备发布范围，排除原工作树慢病等未提交代码。定向规则/预检/Router/后置闸/部署/2C测试119 passed，工作台/SQL可见性/命中/标题存储组合51 passed；OpenSpec strict与diff检查通过。选定PDF已本机OCR全部30页，并核对诊疗计划、医嘱及三项收费原页；下一步为脱敏输入、真实LLM审计及证据验收，不能把静态/合成通过当作真实病例验证通过。自动审批拒绝了向62内网Qwen发送OCR原文的请求，要求明确此敏感payload与目的地授权，已向用户询问；尚未发送、提交、推送或部署。
 
 2026-09-07后续：用户已明确授权目标病例OCR文本向62内网Qwen；完成脱敏、原页校正及R326两次实际审计，均I/0.50。修复未注册行为类别和CSV前导零丢失后组合180 passed / 1 skipped，三项费用命中完整。详见 docs/expert_ophthalmology_rules_qa.md。
+
+发布：功能commit `b620eacd562f1c30913a1a8b6cc9bc652e5ec2ed`已推送 `codex/expert-ophthalmology-rules` 并受控安装62。官方check为synced，两端HEAD相等，production-62受控tracked clean；29个进程JAVERT环境键逐值一致，生效配置一致。schema成功，systemd active，登录200、v3空submit202、unknown200/unknown，SQL/Hub健康；线上实际结果1张R326 I卡，3个费用编码前导零完整，工作台按v_and_i可读，tag“眼科”，脱敏文书31行/核实费用3行。完整记录见 docs/deployment_192_62.md §14。此次仅发布最终一次审计，未处理其他历史pending、未改写原病例或历史结论。

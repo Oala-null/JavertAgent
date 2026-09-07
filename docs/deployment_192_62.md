@@ -893,3 +893,15 @@ server {
 3. **NVARCHAR hook 只 coerce string** (2026-05-21 修) — datetime / int 让 driver auto-detect, 防止 SQL Server TOP (?) 拒绝 + 防止死循环精度 bug
 4. **audit_watcher 用 BIGINT id** (2026-05-21 修) — 不用 datetime, 避免 DATETIME2(7) vs Python datetime(6) 精度丢失
 5. **改 src/yaml 必须重拉进程才 pickup** — `--reload` 在生产关闭; 重拉走 kill-9 自动 restart (无 passwordless sudo, 见 §3). 静态前端 (static/) 例外: scp 即时生效 + `?v={mtime}` 自动 cache-busting, 无需重启/无需 hard-refresh
+
+
+## 14. 专家眼科规则发布（2026-09-07 UTC）
+
+- 功能提交 `b620eacd562f1c30913a1a8b6cc9bc652e5ec2ed` 从隔离分支 `codex/expert-ophthalmology-rules` 测试、提交、推送后，经标准artifact/install发布。62此前为 `bd7e72e`，因此包含已提交的处理等级编码API基线；2C兼容测试已通过。原工作树慢病等未提交改动不进入制品。
+- 本次受控变更：补强R319–R322，新增R323–R326/RD38及生成索引，CsvLoader对国家/院内收费编码按字符串读取（含overlay）。相关组合181 collected / 180 passed / 1 skipped / 0 failed / 0 errors；skip为既有真实数据快照不可用。
+- 安装备份 `/home/admin2/backup/javert-git-20260907-112028-2180669` 保留运行时代码、.env、旧进程实际环境及原生SQLite backup，目录0700、敏感备份0600。未修改生产连接配置；重启后29个JAVERT环境键逐值一致，解析后的SQL/Hub/LLM/肿瘤开关及数据路径一致。
+- 安装后先ensure-mssql-schema（exit 0），再发布已核实的脱敏结果及原文切片，最后重启。systemd active、登录200、SQL health true、Hub SELECT 1成功；v3空数组submit202、合成unknown查询200/unknown。
+- 官方check返回synced=true，两端功能HEAD相等，production-62受控tracked dirty为空。本次不清理部署机既有未跟踪内容，不将tracked clean描述为整机没有缓存/历史文件。
+- 工作台tag“眼科”新增一张R326待人工复核卡；只读线上v3结果返回1张卡、3项正确完整编码。工作台待复核查询及原文源均通过，31段脱敏文书、3项人工核实费用。三项费用是定向切片，不是全病案费用全集，不据此宣称其他规则临床验证通过。
+- 数据overlay写前备份、写后逐行核对旧251段文书与4315行费用未变；只双写最终一次验证结果，无历史pending批量同步、无旧裁决改写。生产备份保留，临时OCR原文及暂存包在完成后清理。
+- 后续部署事实文档提交仅更新Git HEAD元数据，运行时blob与功能提交相同；不重复发布病例或重跑LLM，仍核对最终两端HEAD/clean与线上服务。

@@ -48,3 +48,5 @@
 - **专家漏检线索规则补充 (enrich-expert-ophthalmology-rules，2026-09-06 本地 ready、待手测)**：补强 R319–R322 的收费别名、当地计价/侧别、执行举证及 A/B 超联合指征；新增 R323 手术分解/执行核查、R324 眼内能量治疗计量、R325 穿刺与球后/球旁注射互斥、R326 中医治疗执行、RD38 联合滴眼用药必要性。手工规则清空模板来源，R322 避免误套 M2 单次放行；新增五条经 CLI 从 drafting 升 ready，并重建 Router/mapping。依据或执行资料不足明确待复核，不把同类药联合、ST条数或同切口直接定为违规。按用户要求未运行测试、病例或 LLM，未部署；仅完成规则静态加载、全量索引一致性和 OpenSpec strict。既有慢病、短标题等工作树改动保留。→ `docs/expert_ophthalmology_rules.md` + `openspec/changes/enrich-expert-ophthalmology-rules/`
 
 - **眼科专家规则实案门禁 (2026-09-07 UTC)**：用户授权的一份30页PDF经本机OCR、62内网实体识别和本机脱敏后，R326真实审计命中三项中医治疗费用，结论I/0.50，提示补逐次执行记录。修复R323/RD38未注册行为类别阻断Runner启动，以及CsvLoader对国家/院内数字编码丢失前导零的问题（主文件与overlay同步修复）。组合181 collected / 180 passed / 1 skipped / 0 failed / 0 errors，skip为既有真实数据快照缺失；未运行全量套件。只提交隔离规则发布范围，原工作树慢病等未提交代码保留。→ `docs/expert_ophthalmology_rules_qa.md`
+
+- **专家眼科规则已发布62（2026-09-07 UTC）**：功能提交 `b620eac` 已按commit→push→artifact/install部署；生产进程配置、Git HEAD/受控clean、schema/systemd/SQL/Hub/v3验收通过。工作台“眼科”新增R326待复核结果，31段脱敏文书和3项已核实费用可读，编码前导零完整。仅发布最终一次验证，无历史pending处理。→ `docs/expert_ophthalmology_rules_qa.md` + `docs/deployment_192_62.md` §14
