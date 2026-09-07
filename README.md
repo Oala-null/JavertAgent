@@ -1,5 +1,8 @@
 # Javert
 
+> 243医院真实数据单例与完整发布包：见 [243最小修复Cookbook](docs/243_release_cookbook.md)。
+> 本次不合并fp8；显式shanghai模式解析SYXH/BAH/JZLSH，现场env和数据不随代码包覆盖。院内验收状态单独记录。
+
 国家医保局 2026 年自查自纠问题清单 (0325) 中 163 条「做不了」违规情形的 LLM 审计脚手架.
 
 **data-hub (2026-07-03)**: 🟢 **数据中台三链打通** — 对接 `Scriv/Data_Hub` 46 张国标 TB_* 表: **回填** (`scripts/build_data_hub_filled.py`, sy 3309 + szx 全量 4701 患者 → 23 表 631 万记录, 含 通用文书/费用医保分解/手术医保双码 3 张扩展表) → **推送** (`scripts/push_data_hub_filled.py` → 142 `TP_data_hub` 库) → **反向取数** (`scripts/etl_from_data_hub.py`, 流B, zadig_agent 零改动). 双链路对照 J66252 裁决 16/18 一致无 V 级差异. 交接文档 `Scriv/data_hub_filled/_report.md`, 接入指引 `docs/数据接入清单.md` §四.

@@ -6,7 +6,7 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import Field
@@ -90,6 +90,9 @@ class JavertConfig(BaseSettings):
     # JAVERT_HUB_DATABASE). 默认关 = 纯 CSV 行为不变; 开启后 CSV 双 miss 时按患者号查 hub.
     hub_raw_enabled: bool = False
     hub_database: str = "sh_yb_platform"
+    # 243 真数据显式启用；不改变既有测试表默认行为。
+    hub_linkage_mode: Literal["legacy", "shanghai"] = "legacy"
+    hub_hospital_code: str = ""
     sql_driver: str = "ODBC Driver 18 for SQL Server"
     sql_pool_size: int = 5
     sql_max_overflow: int = 5

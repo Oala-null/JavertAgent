@@ -54,19 +54,31 @@ class HubRawSource:
                 return self._cache[pid]
             try:
                 cn = self._conn()
-                if self._yq2org is None:
-                    self._yq2org = hs.fetch_hospital_map(cn)
-                pids = [pid]
-                bundle = {
-                    "notes": hs.fetch_notes(cn, pids),
-                    "fees": hs.fetch_fees(cn, pids, self._yq2org),
-                    "zd": hs.fetch_zd(cn, pids, self._yq2org),
-                    "labs": hs.fetch_labs(cn, pids),
-                    "exams": hs.fetch_exams(cn, pids),
-                }
+                if self.cfg.hub_linkage_mode == "shanghai":
+                    bundle = hs.fetch_hospital_bundle(cn, pid, self.cfg.hub_hospital_code)
+                else:
+                    if self._yq2org is None:
+                        self._yq2org = hs.fetch_hospital_map(cn)
+                    pids = [pid]
+                    bundle = {
+                        "notes": hs.fetch_notes(cn, pids),
+                        "fees": hs.fetch_fees(cn, pids, self._yq2org),
+                        "zd": hs.fetch_zd(cn, pids, self._yq2org),
+                        "labs": hs.fetch_labs(cn, pids),
+                        "exams": hs.fetch_exams(cn, pids),
+                    }
             except Exception as e:  # noqa: BLE001 — D6: 降级为 miss, 不缓存, 连接重建
-                logger.warning("hub 原文查询失败 patient=%s: %s", pid, e)
+                logger.warning("hub 原文查询失败 code=%s",
+                               str(e) if isinstance(e, hs.HospitalLinkageError) else type(e).__name__)
+                if self._cn is not None:
+                    try:
+                        self._cn.close()
+                    except Exception:
+                        pass
                 self._cn = None
+                if self.cfg.hub_linkage_mode == "shanghai":
+                    from fastapi import HTTPException
+                    raise HTTPException(503, "医院取数预检未通过，请检查源数据关联和服务日志") from None
                 return _empty_bundle()
             self._cache[pid] = bundle
             while len(self._cache) > _LRU_MAX:
@@ -80,6 +92,21 @@ class HubRawSource:
 
     def get_fees(self, patient_id: str) -> pd.DataFrame:
         return self._bundle(patient_id)["fees"]
+
+    def get_diagnoses(self, patient_id: str) -> pd.DataFrame:
+        return self._bundle(patient_id)["zd"]
+
+    def get_surgeries(self, patient_id: str) -> pd.DataFrame:
+        return self._bundle(patient_id).get("ss", pd.DataFrame())
+
+    def get_basics(self, patient_id: str) -> dict:
+        return self._bundle(patient_id).get("basics", {})
+
+    def all_fees(self) -> pd.DataFrame:
+        # 上海模式禁止为sidebar扫描测试CSV或整个医院，只复用已加载患者。
+        with self._lock:
+            frames = [b["fees"] for b in self._cache.values() if not b["fees"].empty]
+            return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
     def get_labs(self, patient_id: str) -> list[dict]:
         """与 LabLoader.get_lab_results 同形: list[dict], report_dt 升序."""

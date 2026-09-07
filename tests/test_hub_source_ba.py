@@ -36,7 +36,7 @@ def _stub_q(tables: dict[str, pd.DataFrame]):
             return tables.get("jbk", _df(["YLJGYQDM", "SYXH", "ZYZD"], []))
         if "FROM TB_BA_SYZDK" in s:
             return tables.get("zdk", _df(["YLJGYQDM", "SYXH", "ZDXH", "ZDDM", "ZDMC"], []))
-        if "FROM TB_OPRATION_DETAIL" in s:
+        if "FROM TB_OPRATION_DETAIL" in s and "FROM TB_BA_SYSSK" not in s:
             return tables.get("op", _df(
                 ["YLJGYQDM", "JZLSH", "SSCZMC", "SSCZBM", "ZCBZ", "SSKSSJ",
                  "SSJB", "MZFS", "SXYHRYXM", "MZYHRYXM"], []))

@@ -78,10 +78,10 @@ async def lifespan(app: FastAPI):
     # 3. SyncWorker (心跳 + 回灌)
     worker = SyncWorker(interval_s=30, batch_size=50)
     app.state.sync_worker = worker
-    if cfg.sql_enabled:
+    if cfg.sql_enabled and cfg.hub_linkage_mode != "shanghai":
         await worker.start()
     else:
-        logger.info("sql_enabled=false → 不启动 SyncWorker")
+        logger.info("SQL关闭或243显式关联模式 → 不启动历史pending自动回灌")
 
     # 4. AuditWatcher (SSE 拉 new_audit_run 用) — 仅工作台模式开
     if getattr(app.state, "with_mssql", False) and cfg.sql_enabled:
@@ -92,7 +92,7 @@ async def lifespan(app: FastAPI):
 
     # 5. 数据预热 (后台线程, 不阻塞启动) — 首个访客不再付 30-90s CSV 冷读.
     #    条件借用 sql_enabled: 生产 (62) 恒 true; 测试/本地演示 false 时跳过, 免拖慢 pytest.
-    if getattr(app.state, "with_mssql", False) and cfg.sql_enabled:
+    if getattr(app.state, "with_mssql", False) and cfg.sql_enabled and cfg.hub_linkage_mode != "shanghai":
         def _warmup() -> None:
             try:
                 from javert.web.patient_overview import get_fees_sum_map

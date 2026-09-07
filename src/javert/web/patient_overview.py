@@ -319,6 +319,8 @@ def _load_stored() -> dict:
 
 def get_stored_spokes(patient_id: str, max_rows: int = 20) -> list[dict]:
     """该患者在 stored 新表里的原文行 (设计 D2: 存下且概览可见原文, 标暂不参与判定)."""
+    if get_config().hub_linkage_mode == "shanghai":
+        return []  # 不把历史onboarding测试数据拼进真实住院。
     data = _load_stored()
     result: list[dict] = []
     pid = str(patient_id).strip()
@@ -390,6 +392,8 @@ def get_primary_dx(patient_id: str, loader: CsvLoader | None = None) -> str:
     """主诊断 — 病案首页 maindiag_flag=1 优先 (复用 _load_zd 进程缓存),
     无首页则 note 派生 (出院/主要/入院/临床诊断), 再无则 "".
     """
+    if get_config().hub_linkage_mode == "shanghai":
+        return loader.get_main_diagnosis(patient_id) or "" if loader is not None else ""
     zd = _load_zd().get(patient_id)
     if zd and zd.get("main"):
         m = zd["main"][0]
@@ -592,8 +596,26 @@ def _build_overview_cached(patient_id: str, loader: CsvLoader) -> dict[str, Any]
     discharge_date = dates[-1].strftime("%Y-%m-%d") if dates else "—"
     los_days = (dates[-1] - dates[0]).days + 1 if dates else 0
 
-    zd = _load_zd().get(patient_id, {"main": [], "others": []})
-    ss = _load_ss().get(patient_id, [])
+    if get_config().hub_linkage_mode == "shanghai":
+        zd = {"main": [], "others": []}
+        for r in loader.get_diagnoses(patient_id).to_dict("records"):
+            entry = {"name": r["inhosp_diag_name"], "code": r["inhosp_diag_code"]}
+            zd["main" if _safe_float(r["maindiag_flag"]) == 1 else "others"].append(entry)
+        ss = [{
+            "name": r["oprn_oprt_name"], "code": r["oprn_oprt_code"],
+            "hi_name": "", "hi_code": "", "date": r["oprn_oprt_date"],
+            "main": int(_safe_float(r["main_oprn_flag"])), "level": r["oprn_lv_name"],
+            "anesthesia": r["anst_mtd_name"], "oper_dr": r["oper_dr_name"],
+            "anst_dr": r["anst_dr_name"], "part": "",
+        } for r in loader.get_surgeries(patient_id).to_dict("records")]
+        basics = loader.get_basics(patient_id)
+        admit_date = basics.get("admission", "")[:10] or "—"
+        discharge_date = basics.get("discharge", "")[:10] or "—"
+        if admit_date != "—" and discharge_date != "—":
+            los_days = (datetime.fromisoformat(discharge_date) - datetime.fromisoformat(admit_date)).days
+    else:
+        zd = _load_zd().get(patient_id, {"main": [], "others": []})
+        ss = _load_ss().get(patient_id, [])
     diags = note_b["diagnoses"]
     fields = note_b["fields"]
 

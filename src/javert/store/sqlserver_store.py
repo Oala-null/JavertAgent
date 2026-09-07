@@ -191,6 +191,18 @@ class SqlServerStore:
             logger.warning("init_schema: Engine 不可用, 跳过")
             return False
 
+        if self.config.hub_linkage_mode == "shanghai":
+            # 243本次仅适配取数，复用已有业务schema，禁止启动时顺便执行DDL。
+            try:
+                from sqlalchemy import text
+                with engine.connect() as conn:
+                    for table in ("javert_audit_runs", "javert_users", "javert_vio_review", "javert_audit_logs"):
+                        conn.execute(text(f"SELECT TOP (0) * FROM dbo.{table}"))
+                return True
+            except Exception:
+                logger.error("243结果表只读检查失败；未执行DDL")
+                return False
+
         if ddl_path is None:
             ddl_path = PROJECT_ROOT / _DDL_RELATIVE
         if not ddl_path.exists():

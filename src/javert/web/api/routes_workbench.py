@@ -414,6 +414,8 @@ _loader_singleton: CsvLoader | None = None
 
 def _get_loader() -> CsvLoader:
     global _loader_singleton
+    if get_config().hub_linkage_mode == "shanghai":
+        return _get_hub_source()
     if _loader_singleton is None:
         cfg = get_config()
         from javert.onboarding.etl_engine import PROJECT_ROOT
@@ -548,7 +550,7 @@ def _raw_payload(patient_id: str) -> dict:
       shi_fee.csv:    medins_list_name / spec / cnt / pric / det_item_fee_sumamt /
                        medins_chrgitm_type / fee_ocur_time / bah (英文)
     """
-    source = "csv"
+    source = "hub" if get_config().hub_linkage_mode == "shanghai" else "csv"
     loader = _get_loader()
     fees_df = loader.get_fees(patient_id)
     notes_df = loader.get_notes(patient_id)
@@ -625,7 +627,8 @@ def _raw_payload(patient_id: str) -> dict:
 def _labs_to_list(patient_id: str) -> list[dict]:
     """该患者检验/化验报告 (按 report_dt 升序). 文件缺失/加载失败 → 空列表 (不阻断 raw)."""
     try:
-        rows = _get_lab_loader().get_lab_results(patient_id)
+        rows = (_get_hub_source().get_labs(patient_id) if get_config().hub_linkage_mode == "shanghai"
+                else _get_lab_loader().get_lab_results(patient_id))
     except Exception as e:  # noqa: BLE001
         logger.warning("加载检验数据失败 patient=%s: %s", patient_id, e)
         rows = []
@@ -649,7 +652,8 @@ def _labs_to_list(patient_id: str) -> list[dict]:
 def _exams_to_list(patient_id: str) -> list[dict]:
     """该患者检查报告 (CT/超声/MRI...). 文件缺失/加载失败 → 空列表 (不阻断 raw)."""
     try:
-        rows = _get_exam_loader().get_examinations(patient_id)
+        rows = (_get_hub_source().get_exams(patient_id) if get_config().hub_linkage_mode == "shanghai"
+                else _get_exam_loader().get_examinations(patient_id))
     except Exception as e:  # noqa: BLE001
         logger.warning("加载检查数据失败 patient=%s: %s", patient_id, e)
         rows = []
@@ -682,6 +686,8 @@ def _hub_main_dx(patient_id: str) -> str | None:
 def _get_main_diagnosis(patient_id: str) -> str | None:
     """从 shi_zd.xls 拿病案首页主诊 (maindiag_flag=1). 文件/匹配 miss → hub 回退 → None."""
     global _zd_cache
+    if get_config().hub_linkage_mode == "shanghai":
+        return _get_hub_source().get_main_diagnosis(patient_id)
     if _zd_cache is None:
         _zd_cache = {}
         cfg = get_config()

@@ -9,6 +9,10 @@
 """
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass
+from datetime import datetime
+
 import pandas as pd
 
 # MXFYLB 统一 2 位码 → 中文 (与 build_data_hub_filled.MXFYLB_DICT 一致; szx 侧 EXT 无中文类别时回填)
@@ -26,6 +30,151 @@ SENT = "1900-01-01 00:00:00"
 # 主诊断锚 = SYJBK.ZYZD (与 IH 主诊 83% 同码), 诊断列表 = SYZDK, 手术 = SYSSK⋈OPRATION_DETAIL (v2.2).
 # sy(0001): 首页库回填不全 (J66252 仅 1 行且主诊错), 维持 IH/OPRATION 现状.
 BA_HOSPS = ("0003",)
+
+# 上海接口1.3.1费用类别；旧测试表的自造类别仅用于legacy。
+SHANGHAI_FEE_CATEGORIES = {
+    "01": "床位", "02": "诊察", "03": "检查", "04": "化验",
+    "05": "治疗", "06": "手术", "07": "护理", "08": "卫生材料",
+    "09": "西药", "10": "中成药", "11": "中草药", "12": "其他",
+}
+
+
+class HospitalLinkageError(ValueError):
+    """稳定的预检错误码；不包含患者号、卡号、SQL或凭据。"""
+
+
+@dataclass(frozen=True, repr=False)
+class HospitalPatient:
+    hospital: str
+    syxh: str
+    bah: str
+    visit: str
+    kh: str
+    klx: str
+    admission: str = ""
+    discharge: str = ""
+
+
+def _valid(value) -> bool:
+    return value is not None and str(value).strip().upper() not in {"", "-", "NONE", "NULL", "NAN"}
+
+
+def _time(value) -> datetime:
+    text = str(value).strip()
+    for fmt in ("%Y%m%d%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f"):
+        try:
+            date = datetime.strptime(text, fmt)
+            if date.year > 1900:
+                return date
+        except ValueError:
+            pass
+    raise HospitalLinkageError("LINK_TIME_MISSING")
+
+
+def _check_time(left, right):
+    # 容忍已观察到的4秒源系统差异，不以时间近似寻找关联。
+    if abs((_time(left) - _time(right)).total_seconds()) > 60:
+        raise HospitalLinkageError("LINK_TIME_CONFLICT")
+
+
+def _optional_time(value):
+    try:
+        return _time(value).isoformat(sep=" ")
+    except HospitalLinkageError:
+        return ""
+
+
+def _one(frame, stage):
+    if len(frame) != 1:
+        raise HospitalLinkageError(f"LINK_{stage}_NOT_UNIQUE")
+    return frame.iloc[0]
+
+
+def resolve_patient(cn, syxh: str, hospital: str) -> HospitalPatient:
+    """仅按明确的SYXH→BAH→JZLSH解析本次住院；任何歧义停止。"""
+    if not re.fullmatch(r"[A-Za-z0-9_]{1,64}", hospital or "") or hospital in {"0001", "0003"}:
+        raise HospitalLinkageError("LINK_HOSPITAL_REQUIRED")
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,64}", syxh or ""):
+        raise HospitalLinkageError("LINK_SYXH_INVALID")
+    home = _one(q(cn, """
+        SELECT TOP (2) SYXH, BAH, KH, KLX, RYRQ, CYRQ FROM dbo.TB_BA_SYJBK
+        WHERE YLJGYQDM=? AND SYXH=?
+    """, (hospital, syxh)), "HOME")
+    if not all(_valid(home[c]) for c in ("BAH", "KH", "KLX")) or home.BAH == "0":
+        raise HospitalLinkageError("LINK_IDENTITY_MISSING")
+    home_bah = _one(q(cn, """
+        SELECT TOP (2) SYXH FROM dbo.TB_BA_SYJBK WHERE YLJGYQDM=? AND BAH=?
+    """, (hospital, home.BAH)), "HOME_BAH")
+    if home_bah.SYXH != home.SYXH:
+        raise HospitalLinkageError("LINK_HOME_CONFLICT")
+    summary = _one(q(cn, """
+        SELECT TOP (2) JZLSH, BAH, KH, KLX, RYSJ, CYSJ
+        FROM dbo.TB_CIS_LEAVEHOSPITAL_SUMMARY WHERE YLJGYQDM=? AND BAH=?
+    """, (hospital, home.BAH)), "SUMMARY")
+    if (not _valid(summary.JZLSH) or summary.JZLSH == "0"
+            or (summary.KH, summary.KLX, summary.BAH) != (home.KH, home.KLX, home.BAH)):
+        raise HospitalLinkageError("LINK_IDENTITY_CONFLICT")
+    visit_row = _one(q(cn, """
+        SELECT TOP (2) BAH FROM dbo.TB_CIS_LEAVEHOSPITAL_SUMMARY
+        WHERE YLJGYQDM=? AND JZLSH=?
+    """, (hospital, summary.JZLSH)), "SUMMARY_VISIT")
+    if visit_row.BAH != home.BAH:
+        raise HospitalLinkageError("LINK_VISIT_CONFLICT")
+    _check_time(home.RYRQ, summary.RYSJ)
+    _check_time(home.CYRQ, summary.CYSJ)
+    if _time(home.RYRQ) > _time(home.CYRQ) or _time(summary.RYSJ) > _time(summary.CYSJ):
+        raise HospitalLinkageError("LINK_TIME_REVERSED")
+    admission = _one(q(cn, """
+        SELECT TOP (2) KH, KLX, RYSJ FROM dbo.TB_HIS_ZY_ADM_REG
+        WHERE YLJGYQDM=? AND JZLSH=?
+    """, (hospital, summary.JZLSH)), "ADMISSION")
+    if (admission.KH, admission.KLX) != (home.KH, home.KLX):
+        raise HospitalLinkageError("LINK_ADMISSION_IDENTITY_CONFLICT")
+    _check_time(admission.RYSJ, summary.RYSJ)
+    return HospitalPatient(hospital, str(home.SYXH), str(home.BAH),
+                           str(summary.JZLSH), str(home.KH), str(home.KLX),
+                           _time(summary.RYSJ).isoformat(sep=" "),
+                           _time(summary.CYSJ).isoformat(sep=" "))
+
+
+def _scope(pids, column, patient, key="visit", hospital_column="YLJGYQDM"):
+    if patient is None:
+        return in_clause(pids, column), ()
+    return f"{hospital_column}=? AND {column}=?", (patient.hospital, getattr(patient, key))
+
+
+def _internal_id(frame, column, patient):
+    if patient is not None:
+        frame[column] = patient.syxh
+    return frame
+
+
+def fetch_hospital_bundle(cn, syxh: str, hospital: str) -> dict:
+    """ETL和工作台唯一的新模式入口；按阶段返回无敏感信息的失败码。"""
+    patient = resolve_patient(cn, syxh, hospital)
+    pids, mapping = [patient.syxh], {hospital: hospital}
+    bundle = {}
+    for name, fetch, with_map in (
+        ("fees", fetch_fees, True), ("notes", fetch_notes, False),
+        ("zd", fetch_zd, True), ("ss", fetch_ss, True),
+        ("labs", fetch_labs, False), ("exams", fetch_exams, False),
+    ):
+        try:
+            args = (cn, pids, mapping) if with_map else (cn, pids)
+            bundle[name] = fetch(*args, patient=patient)
+        except HospitalLinkageError:
+            raise
+        except Exception:
+            raise HospitalLinkageError(f"SOURCE_{name.upper()}_QUERY_FAILED") from None
+        if name in ("fees", "notes") and bundle[name].empty:
+            raise HospitalLinkageError(f"SOURCE_{name.upper()}_EMPTY")
+    bundle["basics"] = {"admission": patient.admission, "discharge": patient.discharge}
+    bundle["warnings"] = {
+        "NOTE_TIME_MISSING": int(bundle["notes"]["事件时间"].map(lambda v: not _valid(v)).sum()),
+        "LABS_EMPTY": int(bundle["labs"].empty),
+        "EXAMS_EMPTY": int(bundle["exams"].empty),
+    }
+    return bundle
 
 
 def build_conn_str(cfg, database: str | None = None, login_timeout: int = 60) -> str:
@@ -80,7 +229,7 @@ _FEE_EXT_COLS = [
 ]
 
 
-def fetch_fees(cn, pids: list[str] | None, yq2org: dict[str, str]) -> pd.DataFrame:
+def fetch_fees(cn, pids: list[str] | None, yq2org: dict[str, str], *, patient=None) -> pd.DataFrame:
     """费用: FS (⋈ EXT 若存在) → shi_fee (36 列契约).
 
     v3: 编码两列直取 FS 原生列 (MXXMBMYB 国家码 / MXXMBM 院内码); EXT 只装原始补充字段
@@ -88,12 +237,20 @@ def fetch_fees(cn, pids: list[str] | None, yq2org: dict[str, str]) -> pd.DataFra
     已剔除列 (医保分解死列/剂型等) 契约位置保留、恒空。"""
     has_ext = len(q(cn, "SELECT 1 x FROM sys.tables WHERE name='TB_HIS_ZY_FEE_DETAIL_EXT'")) > 0
     ext_sel = ", ".join(f"e.{c}" for c in _FEE_EXT_COLS)
+    where, params = _scope(pids, "f.JZLSH", patient, hospital_column="f.YLJGYQDM")
     fee = q(cn, f"""
         SELECT f.YLJGYQDM, f.SFMXID, f.STFBZ, f.JZLSH, f.MXFYLB, f.FYFSSJ, f.MXXMBM, f.MXXMBMYB,
-               f.MXXMMC, f.MXXMDJ, f.MXXMSL, f.MXXMJE{', ' + ext_sel if has_ext else ''}
+               f.MXXMMC, f.MXXMDJ, f.MXXMSL, f.MXXMJE{', f.KH, f.KLX' if patient else ''}{', ' + ext_sel if has_ext else ''}
         FROM TB_HIS_ZY_FEE_DETAIL_FS f
         {'LEFT JOIN TB_HIS_ZY_FEE_DETAIL_EXT e ON f.YLJGYQDM=e.YLJGYQDM AND f.SFMXID=e.SFMXID' if has_ext else ''}
-        WHERE {in_clause(pids, 'f.JZLSH')}""")
+        WHERE {where}""", params)
+    if patient is not None:
+        if not ((fee["KH"] == patient.kh) & (fee["KLX"] == patient.klx)).all():
+            raise HospitalLinkageError("LINK_FEE_CARD_CONFLICT")
+        if fee.duplicated(["YLJGYQDM", "SFMXID", "STFBZ"]).any():
+            raise HospitalLinkageError("LINK_FEE_DUPLICATED")
+        yq2org = {patient.hospital: patient.hospital}
+        _internal_id(fee, "JZLSH", patient)
     if not has_ext:
         for c in _FEE_EXT_COLS:
             fee[c] = ""
@@ -101,6 +258,8 @@ def fetch_fees(cn, pids: list[str] | None, yq2org: dict[str, str]) -> pd.DataFra
     empty = pd.Series("", index=fee.index)
     cat = fee["MEDINS_CHRGITM_TYPE"].where(fee["MEDINS_CHRGITM_TYPE"] != "",
                                            fee["MXFYLB"].map(MXFYLB2CN).fillna("其他"))
+    if patient is not None:
+        cat = fee["MXFYLB"].str.zfill(2).map(SHANGHAI_FEE_CATEGORIES).fillna("其他")
     return pd.DataFrame({
         "bah": fee["YLJGYQDM"].map(yq2org).fillna("") + "-" + fee["JZLSH"],
         "feedetl_sn": fee["SFMXID"],
@@ -150,7 +309,7 @@ def _summary_to_notes(summ: pd.DataFrame) -> list[dict]:
     return rows
 
 
-def fetch_notes(cn, pids: list[str] | None) -> pd.DataFrame:
+def fetch_notes(cn, pids: list[str] | None, *, patient=None) -> pd.DataFrame:
     """文书: 标准表 LEAVEHOSPITAL_SUMMARY (出院小结) + 扩展表 MEDICAL_DOCUMENT → case_notes (6 列契约).
 
     46表标准化: 出院小结的标准承载 = LEAVEHOSPITAL_SUMMARY。患者在扩展表有 WSLB=05 行
@@ -163,13 +322,20 @@ def fetch_notes(cn, pids: list[str] | None) -> pd.DataFrame:
     """
     from javert.onboarding.etl_engine import split_sections
 
+    doc_where, doc_params = _scope(pids, "BAH" if patient else "JZLSH", patient, key="bah")
+    summary_where, summary_params = _scope(pids, "JZLSH", patient)
     doc = q(cn, f"""
         SELECT JZLSH, JLSJ, WSMC, WSLB, DLBT, ZW FROM TB_CIS_MEDICAL_DOCUMENT
-        WHERE {in_clause(pids, 'JZLSH')} ORDER BY JZLSH, WSLSH""")
+        WHERE {doc_where} ORDER BY JZLSH, WSLSH""", doc_params)
     summ = q(cn, f"""
         SELECT JZLSH, CYSJ, YYZTBBT1, YYZTB1, YYZTBBT2, YYZTB2,
                {', '.join(c for c, _ in SUMMARY_COL2SEC)}
-        FROM TB_CIS_LEAVEHOSPITAL_SUMMARY WHERE {in_clause(pids, 'JZLSH')}""")
+        FROM TB_CIS_LEAVEHOSPITAL_SUMMARY WHERE {summary_where}""", summary_params)
+    if patient is not None:
+        doc = doc[doc["ZW"].map(_valid)].copy()
+        doc["JLSJ"] = doc["JLSJ"].map(_optional_time)
+        _internal_id(doc, "JZLSH", patient)
+        _internal_id(summ, "JZLSH", patient)
     # 05 判定: WSLB 或 WSMC 正则 (v2 医院侧 WSLB 可空, 按文书名称派生)
     is05 = (doc["WSLB"] == "05") | doc["WSMC"].str.contains("出院小结|出院记录", regex=True, na=False)
     ext05_pids = set(doc.loc[is05, "JZLSH"])
@@ -201,31 +367,39 @@ def _zd_frame(ba_id, mainflag, name, code, sn) -> pd.DataFrame:
     })
 
 
-def fetch_zd(cn, pids: list[str] | None, yq2org: dict[str, str]) -> pd.DataFrame:
+def fetch_zd(cn, pids: list[str] | None, yq2org: dict[str, str], *, patient=None) -> pd.DataFrame:
     """诊断 → shi_zd (7 列契约). BA_HOSPS 院区走病案首页 (SYJBK 主诊锚 + SYZDK 列表),
     其他院区维持 IH_DIAGNOSIS_DETAIL 现状.
 
     harden-onsite-redlines D5: 源选择按患者粒度 — 只有 SYJBK 真有行的患者剔除 IH 行,
     缺首页行的 szx 患者保留 IH 诊断 (此前整院区剔除 → 诊断/手术双清零)."""
     ba_in = ",".join(f"'{h}'" for h in BA_HOSPS)
+    ih_where, ih_params = _scope(pids, "JZLSH", patient)
+    ba_where, ba_params = _scope(pids, "SYXH", patient, key="syxh")
+    if patient is not None:
+        yq2org = {patient.hospital: patient.hospital}
+        ba_filter = ba_where
+    else:
+        ba_filter = f"YLJGYQDM IN ({ba_in}) AND {ba_where}"
 
     # ── IH 全院区取 (BA 院区行的去留按患者定, 见下) ──
     zd = q(cn, f"""
         SELECT YLJGYQDM, JZLSH, ZDBM, ZDSM, CYZDBZ FROM TB_IH_DIAGNOSIS_DETAIL
-        WHERE {in_clause(pids, 'JZLSH')}
-        ORDER BY JZLSH, ZYZDLSH""")
+        WHERE {ih_where}
+        ORDER BY JZLSH, ZYZDLSH""", ih_params)
+    _internal_id(zd, "JZLSH", patient)
 
     # ── BA 院区: 主诊断 = SYJBK.ZYZD; 列表 = SYZDK (ZDXH 排序) ──
     jbk = q(cn, f"""
         SELECT YLJGYQDM, SYXH, ZYZD FROM TB_BA_SYJBK
-        WHERE YLJGYQDM IN ({ba_in}) AND {in_clause(pids, 'SYXH')}""")
+        WHERE {ba_filter}""", ba_params)
     # fix-scan-residuals: 主诊 ZYZD 空串不构成 BA 覆盖 — 剔空后 ba_keys/main/zyzd_of 一致,
     # SYJBK 有行但 ZYZD 空的患者回退 IH (否则 IH 被剔 + 生成一条空主诊, 比 per-patient 回退前更糟).
     if len(jbk):
         jbk = jbk[jbk["ZYZD"].fillna("").astype(str).str.strip() != ""]
     zdk = q(cn, f"""
         SELECT YLJGYQDM, SYXH, ZDXH, ZDDM, ZDMC FROM TB_BA_SYZDK
-        WHERE YLJGYQDM IN ({ba_in}) AND {in_clause(pids, 'SYXH')}""")
+        WHERE {ba_filter}""", ba_params)
 
     # BA 源患者 = SYJBK 真有行的 (院区, 患者); 其 IH 行剔除, 其余患者保留 IH.
     # SYZDK 也只取这些患者 (主诊锚不存在时整个患者回退 IH, 不半拉混源).
@@ -304,7 +478,7 @@ def _ss_frame(ba_id, name, code, mainflag, date, lv, anst, dr, anst_dr) -> pd.Da
     })
 
 
-def fetch_ss(cn, pids: list[str] | None, yq2org: dict[str, str]) -> pd.DataFrame:
+def fetch_ss(cn, pids: list[str] | None, yq2org: dict[str, str], *, patient=None) -> pd.DataFrame:
     """手术 → shi_ss (9 列契约). BA_HOSPS 走病案首页 SYSSK⋈OPRATION_DETAIL (SFZYSS 主手术标志),
     其他院区维持 OPRATION_DETAIL 现状.
 
@@ -314,22 +488,35 @@ def fetch_ss(cn, pids: list[str] | None, yq2org: dict[str, str]) -> pd.DataFrame
     harden-onsite-redlines D5: per-patient 源选择 — 只有 SYSSK 真有行的患者剔除
     OPRATION 行, 缺首页手术行的 szx 患者保留 IH 侧手术."""
     ba_in = ",".join(f"'{h}'" for h in BA_HOSPS)
+    operation_table = "TB_OPERATION_DETAIL" if patient is not None else "TB_OPRATION_DETAIL"
+    op_where, op_params = _scope(pids, "JZLSH", patient)
+    ba_where, ba_params = _scope(pids, "s.SYXH", patient, key="syxh", hospital_column="s.YLJGYQDM")
+    if patient is not None:
+        yq2org = {patient.hospital: patient.hospital}
+        # 首页与operation不再用SYXH=JZLSH错误连接；上下文给出真实就诊号。
+        op_join = "s.YLJGYQDM=o.YLJGYQDM AND o.JZLSH=? AND s.SSXH=o.SSXH"
+        ba_filter = ba_where
+        ba_params = (patient.visit,) + ba_params
+    else:
+        op_join = "s.YLJGYQDM=o.YLJGYQDM AND s.SYXH=o.JZLSH AND s.SSXH=o.SSXH"
+        ba_filter = f"s.YLJGYQDM IN ({ba_in}) AND {ba_where}"
 
     ss = q(cn, f"""
         SELECT YLJGYQDM, JZLSH, SSCZMC, SSCZBM, ZCBZ, SSKSSJ, SSJB, MZFS, SXYHRYXM, MZYHRYXM
-        FROM TB_OPRATION_DETAIL
-        WHERE {in_clause(pids, 'JZLSH')}
-        ORDER BY JZLSH, SSMXLSH""")
+        FROM {operation_table}
+        WHERE {op_where}
+        ORDER BY JZLSH, SSMXLSH""", op_params)
+    _internal_id(ss, "JZLSH", patient)
 
     ba = q(cn, f"""
         SELECT s.YLJGYQDM, s.SYXH, s.SSXH, s.SSRQ, s.SSDM, s.SSMC, s.SSJB, s.MZFS,
                s.SSYS, s.MZYS, s.SFZYSS, o.SSKSSJ
         FROM TB_BA_SYSSK s
         LEFT JOIN (SELECT YLJGYQDM, JZLSH, SSXH, MIN(SSKSSJ) AS SSKSSJ
-                   FROM TB_OPRATION_DETAIL GROUP BY YLJGYQDM, JZLSH, SSXH) o
-          ON s.YLJGYQDM=o.YLJGYQDM AND s.SYXH=o.JZLSH AND s.SSXH=o.SSXH
-        WHERE s.YLJGYQDM IN ({ba_in}) AND {in_clause(pids, 's.SYXH')}
-        ORDER BY s.SYXH, s.SSXH""")
+                   FROM {operation_table} GROUP BY YLJGYQDM, JZLSH, SSXH) o
+          ON {op_join}
+        WHERE {ba_filter}
+        ORDER BY s.SYXH, s.SSXH""", ba_params)
 
     ba_keys = set(zip(ba["YLJGYQDM"], ba["SYXH"])) if len(ba) else set()
     if ba_keys and len(ss):
@@ -349,6 +536,8 @@ def fetch_ss(cn, pids: list[str] | None, yq2org: dict[str, str]) -> pd.DataFrame
 
     def _iso(d: str) -> str:
         d = (d or "").strip()
+        if patient is not None and len(d) > 8:
+            return _optional_time(d)[:10]
         if len(d) == 8 and d.isdigit():
             return f"{d[:4]}-{d[4:6]}-{d[6:8]}"
         return d[:10] if not d.startswith("1900-01-01") else ""
@@ -367,14 +556,16 @@ def fetch_ss(cn, pids: list[str] | None, yq2org: dict[str, str]) -> pd.DataFrame
     return pd.concat([op, syssk], ignore_index=True).reset_index(drop=True)
 
 
-def fetch_labs(cn, pids: list[str] | None) -> pd.DataFrame:
+def fetch_labs(cn, pids: list[str] | None, *, patient=None) -> pd.DataFrame:
     """检验: INDICATORS ⋈ REPORT → lab_results (16 列契约)."""
+    where, params = _scope(pids, "r.JZLSH", patient, hospital_column="r.YLJGYQDM")
     lab = q(cn, f"""
         SELECT r.JZLSH, i.JYZBMC, i.JYZBDM, i.JYZBJG, i.JLDW, i.CKZ, i.YCTS,
                r.SQKS, r.BGSJ, r.BBMC, r.BGDLB, r.BRNL, r.BRXB, r.BGYHRYXM, r.SHYHRYXM
         FROM TB_LIS_INDICATORS i
         JOIN TB_LIS_REPORT r ON i.YLJGYQDM=r.YLJGYQDM AND i.BGDH=r.BGDH AND i.BGRQ=r.BGRQ
-        WHERE {in_clause(pids, 'r.JZLSH')}""")
+        WHERE {where}""", params)
+    _internal_id(lab, "JZLSH", patient)
     return pd.DataFrame({
         "zyh": lab["JZLSH"],
         "rpt_itemname": lab["JYZBMC"],
@@ -395,17 +586,19 @@ def fetch_labs(cn, pids: list[str] | None) -> pd.DataFrame:
     })
 
 
-def fetch_exams(cn, pids: list[str] | None) -> pd.DataFrame:
+def fetch_exams(cn, pids: list[str] | None, *, patient=None) -> pd.DataFrame:
     """检查: RIS_REPORT ∪ RIS_REPORT2 → examinations (15 列契约)."""
+    where, params = _scope(pids, "JZLSH", patient)
     r1 = q(cn, f"""
         SELECT JZLSH, EXAMTYPE, JCMC, YXZD AS concl, YXBX AS descr, JCBW, JCKS, JCSJ, BGSJ,
                BGLCZD AS diag, YYS AS pos, BRXB, BGYHRYXM, SHYHRYXM
-        FROM TB_RIS_REPORT WHERE {in_clause(pids, 'JZLSH')}""")
+        FROM TB_RIS_REPORT WHERE {where}""", params)
     r2 = q(cn, f"""
         SELECT JZLSH, EXAMTYPE, JCMC, JCBGJG AS concl, BT1NR AS descr, JCBW, JCKS, JCSJ, BGSJ,
                BT2NR AS diag, JCJGDM AS pos, BRXB, BGYHRYXM, SHYHRYXM
-        FROM TB_RIS_REPORT2 WHERE {in_clause(pids, 'JZLSH')}""")
+        FROM TB_RIS_REPORT2 WHERE {where}""", params)
     r = pd.concat([r1, r2], ignore_index=True)
+    _internal_id(r, "JZLSH", patient)
     return pd.DataFrame({
         "zyh": r["JZLSH"],
         "checkType": r["EXAMTYPE"].replace("-", ""),
