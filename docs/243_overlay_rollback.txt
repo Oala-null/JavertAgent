@@ -1,0 +1,35 @@
+243 代码覆盖／回滚：最简指南
+
+原则：只发gnome-243已推送HEAD；不直接tar解压覆盖；保留现场.env、LLM配置、.venv、模型、患者数据和审计库。
+操作顺序：本地提交推送打包 → 院内验包 → 停旧Web/批跑 → 备份覆盖 → 单例验收；有问题停服务后回滚。
+
+一、本地：在干净的gnome-243工作目录
+git push origin gnome-243
+python3 scripts/gnome_release.py pack --repo . --output "/tmp/243-release-$(git rev-parse --short HEAD)"
+把输出目录中的tar.gz、同名.sha256和gnome_release.py经院方允许通道传到243同一目录。
+
+二、243：进入上传目录，将PKG换成实际文件名
+PKG='javert-243-实际提交号.tar.gz'
+sha256sum -c "$PKG.sha256"
+python3 gnome_release.py verify "$PKG"
+
+三、确认旧Web、批跑及其自动拉起任务都已停止；不要停止SQL或LLM
+python3 gnome_release.py install "$PKG" --target /home/admin2/Javert --services-stopped
+记下输出的“回滚备份”完整路径。未确认机上版本/原有效配置前不要覆盖。
+
+四、沿用原来能连接SQL的终端环境，先试一个病案首页SYXH
+cd /home/admin2/Javert
+read -r -p '病案首页SYXH：' PATIENT
+bash scripts/run_243_patient.sh "$PATIENT" precheck --check-only
+bash scripts/run_243_patient.sh "$PATIENT" "one-$(date +%y%m%d%H%M%S)"
+核对本次目录中的failed、mssql_sync/pending；仅命令退出不能证明审计成功。
+另一个终端加载相同有效配置后运行：bash /home/admin2/Javert/scripts/run_243_web.sh
+沿用原243访问地址的8090/workbench；SQL地址不是Web地址。
+
+五、需要回滚：先再次停止Web/批跑，返回上传目录执行
+python3 gnome_release.py rollback '安装时输出的完整备份路径' --target /home/admin2/Javert --services-stopped
+然后按原来的启动方式启动旧版本；不要再调用已回退掉的新版启动器。
+回滚只恢复代码，不删除或撤回已经生成的审计结果。
+
+详细排障与候选患者选择：docs/243_release_cookbook.md。
+本地演练不等于院内验收；不要外传.env、患者CSV或病历正文。

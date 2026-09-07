@@ -25,7 +25,7 @@ def allowed(name):
         return False
     return (name in {"pyproject.toml", "uv.lock", "README.md"}
             or name.startswith(("src/", "configs/", "scripts/", "data/router/"))
-            or name == "docs/243_release_cookbook.md")
+            or name in {"docs/243_release_cookbook.md", "docs/243_overlay_rollback.txt"})
 
 
 def git(repo, *args):

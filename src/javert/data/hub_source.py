@@ -426,22 +426,24 @@ def fetch_zd(cn, pids: list[str] | None, yq2org: dict[str, str], *, patient=None
     name_map: dict[str, str] = {}
     prefix_map: dict[str, str] = {}
     if codes:
+        dict_scope = "YLJGYQDM=? AND " if patient is not None else ""
+        dict_params = (patient.hospital,) if patient is not None else ()
         cin = ",".join("'" + c.replace("'", "") + "'" for c in codes)
         pin = ",".join("'" + c[:5].replace("'", "") + "%'" for c in set(c[:5] for c in codes))
         for sql, cc, nc in [
-            (f"SELECT DISTINCT ZDDM, ZDMC FROM TB_BA_SYZDK WHERE ZDDM IN ({cin})", "ZDDM", "ZDMC"),
-            (f"SELECT DISTINCT ZDBM, ZDSM FROM TB_IH_DIAGNOSIS_DETAIL WHERE ZDBM IN ({cin})", "ZDBM", "ZDSM"),
+            (f"SELECT DISTINCT ZDDM, ZDMC FROM TB_BA_SYZDK WHERE {dict_scope}ZDDM IN ({cin})", "ZDDM", "ZDMC"),
+            (f"SELECT DISTINCT ZDBM, ZDSM FROM TB_IH_DIAGNOSIS_DETAIL WHERE {dict_scope}ZDBM IN ({cin})", "ZDBM", "ZDSM"),
         ]:
-            d = q(cn, sql)
+            d = q(cn, sql, dict_params)
             for code, name in zip(d[cc], d[nc]):
                 name_map.setdefault(code, name)
         like = " OR ".join(f"ZDDM LIKE {p}" for p in pin.split(","))
         like_ih = " OR ".join(f"ZDBM LIKE {p}" for p in pin.split(","))
         for sql, cc, nc in [
-            (f"SELECT DISTINCT ZDDM, ZDMC FROM TB_BA_SYZDK WHERE {like}", "ZDDM", "ZDMC"),
-            (f"SELECT DISTINCT ZDBM, ZDSM FROM TB_IH_DIAGNOSIS_DETAIL WHERE {like_ih}", "ZDBM", "ZDSM"),
+            (f"SELECT DISTINCT ZDDM, ZDMC FROM TB_BA_SYZDK WHERE {dict_scope}({like})", "ZDDM", "ZDMC"),
+            (f"SELECT DISTINCT ZDBM, ZDSM FROM TB_IH_DIAGNOSIS_DETAIL WHERE {dict_scope}({like_ih})", "ZDBM", "ZDSM"),
         ]:
-            d = q(cn, sql)
+            d = q(cn, sql, dict_params)
             for code, name in zip(d[cc], d[nc]):
                 prefix_map.setdefault(str(code)[:5], name)
 

@@ -15,12 +15,12 @@
 | 检查 | collected | pass | skip | fail | error | deselected |
 |---|---:|---:|---:|---:|---:|---:|
 | 未修改基线3da4d80，pytest -q -m 'not slow' | 674 | 625 | 12 | 14 | 23 | 0 |
-| 修复后，同命令原始统计 | 716 | 669 | 12 | 12 | 23 | 0 |
-| 修复后，显式排除下面35项既有环境/夹具债务 | 716 | 669 | 12 | 0 | 0 | 35 |
-| 本次相关组合测试 | 65 | 65 | 0 | 0 | 0 | 0 |
+| 修复后，同命令原始统计 | 717 | 670 | 12 | 12 | 23 | 0 |
+| 修复后，显式排除下面35项既有环境/夹具债务 | 717 | 670 | 12 | 0 | 0 | 35 |
+| 本次相关组合测试 | 66 | 66 | 0 | 0 | 0 | 0 |
 
 相关组合：test_hospital_linkage.py、test_gnome_release.py、test_hub_raw_source.py、
-test_hub_source_ba.py、test_hub_summary_notes.py。
+test_hub_source_ba.py、test_hub_summary_notes.py、test_hospital_linkage_sql.py。
 
 另通过：Bash语法、Python compileall、CLI list、CLI --help、OpenSpec严格验证、git diff --check。
 原有两个手术测试替身把JOIN子查询误当成主查询，已限定匹配条件；这是测试替身修正，不是删除测试。
@@ -79,6 +79,14 @@ test_hub_source_ba.py、test_hub_summary_notes.py。
 - `tests/test_web_app.py::test_workbench_routes_registered_in_with_mssql_mode`
 
 ## 现场待验收
+
+完成审查补测：执行真实取数SQL的SQLite兼容替身（只转换TOP/dbo/sys.tables语法），
+复现并修复“另一院区同诊断码的名称被全局字典查询带入”。多院区/同卡多住院的六类取数整体通过。
+该测试不替代SQL Server/ODBC现场验收。
+
+正式包d455978已完成离线完整演练：374个运行文件安装并验证；826个原文件内容/权限在回滚后完全恢复，
+包含人工模拟的现场手工代码修改；env、LLM配置、venv标记、患者文件标记和数据库标记五类保留项不变。
+没有连接医院或执行真实审计。最简操作指南见243_overlay_rollback.txt。
 
 1. 确认DEPLOY_COMMIT/manifest、原启动方式、SQL源与结果库、模型别名和session配置。
 2. 验包、停旧Web/批跑、备份安装；env和业务数据不变。

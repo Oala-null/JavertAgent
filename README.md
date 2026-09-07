@@ -2,6 +2,7 @@
 
 > 243医院真实数据单例与完整发布包：见 [243最小修复Cookbook](docs/243_release_cookbook.md)。
 > 本次不合并fp8；显式shanghai模式解析SYXH/BAH/JZLSH，现场env和数据不随代码包覆盖。院内验收状态单独记录。
+> 只需要打包、覆盖和回滚命令：[最简TXT](docs/243_overlay_rollback.txt)。
 
 国家医保局 2026 年自查自纠问题清单 (0325) 中 163 条「做不了」违规情形的 LLM 审计脚手架.
 
