@@ -59,6 +59,20 @@ def test_get_notes_unknown_returns_empty(fixture_csvs):
     assert "住院号" in df.columns
 
 
+def test_numeric_fee_codes_keep_leading_zeros_in_base_and_overlay(tmp_path):
+    columns = "bah,medins_list_name,med_list_codg,medins_list_codg,cnt,det_item_fee_sumamt\n"
+    base = tmp_path / "shi_fee.csv"
+    base.write_text(columns + "SYNTH-CODE-BASE,合成治疗,001200,00042,1,10\n")
+    overlay = tmp_path / "overlay"
+    overlay.mkdir()
+    (overlay / "shi_fee.csv").write_text(columns + "SYNTH-CODE-OVERLAY,合成治疗,003400,00007,2,20\n")
+    loader = CsvLoader(tmp_path / "unused-notes.csv", base, overlay_dir=overlay)
+    fees = loader.all_fees()
+    assert list(fees["med_list_codg"]) == ["001200", "003400"]
+    assert list(fees["medins_list_codg"]) == ["00042", "00007"]
+    assert list(fees["cnt"]) == [1, 2]
+
+
 def test_get_fees_composite_key_tail_match_on_bah(fixture_csvs):
     loader = CsvLoader(*fixture_csvs)
     df = loader.get_fees("J66252")

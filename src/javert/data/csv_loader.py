@@ -97,8 +97,10 @@ class CsvLoader(DataLoader):
     def _load_fees(self) -> pd.DataFrame:
         if self._fees is None:
             t0 = time.perf_counter()
-            df = pd.read_csv(self.fees_path, dtype={"bah": str}, low_memory=False)
-            self._fees = self._overlay(df, "shi_fee.csv", {"bah": str})
+            # Codes are identifiers: numeric inference would drop leading zeros.
+            dtype = {"bah": str, "med_list_codg": str, "medins_list_codg": str}
+            df = pd.read_csv(self.fees_path, dtype=dtype, low_memory=False)
+            self._fees = self._overlay(df, "shi_fee.csv", dtype)
             # 费用表 bah 形如 "H31010600042-J13365 ", 走包含匹配索引
             self._fees_index = self._build_index(self._fees, exact_col=None)
             elapsed = time.perf_counter() - t0

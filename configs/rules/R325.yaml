@@ -1,0 +1,31 @@
+rule_id: R325
+domain: 眼科
+violation_type: 重复收费
+question: 眼内穿刺费与注射费（球后/球旁）同时收取，是否违反服务当日当地价格目录的互斥计价规定。
+example: 同次眼部操作收取眼内穿刺费和球后/球旁注射费，专家提示当地目录规定不能同时收取，需核实条款与费用事实。
+status: ready
+priority: P0
+handling_level: 可疑（警告）
+prompt_addon: |
+  本规则核查眼内穿刺与球后/球旁注射互斥收费，预检仅说明候选项目共存，不预设当地互斥条款已确认。
+  1. search_fees 分别搜“眼内穿刺”“球后”“球旁”，核对原始名称、编码、服务日期、眼别、净正数量及金额。只含一类净正收费时 CLEAN；球后/球旁注射必须是操作服务费，不可把药液或普通注射药品收费当作第二项目。
+  2. 两项分别 catalog_lookup(item_code=实际编码, item_name=实际名称, service_date=服务日期)，核对完整计价说明是否有“不得同时收取”等明确条款、适用地区/机构和生效期。截图所述黑龙江口腔类等31类价格表仅是待核专家线索；工具未返回互斥条文、地区未确认、备注缺失/截断或版本冲突，不得当成条款存在，也不得当成允许同时收费。
+  3. search_orders 与 search_notes 查“穿刺”“球后”“球旁”操作，核对服务事件、时间和眼别；住院期间两项并存不等于同一次操作。按已核实条文判断互斥作用于同次、同日或其他范围，不自行扩大至全住院，也不擅自把条文缩小到同眼才有效。
+  4. 有适用于该院服务日期的明确互斥条款，且两项净正收费落在条款禁止的同一范围，判 VIOLATION；证据引用两项费用及适用条文和事件对应。不能确定哪笔应撤销时不猜退款项目或违规金额。
+  5. 两项属独立事件且有效条款明确允许分别计费，或一项已全额退费，判 CLEAN。两项净正存在但条款/范围/事件不明，判 INCONCLUSIVE conf 0.50，注明“需核查当地眼内穿刺与球后/球旁注射互斥计价条款及操作记录”。
+trigger_keywords: [眼内穿刺, 球后, 球旁]
+trigger_codes: []
+exam_keywords: [眼内穿刺, 球后, 球旁]
+suggested_tools: [search_fees, catalog_lookup, search_orders, search_notes]
+expected_signal: |
+  违规：有效当地互斥条款明确，两项净收费落入禁止范围。
+  待核：两项费用存在，但只有专家摘要或无法确定服务事件。
+  合规：另一项已退净，或完整条款明确允许当前独立事件分别计费。
+notes: 2026-09-06 专家线索手工扩展，非国家0325清单原始条目。黑龙江所引价格文件原件未核实，不把外省条款直接用于该院。ready仅表示编写完成；未跑测试或病例、未经临床验证、未部署。见 docs/expert_ophthalmology_rules.md。
+derived_from_template:
+drug_rule_type:
+render_hash:
+precheck:
+  mode: coexist_review
+  a_items: [眼内穿刺]
+  b_items: [球后, 球旁]

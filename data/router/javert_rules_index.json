@@ -1,5 +1,5 @@
 {
-  "count": 163,
+  "count": 168,
   "rules": [
     {
       "rule_id": "R003",
@@ -2451,13 +2451,16 @@
       "violation_type": "超标准收费",
       "status": "ready",
       "priority": "P0",
-      "derived_from_template": "M4",
+      "derived_from_template": null,
       "trigger_keywords": [
         "结膜囊冲洗",
         "结膜囊冲洗费",
         "眼压检查",
         "眼压检查费",
-        "眼压日曲线"
+        "眼压日曲线",
+        "冲洗结膜囊",
+        "眼压测定",
+        "眼压测量"
       ],
       "trigger_codes": [
         "013103000060000",
@@ -2473,8 +2476,9 @@
       "violation_type": "虚构医药服务项目",
       "status": "ready",
       "priority": "P0",
-      "derived_from_template": "M5",
+      "derived_from_template": null,
       "trigger_keywords": [
+        "睑板腺",
         "睑板腺治疗",
         "睑板腺按摩",
         "睑治疗",
@@ -2494,7 +2498,7 @@
       "violation_type": "虚构医药服务项目",
       "status": "ready",
       "priority": "P0",
-      "derived_from_template": "M4",
+      "derived_from_template": null,
       "trigger_keywords": [
         "床头心电图",
         "床旁心电图",
@@ -2515,20 +2519,112 @@
       "violation_type": "过度检查",
       "status": "ready",
       "priority": "P0",
-      "derived_from_template": "M2",
+      "derived_from_template": null,
       "trigger_keywords": [
         "A型超声检查",
         "B型超声检查",
         "眼科AB型超声",
         "眼部A超",
         "眼部B超",
-        "眼轴测量"
+        "眼轴测量",
+        "A型超声",
+        "A 型超声",
+        "A超检查",
+        "A超声",
+        "B型超声",
+        "B 型超声",
+        "B超检查",
+        "B超声",
+        "AB型超声",
+        "AB 型超声",
+        "AB超",
+        "A/B超",
+        "A/B型超声"
       ],
       "trigger_codes": [
         "012302010010000",
         "012302020010000"
       ],
       "question": "同时开展眼部 A 型和 B 型超声检查时，未分别记录两类检查的独立临床目的或指征。"
+    },
+    {
+      "rule_id": "R323",
+      "yaml_path": "configs/rules/R323.yaml",
+      "domain": "眼科",
+      "violation_type": "分解收费",
+      "status": "ready",
+      "priority": "P0",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "眼球粘连分离",
+        "睑球粘连分离",
+        "结膜囊成形",
+        "结膜囊成型",
+        "内外眦成形",
+        "内外眦成型",
+        "内眦成形",
+        "外眦成形",
+        "内眦成型",
+        "外眦成型",
+        "翼状胬肉"
+      ],
+      "trigger_codes": [],
+      "question": "翼状胬肉切除伴移植等眼科手术中，另收眼球粘连分离、结膜囊成形或内外眦成形费用，是否有独立操作和当地价格依据。"
+    },
+    {
+      "rule_id": "R324",
+      "yaml_path": "configs/rules/R324.yaml",
+      "domain": "眼科",
+      "violation_type": "超标准收费",
+      "status": "ready",
+      "priority": "P0",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "眼内能量",
+        "眼内能量精密治疗",
+        "眼内能量精密诊疗"
+      ],
+      "trigger_codes": [],
+      "question": "眼内能量精密治疗按单侧等单位计价时，净收费数量是否超过实际治疗侧别、独立执行及有效目录允许数量。"
+    },
+    {
+      "rule_id": "R325",
+      "yaml_path": "configs/rules/R325.yaml",
+      "domain": "眼科",
+      "violation_type": "重复收费",
+      "status": "ready",
+      "priority": "P0",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "眼内穿刺",
+        "球后",
+        "球旁"
+      ],
+      "trigger_codes": [],
+      "question": "眼内穿刺费与注射费（球后/球旁）同时收取，是否违反服务当日当地价格目录的互斥计价规定。"
+    },
+    {
+      "rule_id": "R326",
+      "yaml_path": "configs/rules/R326.yaml",
+      "domain": "中医",
+      "violation_type": "虚构医药服务项目",
+      "status": "ready",
+      "priority": "P0",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "特殊手法针法",
+        "中药塌渍",
+        "中药溻渍",
+        "中药踏渍",
+        "中药塌敷",
+        "中药溻敷",
+        "中药贴敷",
+        "中医熏洗",
+        "中药熏洗",
+        "中药熏蒸"
+      ],
+      "trigger_codes": [],
+      "question": "特殊手法针法、中药敷治及中医熏洗等治疗收费是否具有对应的实际治疗记录。"
     },
     {
       "rule_id": "RD01",
@@ -2995,6 +3091,24 @@
       ],
       "trigger_codes": [],
       "question": "申请医保支付的「艾普拉唑肠溶片」，无一线药失败/不耐受证据即作二线使用。"
+    },
+    {
+      "rule_id": "RD38",
+      "yaml_path": "configs/rules/RD38.yaml",
+      "domain": "药品",
+      "violation_type": "过度诊疗",
+      "status": "ready",
+      "priority": "P0",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "毛果芸香碱",
+        "匹罗卡品",
+        "卡替洛尔",
+        "布林佐胺",
+        "溴莫尼定"
+      ],
+      "trigger_codes": [],
+      "question": "多种抗青光眼滴眼液同期使用，是否有与患者病情和眼压控制相符的联合必要性，是否存在无依据的重复成分用药。"
     }
   ]
 }

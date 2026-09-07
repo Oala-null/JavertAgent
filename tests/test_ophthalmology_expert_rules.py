@@ -96,3 +96,45 @@ def test_presence_precheck_only_runs_for_target_fee(
 
     assert run_precheck(rule.precheck, unrelated).outcome == CLEAN
     assert run_precheck(rule.precheck, target).outcome == expected_outcome
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "names", "outcome"),
+    [
+        ("R319", ["冲洗结膜囊"], FACTS),
+        ("R319", ["眼压日曲线"], FACTS),
+        ("R321", ["移动心电图"], "review"),
+        ("R322", ["眼科AB型超声"], FACTS),
+        ("R323", ["眼球粘连分离费", "结膜囊成形费", "内外眦成形术"], FACTS),
+        ("R324", ["眼内能量精密治疗费/单侧"], FACTS),
+        ("R325", ["眼内穿刺费", "注射费（球后/球旁）"], FACTS),
+        ("R326", ["特殊手法针法", "中药塌敷", "中医熏洗"], FACTS),
+        ("RD38", ["硝酸毛果芸香碱滴眼液", "盐酸卡替洛尔滴眼液"], FACTS),
+    ],
+)
+def test_expert_charge_alias_survives_router_and_precheck(rule_id, names, outcome):
+    rule = load_rule(ROOT / "configs" / "rules" / f"{rule_id}.yaml")
+    assert rule_id in RuleRouter.from_defaults().route(_record(*map(_fee, names))).final_rules
+    frame = pd.DataFrame([
+        {"medins_list_name": name, "cnt": 1, "det_item_fee_sumamt": 20}
+        for name in names
+    ])
+    assert run_precheck(rule.precheck, frame).outcome == outcome
+    # A cancelled/refunded charge must not survive as a positive service candidate.
+    refund = frame.assign(cnt=-1, det_item_fee_sumamt=-20)
+    assert run_precheck(rule.precheck, pd.concat([frame, refund])).outcome == CLEAN
+
+
+def test_mutual_exclusion_needs_both_positive_service_charges():
+    rule = load_rule(ROOT / "configs" / "rules" / "R325.yaml")
+    frame = pd.DataFrame([{"medins_list_name": "眼内穿刺费", "cnt": 1, "det_item_fee_sumamt": 20}])
+    assert run_precheck(rule.precheck, frame).outcome == CLEAN
+
+
+def test_ready_expert_rules_allow_runtime_repository_startup():
+    # Runner loads the whole repository before any patient audit. An unmapped
+    # behavior on an unrelated ready rule must not break all audits at startup.
+    from javert.promises.loader import load_repository
+
+    repository = load_repository()
+    assert repository.active_definitions
