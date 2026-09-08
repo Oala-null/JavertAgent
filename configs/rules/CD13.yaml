@@ -1,0 +1,13 @@
+rule_id: CD13
+rule_kind: chronic_disease_qualification
+clinical_criteria_ref: hlj-outpatient-chronic-2025/CD13
+domain: 门诊慢性病
+violation_type: 门诊慢性病认定条件评估
+question: 评估该病例是否符合2025版重症肌无力门诊慢性病认定条件。
+status: drafting
+priority: P3
+handling_level: 提醒（引导）
+prompt_addon: ''
+trigger_keywords:
+  - 重症肌无力
+trigger_codes: []

@@ -85,6 +85,22 @@ _STATE_ZH = {
 }
 _STATE_MARK = {"SATISFIED": "✓", "NOT_SATISFIED": "✗", "UNKNOWN": "？", "CONFLICT": "⚠"}
 _QUALITY_FLAG_ZH = {
+    "OCR_UNVERIFIED": "OCR 识别内容未人工核对",
+    "FEE_COMPLETENESS_NOT_VERIFIED": "费用资料完整性尚未核验",
+    "EXTRACTION_FAILED": "候选证据抽取失败，需人工核对原文",
+    "EXTRACTION_TRUNCATED": "候选证据抽取被截断，可能遗漏材料",
+    "EXTRACTION_INCOMPLETE": "候选证据抽取不完整，不能据此排除慢病",
+    "CANDIDATE_REJECTED": "部分候选未通过原文校验，已排除",
+    "SOURCE_UNAVAILABLE": "所需数据源不可用",
+    "SOURCE_READ_FAILED": "所需数据读取失败",
+    "PATIENT_SCOPE_REJECTED": "已排除不属于当前患者的记录",
+    "SHADOW_ONLY": "仅供人工复核，不形成自动资格结论",
+    "SOURCE_DOCUMENTS_NOT_VERIFIED": "认定标准来源尚未完成核验",
+    "AUTOMATIC_RELEASE_NOT_ENABLED": "尚未启用自动认定",
+    "ASSET_NOT_APPROVED": "认定标准尚未审批签发",
+    "PARTIAL_CRITERIA": "部分认定条件尚未完成结构化",
+    "NO_CLINICAL_DATA": "未取得可用临床资料",
+    "ASSERTION_POLARITY_UNVERIFIED": "事实的肯定或否定表述尚未核实",
     "DRAFT_RULE_PREVIEW_ONLY": "草稿规则预览：仅供人工审核，不参与自动裁决",
     "AUTHORING_REVIEW_REQUIRED": "候选知识尚未获专家批准，必须人工复核",
     "NO_APPROVED_ELIGIBILITY_RULE": "该药尚无生效且已审核的结构化资格规则",
@@ -106,12 +122,43 @@ def _state_mark(state: str | None) -> str:
 
 def _quality_flag_zh(flag: str | None) -> str:
     value = (flag or "").strip()
-    return _QUALITY_FLAG_ZH.get(value, value)
+    code, _, detail = value.partition(":")
+    label = _QUALITY_FLAG_ZH.get(code.removesuffix("_COUNT"), code)
+    domains = {"notes": "文书", "labs": "检验", "examinations": "检查",
+               "diagnoses": "诊断", "surgeries": "手术"}
+    return f"{label}：{domains.get(detail, detail)}" if detail else label
 
 
 # criterion 证据锚点 → 可跳原文的 anchor (复用命中项目的 openSourcePanel 高亮机制).
 # 免疫组化等 criterion 命中文书时, follow-up 面板给一个「定位原文」双链.
 _NOTE_ANCHOR_SOURCES = ("note", "path", "shi_zd", "diag")
+
+
+def _clinical_node_labels(evaluation) -> dict[str, str]:
+    labels = {}
+    pending = [evaluation.proof_tree, evaluation.shadow_proof_tree]
+    while pending:
+        node = pending.pop()
+        if node is None:
+            continue
+        if node.assessment:
+            labels[node.node_id] = node.assessment.expected_condition.get("summary") or node.node_id
+        pending.extend(node.children)
+    return labels
+
+
+def _clinical_evidence_anchor(evidence) -> dict:
+    """仅沿患者当前来源定位，慢病锚点不做模糊文本猜测。"""
+    source = evidence.source.lower()
+    tab = {
+        "lab": "labs", "labs": "labs", "exam": "labs",
+        "examination": "labs", "examinations": "labs", "fee": "fees",
+    }.get(source, "notes")
+    return {
+        "tab": tab, "source_locator": evidence.locator, "query": evidence.text,
+        "exact": True,
+        "unresolved": not evidence.locator or source in {"diagnoses", "surgeries"},
+    }
 
 
 def _onco_evidence_anchor(assessment) -> dict | None:
@@ -185,6 +232,8 @@ def build_env() -> Environment:
     env.filters["state_zh"] = _state_zh
     env.filters["state_mark"] = _state_mark
     env.filters["quality_flag_zh"] = _quality_flag_zh
+    env.filters["clinical_node_labels"] = _clinical_node_labels
+    env.filters["clinical_evidence_anchor"] = _clinical_evidence_anchor
     env.filters["onco_evidence_anchor"] = _onco_evidence_anchor
     env.filters["onco_needs_date_check"] = _onco_needs_date_check
     env.filters["format_dt"] = _format_dt

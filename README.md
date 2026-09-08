@@ -436,3 +436,7 @@ oncology 历史分组计数与外部门禁见 `docs/oncology/qa_report.md`。
 详见 `CLAUDE.md` 与 `openspec/changes/bootstrap-javert-mvp/design.md`.
 
 **PDF导入验收纠正**：专家样例第一版仅发布三项收费切片且混入财务文书，不能作为完整病例导入验收。现已按原页复核62条费用并对齐总额，增加人工复核PDF导入门禁；详情及待核字段见[纠正记录](docs/expert_ophthalmology_rules_qa.md#pdf导入纠正)。
+
+### 慢病认定条件试跑
+
+CD规则支持显式shadow运行和独立结构化结果，普通规则默认执行集不含CD。专家反馈修订保留来源和审核边界，工作台以“慢病”标签展示候选命中、逐节点证据和缺失材料。当前未完成整体签发的资产一律待复核，不作为自动慢病认定或医保违规。单PDF受控流程见 [慢病运维](docs/chronic_disease_operations.md)，事实与限制见 [慢病QA](docs/chronic_disease_criteria_qa.md)。

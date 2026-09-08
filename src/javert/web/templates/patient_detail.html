@@ -73,16 +73,20 @@
       <details class="vt-group" id="{{ g.anchor }}" data-has-i="{{ 1 if g.n_i else 0 }}" open>
         <summary class="vt-group-header">
           <span class="vt-group-title">{{ g.alias }}</span>
-          <span class="vt-group-counts">{{ g.n_v }} 违 · {{ g.n_i }} 不明 · 共 {{ g.runs|length }} 条</span>
+          <span class="vt-group-counts">{% if g.chronic %}慢病评估 · {{ g.runs|length }} 条{% else %}{{ g.n_v }} 违 · {{ g.n_i }} 不明 · 共 {{ g.runs|length }} 条{% endif %}</span>
         </summary>
 
       {% for run in g.runs %}
       {% set meta = _rule_meta.get(run.rule_id) %}
       {% set public = (public_explanations | default({}, true)).get(run.run_id, {}) %}
-      <article id="run_{{ run.run_id }}" class="violation-card verdict-{{ run.verdict | verdict_color }}" data-run-id="{{ run.run_id }}" data-verdict="{{ run.verdict | verdict_color }}" data-gate-tag="{{ run.gate_tag or '' }}">
+      <article id="run_{{ run.run_id }}" class="violation-card {% if run.rule_id.startswith('CD') %}chronic-card{% else %}verdict-{{ run.verdict | verdict_color }}{% endif %}" data-run-id="{{ run.run_id }}" data-verdict="{{ run.verdict | verdict_color }}" data-gate-tag="{{ run.gate_tag or '' }}">
         <div class="violation-head">
           <span class="rule-id">{% if meta %}{{ meta.behavior_name }}{% else %}未分类{% endif %}</span>
+          {% if run.rule_id.startswith('CD') %}
+          <span class="batch-badge">{% if run.clinical_criteria_evaluation and 'CHRONIC_CANDIDATE_MATCHED' in run.clinical_criteria_evaluation.data_quality_flags %}慢病命中（待复核）{% elif run.clinical_criteria_evaluation and 'CHRONIC_NO_CANDIDATE' in run.clinical_criteria_evaluation.data_quality_flags %}慢病无候选命中{% else %}慢病评估{% endif %}</span>
+          {% else %}
           <span class="badge badge-{{ run.verdict | verdict_color }}">{{ run.verdict | verdict_label }}</span>
+          {% endif %}
           <span class="confidence">置信 {{ '%.2f' % (run.confidence or 0.0) }}</span>
           {% if run.history %}<span class="history-hint" title="该项目之前审核过 {{ run.history|length }} 次，末尾可展开查看">📜 +{{ run.history|length }}</span>{% endif %}
         </div>
@@ -142,6 +146,7 @@
         </div>
 
         {# 单一公共 presenter 的结构化输出；不渲染内部 reasoning/evidence JSON。 #}
+        {% if not run.rule_id.startswith('CD') %}
         <section class="public-explanation">
           {% set conclusion = public.get('conclusion', {}) %}
           <h3>{{ conclusion.get('label', '待人工复核') }}</h3>
@@ -172,6 +177,8 @@
           <div class="public-section public-review-needs"><strong>需人工核对</strong><ul>{% for item in public.review_needs %}<li>{{ item }}</li>{% endfor %}</ul></div>
           {% endif %}
         </section>
+        {% endif %}
+        {% include "_clinical_criteria.html" %}
 
         {# 肿瘤靶向药用药方案合理性 — 绑在 reasoning 之后的 follow-up, 默认折叠, 点开看逐条医保限定核对 #}
         {% if run.eligibility_evaluation %}

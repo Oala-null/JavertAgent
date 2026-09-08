@@ -2,6 +2,7 @@
 {% set tags = patients | selectattr('batch_tag') | map(attribute='batch_tag') | unique | list %}
 <aside class="sidebar-panel" id="sidebar">
   <div class="sidebar-head">
+    <a class="facet-chip" href="/workbench?batch_tag=%E6%85%A2%E7%97%85&amp;filter=all">慢病</a>
     <h2>病人 (<span id="patient-count">{{ patients|length }}</span>)</h2>
     <form class="filter-form" method="get" action="{% if active_patient %}/workbench/{{ active_patient }}{% else %}/workbench{% endif %}">
       <select name="filter" onchange="this.form.submit()">
@@ -44,7 +45,11 @@
     {% if tags %}
     <div class="facet-tags" id="facet-tags">
       {% for t in tags %}
+      {% if t in ['Chronic_Disease', '慢病'] %}
+      <a class="facet-chip" href="/workbench?batch_tag=%E6%85%A2%E7%97%85&amp;filter=all">慢病 · {{ t }}</a>
+      {% else %}
       <button type="button" class="facet-chip" data-tag="{{ t }}" onclick="toggleTagChip(this)">{{ t }}</button>
+      {% endif %}
       {% endfor %}
     </div>
     {% endif %}
@@ -64,7 +69,7 @@
        data-dx="{{ p.primary_dx }}"
        data-tag="{{ p.batch_tag or '' }}"
        data-updated="{{ p.updated_at.isoformat() if p.updated_at else '' }}"
-       href="/workbench/{{ p.patient_id }}?filter={{ 'all' if p.batch_tag == 'ocr1.0' else filter }}">
+       href="/workbench/{{ p.patient_id }}?filter={{ 'all' if p.batch_tag in ['ocr1.0', 'Chronic_Disease', '慢病'] else filter }}{% if p.batch_tag in ['Chronic_Disease', '慢病'] %}&amp;batch_tag=%E6%85%A2%E7%97%85{% endif %}">
       <div class="row1">
         <span>{% if p.fully_reviewed %}<span class="check-icon"></span>{% endif %}{{ p.patient_id }}</span>
         {% if p.batch_tag %}<span class="batch-badge batch-{{ p.batch_tag }}">{{ p.batch_tag }}</span>{% endif %}
@@ -73,6 +78,7 @@
       <div class="row-dx" title="{{ p.primary_dx }}">{{ p.primary_dx }}</div>
       {% endif %}
       <div class="row2">
+        {% if p.chronic_matched_count %}<span class="batch-badge">慢病命中（待复核） {{ p.chronic_matched_count }}</span>{% elif p.chronic_count %}<span class="batch-badge">慢病评估 {{ p.chronic_count }}</span>{% endif %}
         {% if p.v_count > 0 %}<span class="badge badge-v">{{ p.v_count }}V</span>{% endif %}
         {% if p.i_count > 0 %}<span class="badge badge-i">{{ p.i_count }}I</span>{% endif %}
         {% if (filter == 'all' or p.batch_tag == 'ocr1.0') and p.c_count > 0 %}<span class="badge badge-c">{{ p.c_count }}C</span>{% endif %}

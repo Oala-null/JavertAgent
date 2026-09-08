@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from javert.audit.result import AuditResult, Evidence, ToolCall
+from javert.chronic.contracts import ClinicalCriteriaEvaluation
 from javert.oncology.contracts import EligibilityEvaluation
 from javert.promises.models import PromiseTrace
 
@@ -67,7 +68,7 @@ class AuditStore(ABC):
 class SqliteStore(AuditStore):
     """SQLite 实现."""
 
-    SCHEMA_VERSION = 9
+    SCHEMA_VERSION = 10
 
     def __init__(self, db_path: Path):
         self.db_path = db_path
@@ -103,7 +104,7 @@ class SqliteStore(AuditStore):
         logger.info("audit_store schema 已初始化 (v%d): %s", self.SCHEMA_VERSION, self.db_path)
 
     def _ensure_v2_columns(self) -> None:
-        """累积 migration: 给 audit_runs 幂等补齐 v2-v9 可空列.
+        """累积 migration: 给 audit_runs 幂等补齐 v2-v10 可空列.
 
         幂等. 老库 (v1) 缺这三列 → ALTER TABLE 补; 新库 (v2) 已含 → 跳过.
         最后无条件 CREATE INDEX IF NOT EXISTS idx_audit_unsynced.
@@ -139,6 +140,9 @@ class SqliteStore(AuditStore):
         # v9 (add-public-audit-headline-contract): 旧行保持 NULL，不批量回填
         if "headline" not in existing_cols:
             migrations.append("ALTER TABLE audit_runs ADD COLUMN headline TEXT")
+
+        if "clinical_criteria_json" not in existing_cols:
+            migrations.append("ALTER TABLE audit_runs ADD COLUMN clinical_criteria_json TEXT")
 
         with self.conn as c:
             for sql in migrations:
@@ -183,6 +187,10 @@ class SqliteStore(AuditStore):
             if result.eligibility_evaluation is not None
             else None
         )
+        clinical_criteria_json = (
+            result.clinical_criteria_evaluation.model_dump_json()
+            if result.clinical_criteria_evaluation is not None else None
+        )
         promise_trace_json = (
             json.dumps(
                 result.promise_trace.model_dump(mode="json"),
@@ -201,8 +209,8 @@ class SqliteStore(AuditStore):
                     run_id, rule_id, patient_id, verdict, confidence,
                     headline, reasoning, evidence_json, tool_calls_json,
                     duration_ms, model, started_at, batch_tag, gate_tag,
-                    eligibility_json, promise_trace_json, anchors_json, replay_key
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    eligibility_json, promise_trace_json, anchors_json, replay_key, clinical_criteria_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     result.run_id,
@@ -223,6 +231,7 @@ class SqliteStore(AuditStore):
                     promise_trace_json,
                     result.anchors_json,
                     replay_key,
+                    clinical_criteria_json,
                 ),
             )
 
@@ -254,6 +263,10 @@ class SqliteStore(AuditStore):
             started_at=started_at,
             gate_tag=gate_tag,
             eligibility_evaluation=eligibility,
+            clinical_criteria_evaluation=(
+                ClinicalCriteriaEvaluation.model_validate_json(row["clinical_criteria_json"])
+                if "clinical_criteria_json" in cols and row["clinical_criteria_json"] else None
+            ),
             promise_trace=promise_trace,
             anchors_json=(row["anchors_json"] if "anchors_json" in cols else None),
         )

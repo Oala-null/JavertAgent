@@ -1,8 +1,10 @@
 {
   "version": "1.0",
-  "generated_at": "2026-09-07T03:12:34+00:00",
+  "generated_at": "2026-09-08T07:30:34+00:00",
   "summary": {
-    "total_javert_rules": 168,
+    "total_javert_rules": 188,
+    "mapped_audit_rules": 168,
+    "excluded_non_audit_rules": 20,
     "overlapping_rules": 152,
     "javert_only_rules": 92,
     "by_template": {

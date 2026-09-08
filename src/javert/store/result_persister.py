@@ -36,7 +36,7 @@ def _attach_verified_hits(
     source_loader,
 ) -> None:
     """用审计时的同一收费切片生成可自包含回放的命中缓存；失败不阻断落库。"""
-    if source_loader is None:
+    if source_loader is None or result.rule_id.startswith("CD"):
         return
     try:
         fee_df = source_loader.get_fees(result.patient_id)
@@ -91,6 +91,7 @@ def _apply_drift_guard(result: AuditResult, sqlite_store: SqliteStore, sql_enabl
     # 不得在写库前把 CLEAN 就地改 I，制造自相矛盾的 eligibility_json。
     if (
         result.eligibility_evaluation is not None
+        or result.rule_id.startswith("CD")
         or result.verdict != "CLEAN"
         or result.gate_tag == TOOL_FAILURE_GATE_TAG
     ):

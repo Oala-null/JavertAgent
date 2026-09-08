@@ -1,0 +1,60 @@
+{% macro item_label(item, labels) -%}
+{{ labels.get(item, item) }}{% if labels.get(item) and labels[item] != item %} <small>（{{ item }}）</small>{% endif %}
+{%- endmacro %}
+{% macro proof(node, labels) %}
+<li class="clinical-node" data-node-id="{{ node.node_id }}">
+  <strong>{{ labels.get(node.node_id, '条件组合') }}</strong> · {{ node.state.value | state_zh }}
+  {% if node.operator.value != 'leaf' %}<span>{{ {'all':'全部条件满足', 'any':'任一条件满足', 'at_least_n':'至少满足指定项数'}.get(node.operator.value, '条件核对') }}</span>{% endif %}
+  {% if node.threshold is not none %}<p>至少 {{ node.threshold }} 项；已满足下界 {{ node.lower_bound }}，可能满足上界 {{ node.upper_bound }}</p>{% endif %}
+  {% if node.decisive_child_ids %}<p>决定分支：{% for item in node.decisive_child_ids %}{{ item_label(item, labels) }}{% if not loop.last %}、{% endif %}{% endfor %}</p>{% endif %}
+  {% if node.reason %}<p>{{ node.reason }}</p>{% endif %}
+  {% if node.assessment %}
+    {% set a = node.assessment %}
+    {% if a.expected_condition.get('threshold_text') or a.expected_condition.get('raw_text') %}<p>{{ a.expected_condition.get('threshold_text') or a.expected_condition.get('raw_text') }}</p>{% endif %}
+    {% for fact in a.normalized_facts %}
+    <p>观测：{{ fact.normalized_value if fact.normalized_value is not none else fact.raw_value }} {{ fact.canonical_unit or fact.raw_unit }} · {{ fact.observation_time or fact.service_time or '日期缺失' }} · {{ {'notes':'文书','labs':'检验','lab':'检验','examinations':'检查','diagnoses':'诊断','surgeries':'手术'}.get(fact.source_domain, fact.source_domain) }}</p>
+    {% endfor %}
+    {% for e in a.evidence_anchors %}
+      {% set anchor = e | clinical_evidence_anchor %}
+      <button type="button" class="hit-item" data-anchor='{{ anchor | tojson }}'>查阅证据{% if anchor.unresolved %}（未能精确定位）{% endif %} · {{ e.text }}</button>
+    {% endfor %}
+    {% for item in a.missing_items %}<p>待补材料：{{ item_label(item, labels) }}</p>{% endfor %}
+    {% for item in a.conflict_items %}<p>证据冲突：{{ item_label(item, labels) }}</p>{% endfor %}
+  {% endif %}
+  <details><summary>技术明细</summary><p>{{ node.node_id }} · {{ node.operator.value }} · {{ node.state.value }}</p>
+    {% if node.assessment %}<pre>{{ node.assessment.model_dump(mode='json') | tojson(indent=2) }}</pre>{% endif %}
+  </details>
+  {% if node.children %}<ul>{% for child in node.children %}{{ proof(child, labels) }}{% endfor %}</ul>{% endif %}
+</li>
+{% endmacro %}
+{% if run.clinical_criteria_invalid %}
+<section class="clinical-criteria"><h3>慢病结构化结果损坏，需人工复核</h3></section>
+{% elif run.clinical_criteria_evaluation %}
+{% set ce = run.clinical_criteria_evaluation %}
+{% set labels = ce | clinical_node_labels %}
+<section class="clinical-criteria" data-qualification="{{ ce.qualification_disposition.value }}" data-execution="{{ ce.execution_status.value }}">
+  <h3>门诊慢性病认定条件评估</h3>
+  {% if ce.execution_status.value == 'BLOCKED' %}
+    <strong>{% if 'CHRONIC_CANDIDATE_MATCHED' in ce.data_quality_flags %}慢病命中（待复核）{% elif 'CHRONIC_NO_CANDIDATE' in ce.data_quality_flags %}未发现候选证据，仍需人工复核{% else %}需补充材料或人工复核{% endif %}</strong>
+    <p>标准尚未签发或待专家消歧，暂不自动判定。</p>
+  {% elif ce.qualification_disposition.value == 'QUALIFIED' %}<strong>符合慢病认定标准（QUALIFIED）</strong>
+  {% elif ce.qualification_disposition.value == 'NOT_QUALIFIED' %}<strong>不符合当前认定条件</strong>
+  {% else %}<strong>需补充材料或人工复核</strong>{% endif %}
+  <p>{{ ce.disease_name }} · 标准 {{ ce.policy_version }} · 认定版本 {{ ce.disease_revision_id }}</p>
+  <p>候选命中仅供复核，不代表已取得慢病资格。</p>
+  {% if ce.data_quality_flags %}
+  <div class="public-review-needs"><strong>数据质量与核查提示</strong><ul>
+    {% for flag in ce.data_quality_flags %}
+      {% if flag.startswith('CANDIDATE_EVIDENCE:') %}<li>候选证据：{{ item_label(flag.split(':', 1)[1], labels) }}</li>
+      {% elif flag not in ['CHRONIC_CANDIDATE_MATCHED', 'CHRONIC_NO_CANDIDATE'] %}<li>{{ flag | quality_flag_zh }}</li>{% endif %}
+    {% endfor %}
+  </ul></div>
+  {% endif %}
+  {% for blocker in ce.blocking_reasons %}<p>待解决：{{ blocker.unresolved_question }}</p>{% endfor %}
+  {% for item in ce.missing_items %}<p>待补材料：{{ item_label(item, labels) }}</p>{% endfor %}
+  {% for item in ce.conflict_items %}<p>证据冲突：{{ item_label(item, labels) }}</p>{% endfor %}
+  {% if ce.proof_tree %}<ul>{{ proof(ce.proof_tree, labels) }}</ul>{% endif %}
+  {% if ce.shadow_proof_tree %}<details open><summary>已核查的候选证据（不形成自动资格结论）</summary><ul>{{ proof(ce.shadow_proof_tree, labels) }}</ul></details>{% endif %}
+  <details><summary>结果技术明细</summary><p>{{ ce.execution_status.value }} · {{ ce.qualification_disposition.value }} · {{ ce.asset_checksum }}</p><pre>{{ ce.data_quality_flags | tojson(indent=2) }}</pre></details>
+</section>
+{% endif %}

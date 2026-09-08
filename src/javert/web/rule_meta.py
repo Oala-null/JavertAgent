@@ -20,6 +20,8 @@ logger = logging.getLogger("javert.web.rule_meta")
 
 class RuleMeta(TypedDict):
     rule_id: str
+    rule_kind: str
+    clinical_criteria_ref: str | None
     domain: str
     violation_type: str
     priority: str
@@ -37,7 +39,6 @@ class RuleMeta(TypedDict):
 _CACHE: dict[str, RuleMeta] | None = None
 _BEHAVIOR_CACHE: dict[str, dict] | None = None
 _BEHAVIOR_REL = "configs/behavior_names.yaml"
-
 _HANDLING_LEVEL_CODES = {
     "违规（阻断）": 1,
     "可疑（警告）": 2,
@@ -117,6 +118,8 @@ def load_rule_meta() -> dict[str, RuleMeta]:
         for rid, rule in rules.items():
             out[rid] = RuleMeta(
                 rule_id=rid,
+                rule_kind=rule.rule_kind,
+                clinical_criteria_ref=rule.clinical_criteria_ref,
                 domain=rule.domain,
                 violation_type=rule.violation_type,
                 priority=rule.priority,

@@ -1,0 +1,664 @@
+{
+  "$defs": {
+    "CoverageClass": {
+      "enum": [
+        "A",
+        "B",
+        "C"
+      ],
+      "title": "CoverageClass",
+      "type": "string"
+    },
+    "CriteriaBlocker": {
+      "additionalProperties": false,
+      "properties": {
+        "affected_node_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Affected Node Ids",
+          "type": "array"
+        },
+        "block_reason_code": {
+          "minLength": 1,
+          "title": "Block Reason Code",
+          "type": "string"
+        },
+        "prohibited_fallbacks": {
+          "items": {
+            "enum": [
+              "2020_POLICY",
+              "LLM",
+              "LOCAL_DEFAULT"
+            ],
+            "type": "string"
+          },
+          "minItems": 3,
+          "title": "Prohibited Fallbacks",
+          "type": "array"
+        },
+        "required_approver_roles": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Required Approver Roles",
+          "type": "array"
+        },
+        "resolution_reference": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resolution Reference"
+        },
+        "unresolved_question": {
+          "minLength": 1,
+          "title": "Unresolved Question",
+          "type": "string"
+        }
+      },
+      "required": [
+        "block_reason_code",
+        "unresolved_question",
+        "affected_node_ids",
+        "required_approver_roles",
+        "prohibited_fallbacks"
+      ],
+      "title": "CriteriaBlocker",
+      "type": "object"
+    },
+    "CriterionNode": {
+      "additionalProperties": false,
+      "description": "扁平树节点；draft 可显式标 partial，但不得伪装为可执行。",
+      "properties": {
+        "authoring_status": {
+          "minLength": 1,
+          "title": "Authoring Status",
+          "type": "string"
+        },
+        "compilation_status": {
+          "$ref": "#/$defs/NodeCompilationStatus"
+        },
+        "criterion_id": {
+          "default": "",
+          "title": "Criterion Id",
+          "type": "string"
+        },
+        "evidence_domains": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence Domains",
+          "type": "array"
+        },
+        "expected_condition": {
+          "additionalProperties": true,
+          "if": {
+            "properties": {
+              "type": {
+                "const": "numeric"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "concept_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "operator": {
+                "enum": [
+                  "lt",
+                  "lte",
+                  "gt",
+                  "gte",
+                  "eq"
+                ]
+              },
+              "terms": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              "unit": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "value": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?$",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "terms",
+              "operator",
+              "value",
+              "unit"
+            ]
+          },
+          "title": "Expected Condition",
+          "type": "object"
+        },
+        "expert_interpretation_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Expert Interpretation Ids",
+          "type": "array"
+        },
+        "fact_type": {
+          "default": "",
+          "title": "Fact Type",
+          "type": "string"
+        },
+        "node_id": {
+          "minLength": 1,
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_type": {
+          "$ref": "#/$defs/CriterionNodeType"
+        },
+        "notes": {
+          "default": "",
+          "title": "Notes",
+          "type": "string"
+        },
+        "operator": {
+          "anyOf": [
+            {
+              "enum": [
+                "AND",
+                "OR",
+                "AT_LEAST_N"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Operator"
+        },
+        "parent_node_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Node Id"
+        },
+        "repetition_policy": {
+          "additionalProperties": true,
+          "title": "Repetition Policy",
+          "type": "object"
+        },
+        "source_fragment_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Fragment Ids",
+          "type": "array"
+        },
+        "summary": {
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "temporal_policy": {
+          "additionalProperties": true,
+          "title": "Temporal Policy",
+          "type": "object"
+        },
+        "threshold": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Threshold"
+        },
+        "unit_policy": {
+          "additionalProperties": true,
+          "title": "Unit Policy",
+          "type": "object"
+        }
+      },
+      "required": [
+        "node_id",
+        "node_type",
+        "summary",
+        "evidence_domains",
+        "source_fragment_ids",
+        "compilation_status",
+        "authoring_status"
+      ],
+      "title": "CriterionNode",
+      "type": "object"
+    },
+    "CriterionNodeType": {
+      "enum": [
+        "LOGIC",
+        "LEAF",
+        "BLOCKED_ROOT"
+      ],
+      "title": "CriterionNodeType",
+      "type": "string"
+    },
+    "DiseaseRevision": {
+      "additionalProperties": false,
+      "properties": {
+        "blocker": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CriteriaBlocker"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "canonical_disease_id": {
+          "minLength": 1,
+          "title": "Canonical Disease Id",
+          "type": "string"
+        },
+        "coverage_class": {
+          "$ref": "#/$defs/CoverageClass"
+        },
+        "coverage_notes": {
+          "default": "",
+          "title": "Coverage Notes",
+          "type": "string"
+        },
+        "disease_name": {
+          "minLength": 1,
+          "title": "Disease Name",
+          "type": "string"
+        },
+        "effective_from": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effective From"
+        },
+        "effective_to": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effective To"
+        },
+        "execution_status": {
+          "$ref": "#/$defs/RevisionExecutionStatus"
+        },
+        "expert_interpretation_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Expert Interpretation Ids",
+          "type": "array"
+        },
+        "lifecycle": {
+          "$ref": "#/$defs/RevisionLifecycle"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/CriterionNode"
+          },
+          "minItems": 1,
+          "title": "Nodes",
+          "type": "array"
+        },
+        "policy_version": {
+          "minLength": 1,
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "previous_revision_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Previous Revision Id"
+        },
+        "review_evidence_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Review Evidence Ref"
+        },
+        "review_status": {
+          "$ref": "#/$defs/ReviewStatus"
+        },
+        "reviewed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reviewed At"
+        },
+        "reviewed_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reviewed By"
+        },
+        "revision_id": {
+          "minLength": 1,
+          "title": "Revision Id",
+          "type": "string"
+        },
+        "root_node_id": {
+          "minLength": 1,
+          "title": "Root Node Id",
+          "type": "string"
+        },
+        "rule_id": {
+          "pattern": "^CD\\d{2}$",
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "source_fragment_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Fragment Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "rule_id",
+        "canonical_disease_id",
+        "disease_name",
+        "coverage_class",
+        "revision_id",
+        "policy_version",
+        "lifecycle",
+        "review_status",
+        "execution_status",
+        "root_node_id",
+        "source_fragment_ids",
+        "nodes"
+      ],
+      "title": "DiseaseRevision",
+      "type": "object"
+    },
+    "NodeCompilationStatus": {
+      "enum": [
+        "compiled",
+        "partial",
+        "blocked"
+      ],
+      "title": "NodeCompilationStatus",
+      "type": "string"
+    },
+    "PolicyRole": {
+      "enum": [
+        "current_recognition",
+        "historical_reference"
+      ],
+      "title": "PolicyRole",
+      "type": "string"
+    },
+    "PolicySet": {
+      "additionalProperties": false,
+      "properties": {
+        "disease_revisions": {
+          "items": {
+            "$ref": "#/$defs/DiseaseRevision"
+          },
+          "title": "Disease Revisions",
+          "type": "array"
+        },
+        "effective_from": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effective From"
+        },
+        "effective_to": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effective To"
+        },
+        "execution_enabled": {
+          "default": false,
+          "title": "Execution Enabled",
+          "type": "boolean"
+        },
+        "lifecycle": {
+          "$ref": "#/$defs/RevisionLifecycle"
+        },
+        "notes": {
+          "default": "",
+          "title": "Notes",
+          "type": "string"
+        },
+        "policy_id": {
+          "minLength": 1,
+          "title": "Policy Id",
+          "type": "string"
+        },
+        "policy_role": {
+          "$ref": "#/$defs/PolicyRole"
+        },
+        "policy_version": {
+          "minLength": 1,
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "release_id": {
+          "minLength": 1,
+          "title": "Release Id",
+          "type": "string"
+        },
+        "review_status": {
+          "$ref": "#/$defs/ReviewStatus"
+        },
+        "source_document_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Document Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "policy_id",
+        "policy_version",
+        "policy_role",
+        "release_id",
+        "lifecycle",
+        "review_status",
+        "source_document_ids"
+      ],
+      "title": "PolicySet",
+      "type": "object"
+    },
+    "ReviewStatus": {
+      "enum": [
+        "needs_review",
+        "approved",
+        "changes_requested",
+        "rejected",
+        "expired",
+        "superseded"
+      ],
+      "title": "ReviewStatus",
+      "type": "string"
+    },
+    "RevisionExecutionStatus": {
+      "enum": [
+        "EVALUATABLE",
+        "BLOCKED"
+      ],
+      "title": "RevisionExecutionStatus",
+      "type": "string"
+    },
+    "RevisionLifecycle": {
+      "enum": [
+        "draft",
+        "active",
+        "superseded",
+        "retired"
+      ],
+      "title": "RevisionLifecycle",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "asset_checksum": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Asset Checksum",
+      "type": "string"
+    },
+    "asset_type": {
+      "const": "chronic_disease_criteria",
+      "default": "chronic_disease_criteria",
+      "title": "Asset Type",
+      "type": "string"
+    },
+    "ordered_disease_revision_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 20,
+      "minItems": 20,
+      "title": "Ordered Disease Revision Ids",
+      "type": "array"
+    },
+    "policy_sets": {
+      "items": {
+        "$ref": "#/$defs/PolicySet"
+      },
+      "minItems": 2,
+      "title": "Policy Sets",
+      "type": "array"
+    },
+    "previous_asset_checksum": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Previous Asset Checksum"
+    },
+    "release_id": {
+      "minLength": 1,
+      "title": "Release Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_manifest_checksum": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Manifest Checksum",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "release_id",
+    "source_manifest_checksum",
+    "ordered_disease_revision_ids",
+    "policy_sets",
+    "asset_checksum"
+  ],
+  "title": "ChronicDiseaseCriteriaAsset",
+  "type": "object"
+}

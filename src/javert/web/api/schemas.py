@@ -8,6 +8,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from javert.chronic.contracts import ClinicalCriteriaEvaluation
+
 
 # =========================================================
 # Rule
@@ -27,6 +29,8 @@ class RuleSummary(BaseModel):
     """规则列表项."""
 
     rule_id: str
+    rule_kind: str = "audit"
+    clinical_criteria_ref: str | None = None
     domain: str
     violation_type: str
     question: str
@@ -41,6 +45,8 @@ class RuleDetail(BaseModel):
     """规则详情 (含完整 yaml 字段 + 最近 N 条 audit)."""
 
     rule_id: str
+    rule_kind: str = "audit"
+    clinical_criteria_ref: str | None = None
     domain: str
     violation_type: str
     question: str
@@ -92,6 +98,7 @@ class AuditRunSummary(BaseModel):
     started_at: datetime
     audit_disposition: str | None = None
     eligibility_status: str | None = None
+    clinical_criteria_evaluation: ClinicalCriteriaEvaluation | None = None
 
 
 class AuditRunDetail(AuditRunSummary):

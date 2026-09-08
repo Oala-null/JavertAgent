@@ -95,11 +95,18 @@ def test_list_rules(client):
     assert len(rules) >= 30, f"expected ~34 rules, got {len(rules)}"
     # 字段完整性
     r0 = rules[0]
-    for field in ["rule_id", "domain", "violation_type", "question", "status", "has_prompt_addon"]:
+    for field in [
+        "rule_id", "rule_kind", "clinical_criteria_ref", "domain",
+        "violation_type", "question", "status", "has_prompt_addon",
+    ]:
         assert field in r0, f"missing field {field} in {r0}"
-    # rule_id 形如 R\d{3}
+    # 三个规则命名空间均可发现。
+    import re
     for r in rules:
-        assert r["rule_id"].startswith("R") and len(r["rule_id"]) == 4
+        assert re.fullmatch(r"R\d{3}|RD\d{2,3}|CD\d{2,3}", r["rule_id"])
+    cd01 = next(r for r in rules if r["rule_id"] == "CD01")
+    assert cd01["rule_kind"] == "chronic_disease_qualification"
+    assert cd01["clinical_criteria_ref"] == "hlj-outpatient-chronic-2025/CD01"
 
 
 def test_get_rule_existing(client):
@@ -113,7 +120,7 @@ def test_get_rule_existing(client):
     detail = resp.json()
     assert detail["rule_id"] == rid
     # 完整字段
-    for field in ["domain", "violation_type", "question", "example", "status",
+    for field in ["rule_kind", "clinical_criteria_ref", "domain", "violation_type", "question", "example", "status",
                   "prompt_addon", "trigger_keywords", "suggested_tools",
                   "expected_signal", "notes", "recent_runs"]:
         assert field in detail

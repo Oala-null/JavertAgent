@@ -1,0 +1,14 @@
+rule_id: CD14
+rule_kind: chronic_disease_qualification
+clinical_criteria_ref: hlj-outpatient-chronic-2025/CD14
+domain: 门诊慢性病
+violation_type: 门诊慢性病认定条件评估
+question: 评估该病例是否符合2025版癫痫病门诊慢性病认定条件。
+status: drafting
+priority: P3
+handling_level: 提醒（引导）
+prompt_addon: ''
+trigger_keywords:
+  - 癫痫病
+  - 癫痫
+trigger_codes: []

@@ -38,6 +38,7 @@ BEGIN
         evidence_json       NVARCHAR(MAX)  NULL,
         tool_calls_json     NVARCHAR(MAX)  NULL,
         eligibility_json    NVARCHAR(MAX)  NULL,
+        clinical_criteria_json NVARCHAR(MAX) NULL,
         promise_trace_json  NVARCHAR(MAX)  NULL,
         duration_ms         INT            NULL,
         model               NVARCHAR(200)  NULL,
@@ -95,6 +96,17 @@ BEGIN
 END
 ELSE
     PRINT 'Column eligibility_json already exists on javert_audit_runs';
+GO
+
+-- 慢病独立可空 JSON；幂等迁移，旧行不回填。
+IF NOT EXISTS (
+    SELECT 1 FROM sys.columns
+    WHERE Name = N'clinical_criteria_json'
+      AND Object_ID = Object_ID(N'javert_audit_runs')
+)
+BEGIN
+    ALTER TABLE javert_audit_runs ADD clinical_criteria_json NVARCHAR(MAX) NULL;
+END
 GO
 
 -- 索引 1: 按 rule + patient 反查最新结果

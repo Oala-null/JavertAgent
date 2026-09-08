@@ -1,0 +1,14 @@
+rule_id: CD08
+rule_kind: chronic_disease_qualification
+clinical_criteria_ref: hlj-outpatient-chronic-2025/CD08
+domain: 门诊慢性病
+violation_type: 门诊慢性病认定条件评估
+question: 评估该病例是否符合2025版肝硬化失代偿期门诊慢性病认定条件。
+status: drafting
+priority: P3
+handling_level: 提醒（引导）
+prompt_addon: ''
+trigger_keywords:
+  - 肝硬化失代偿期
+  - 失代偿期肝硬化
+trigger_codes: []

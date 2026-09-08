@@ -19,8 +19,8 @@ def test_new_clinical_tool_names_replaced():
 
 
 def test_verdicts_and_rule_codes_replaced():
-    s = humanize_reasoning("按 R191 规则应判 VIOLATION, RD20 为 CLEAN, 否则 INCONCLUSIVE")
-    assert "R191" not in s and "RD20" not in s
+    s = humanize_reasoning("按 R191 规则应判 VIOLATION, RD20 与 CD01 为 CLEAN, 否则 INCONCLUSIVE")
+    assert "R191" not in s and "RD20" not in s and "CD01" not in s
     assert "VIOLATION" not in s and "CLEAN" not in s and "INCONCLUSIVE" not in s
     assert "违规" in s and "合规" in s and "证据不足" in s
 

@@ -141,6 +141,7 @@ def test_normal_path_result_payload_keeps_legacy_fields_and_adds_public_projecti
         "model": "fake-qwen",
         "started_at": "2026-07-07T00:00:00+00:00",
         "eligibility_evaluation": None,
+        "clinical_criteria_evaluation": None,
     }
     assert {key: results[0][key] for key in expected} == expected
     assert set(results[0]) == {

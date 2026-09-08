@@ -70,6 +70,24 @@ def test_list_command(isolated_project):
     assert "drafting:" in result.output
 
 
+def test_list_command_discovers_cd_rule(isolated_project):
+    rules_dir = isolated_project / "rules"
+    write_rule(
+        Rule(
+            rule_id="CD01",
+            rule_kind="chronic_disease_qualification",
+            clinical_criteria_ref="hlj-outpatient-chronic-2025/CD01",
+            domain="门诊慢性病",
+            violation_type="门诊慢性病认定条件评估",
+            question="评估慢病认定条件。",
+        ),
+        rules_dir / "CD01.yaml",
+    )
+    result = CliRunner().invoke(main, ["list"])
+    assert result.exit_code == 0, result.output
+    assert "CD01" in result.output
+
+
 def test_mark_forward_ok(isolated_project):
     runner = CliRunner()
     result = runner.invoke(main, ["mark", "R191", "--status", "ready"])

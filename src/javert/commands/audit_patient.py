@@ -64,9 +64,13 @@ def _resolve_selection(
             label += f", force-included abandoned: {','.join(force_abandoned)}"
         return selected, label, force_abandoned
 
-    # priority='all' 模式: 取全部 ready (status=ready, 不限 priority)
+    # priority='all' 模式: 取全部 ready (status=ready, 不限 priority)；
+    # 慢病资格发现一期始终要求显式选择，不能混入普通审计默认集合。
     if priority == "all":
-        selected_all = [r for r in all_rules.values() if r.status == "ready"]
+        selected_all = [
+            r for r in all_rules.values()
+            if r.status == "ready" and r.rule_kind != "chronic_disease_qualification"
+        ]
         selected_all.sort(key=lambda r: r.rule_id)
         label = f"priority=all (status=ready 全集, {len(selected_all)} 条)"
         return selected_all, label, []
@@ -77,6 +81,7 @@ def _resolve_selection(
         r
         for r in matches
         if r.status != "abandoned"
+        and r.rule_kind != "chronic_disease_qualification"
         and not (
             r.rule_id in _CURATED_DRUG_RULE_IDS
             and r.status == "drafting"
@@ -88,6 +93,11 @@ def _resolve_selection(
         for r in matches
         if r.rule_id in _CURATED_DRUG_RULE_IDS and r.status == "drafting"
     ]
+    chronic_explicit_only = [
+        r.rule_id
+        for r in matches
+        if r.rule_kind == "chronic_disease_qualification"
+    ]
     selected_p.sort(key=lambda r: r.rule_id)
     label = f"priority={priority}"
     if excluded:
@@ -96,6 +106,11 @@ def _resolve_selection(
         label += (
             f" (excluded {','.join(sorted(migration_pending))} "
             "[knowledge-migration-pending])"
+        )
+    if chronic_explicit_only:
+        label += (
+            f" (excluded {','.join(sorted(chronic_explicit_only))} "
+            "[chronic-explicit-only])"
         )
     return selected_p, label, []
 

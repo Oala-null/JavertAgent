@@ -8,11 +8,15 @@ from typing import Any, Iterable
 from collections.abc import Mapping
 
 from javert.audit.headline import deterministic_headline, validate_headline
+from javert.audit.rule import RULE_ID_BODY_PATTERN
 from javert.promises.models import PromiseTrace
 from javert.web.reasoning_zh import humanize_reasoning
 
 _INTERNAL_PATTERNS = (
-    re.compile(r"(?<![A-Za-z0-9])RD?\d{2,3}(?![A-Za-z0-9])", re.IGNORECASE),
+    re.compile(
+        rf"(?<![A-Za-z0-9]){RULE_ID_BODY_PATTERN}(?![A-Za-z0-9])",
+        re.IGNORECASE,
+    ),
     re.compile(r"\b(?:search_[a-z_]+|drug_audit_lookup|tool_calls?|gate|run_id|ownership_id)\b", re.IGNORECASE),
     re.compile(r"\b(?:VIOLATION|INCONCLUSIVE|CLEAN)\b", re.IGNORECASE),
     re.compile(r"\b[A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+\b"),

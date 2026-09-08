@@ -38,6 +38,7 @@ from javert.config import get_config
 from javert.data.csv_loader import CsvLoader
 from javert.routing import RuleRouter, build_patient_record_for_router, default_shi_zd_path
 from javert.store.audit_store import SqliteStore
+from javert.store.models import clinical_criteria_fields
 from javert.store.result_persister import persist_one
 from javert.tools.llm_provider import LlmUnavailableError
 from javert.tools.registry import build_executor
@@ -84,6 +85,10 @@ def _result_payload(result: Any) -> dict:
         "duration_ms": result.duration_ms,
         "model": result.model,
         "started_at": result.started_at.isoformat(),
+        "clinical_criteria_evaluation": (
+            result.clinical_criteria_evaluation.model_dump(mode="json")
+            if result.clinical_criteria_evaluation is not None else None
+        ),
         "eligibility_evaluation": (
             result.eligibility_evaluation.model_dump(mode="json")
             if result.eligibility_evaluation is not None
@@ -336,7 +341,7 @@ def list_audit_runs(
         conn.row_factory = sqlite3.Row
         sql = (
             "SELECT run_id, rule_id, patient_id, verdict, confidence, "
-            "       duration_ms, model, started_at, eligibility_json, headline "
+            "       duration_ms, model, started_at, eligibility_json, headline, clinical_criteria_json "
             f"FROM audit_runs{where_clause} "
             "ORDER BY started_at DESC LIMIT ?"
         )
@@ -352,6 +357,9 @@ def list_audit_runs(
             started = datetime.now(timezone.utc)
         out.append(
             AuditRunSummary(
+                **clinical_criteria_fields(
+                    row["clinical_criteria_json"], row["rule_id"], row["verdict"], row["eligibility_json"],
+                ),
                 run_id=row["run_id"],
                 rule_id=row["rule_id"],
                 patient_id=row["patient_id"],
@@ -974,6 +982,10 @@ def _results_2c_payload(syxh: str, *, include_hits: bool) -> dict[str, Any]:
                     "reasoning": display_reasoning,
                     "diagnostic_code": diagnostic_code,
                     "retryable": result_retryable,
+                    "clinical_criteria_evaluation": (
+                        r.clinical_criteria_evaluation.model_dump(mode="json")
+                        if r.clinical_criteria_evaluation is not None else None
+                    ),
                     "eligibility_evaluation": (
                         r.eligibility_evaluation.model_dump(mode="json")
                         if r.eligibility_evaluation is not None
@@ -1041,7 +1053,8 @@ def _clean_v2_payload(value: Any) -> Any:
     if isinstance(value, list):
         return [_clean_v2_payload(item) for item in value]
     if isinstance(value, dict):
-        return {key: _clean_v2_payload(item) for key, item in value.items()}
+        return {key: item if key == "clinical_criteria_evaluation" else _clean_v2_payload(item)
+                for key, item in value.items()}
     return value
 
 
@@ -1327,6 +1340,7 @@ def results_2c_v2(syxh: str):
                     "hits": hits,
                     "evidence": item["evidence"],
                     "eligibility_evaluation": item["eligibility_evaluation"],
+                    "clinical_criteria_evaluation": item["clinical_criteria_evaluation"],
                     "public_explanation": public_explanation,
                     "promise": public_promise_summary(run.promise_trace),
                     "finished_at": item["finished_at"],
@@ -1583,6 +1597,7 @@ def get_audit_run(run_id: str) -> AuditRunDetail:
             if result.eligibility_evaluation is not None
             else None
         ),
+        clinical_criteria_evaluation=result.clinical_criteria_evaluation,
         eligibility_evaluation=(
             result.eligibility_evaluation.model_dump(mode="json")
             if result.eligibility_evaluation is not None

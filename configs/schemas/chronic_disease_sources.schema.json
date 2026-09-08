@@ -1,0 +1,378 @@
+{
+  "$defs": {
+    "ExpertInterpretation": {
+      "additionalProperties": false,
+      "description": "用户确认的书面解释，只消歧所列节点，不代表原文或 revision 审批。",
+      "properties": {
+        "affected_node_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Affected Node Ids",
+          "type": "array"
+        },
+        "cell": {
+          "pattern": "^H[1-9]\\d*$",
+          "title": "Cell",
+          "type": "string"
+        },
+        "interpretation_checksum": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Interpretation Checksum",
+          "type": "string"
+        },
+        "interpretation_id": {
+          "minLength": 1,
+          "title": "Interpretation Id",
+          "type": "string"
+        },
+        "original_confirmation_status": {
+          "const": "pending",
+          "title": "Original Confirmation Status",
+          "type": "string"
+        },
+        "policy_version": {
+          "const": "2025",
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "review_status": {
+          "const": "needs_review",
+          "title": "Review Status",
+          "type": "string"
+        },
+        "rule_id": {
+          "pattern": "^CD\\d{2}$",
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "scope": {
+          "const": "combination_clarification_only",
+          "title": "Scope",
+          "type": "string"
+        },
+        "sheet": {
+          "minLength": 1,
+          "title": "Sheet",
+          "type": "string"
+        },
+        "source_fragment_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Fragment Ids",
+          "type": "array"
+        },
+        "source_kind": {
+          "const": "user_confirmed_written_interpretation",
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "statement": {
+          "minLength": 1,
+          "title": "Statement",
+          "type": "string"
+        },
+        "workbook_checksum": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Workbook Checksum",
+          "type": "string"
+        },
+        "workbook_name": {
+          "minLength": 1,
+          "title": "Workbook Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "interpretation_id",
+        "rule_id",
+        "policy_version",
+        "workbook_name",
+        "workbook_checksum",
+        "sheet",
+        "cell",
+        "statement",
+        "source_kind",
+        "scope",
+        "original_confirmation_status",
+        "review_status",
+        "affected_node_ids",
+        "source_fragment_ids",
+        "interpretation_checksum"
+      ],
+      "title": "ExpertInterpretation",
+      "type": "object"
+    },
+    "PolicyRole": {
+      "enum": [
+        "current_recognition",
+        "historical_reference"
+      ],
+      "title": "PolicyRole",
+      "type": "string"
+    },
+    "ReviewStatus": {
+      "enum": [
+        "needs_review",
+        "approved",
+        "changes_requested",
+        "rejected",
+        "expired",
+        "superseded"
+      ],
+      "title": "ReviewStatus",
+      "type": "string"
+    },
+    "SourceDocument": {
+      "additionalProperties": false,
+      "properties": {
+        "document_number": {
+          "minLength": 1,
+          "title": "Document Number",
+          "type": "string"
+        },
+        "effective_from": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effective From"
+        },
+        "effective_to": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effective To"
+        },
+        "file_path": {
+          "minLength": 1,
+          "title": "File Path",
+          "type": "string"
+        },
+        "pdf_checksum": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Pdf Checksum",
+          "type": "string"
+        },
+        "physical_page_count": {
+          "exclusiveMinimum": 0,
+          "title": "Physical Page Count",
+          "type": "integer"
+        },
+        "policy_role": {
+          "$ref": "#/$defs/PolicyRole"
+        },
+        "policy_version": {
+          "minLength": 1,
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "publication_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Publication Date"
+        },
+        "source_document_id": {
+          "minLength": 1,
+          "title": "Source Document Id",
+          "type": "string"
+        },
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "validity_text": {
+          "default": "",
+          "title": "Validity Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_document_id",
+        "policy_version",
+        "policy_role",
+        "title",
+        "document_number",
+        "file_path",
+        "physical_page_count",
+        "pdf_checksum"
+      ],
+      "title": "SourceDocument",
+      "type": "object"
+    },
+    "SourceFragment": {
+      "additionalProperties": false,
+      "properties": {
+        "document_number": {
+          "minLength": 1,
+          "title": "Document Number",
+          "type": "string"
+        },
+        "document_title": {
+          "minLength": 1,
+          "title": "Document Title",
+          "type": "string"
+        },
+        "excerpt_kind": {
+          "default": "authoring_summary",
+          "enum": [
+            "verbatim",
+            "authoring_summary"
+          ],
+          "title": "Excerpt Kind",
+          "type": "string"
+        },
+        "extraction_method": {
+          "enum": [
+            "manual_visual_review",
+            "feedback_workbook_transcription",
+            "ocr_candidate"
+          ],
+          "title": "Extraction Method",
+          "type": "string"
+        },
+        "fragment_checksum": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Fragment Checksum",
+          "type": "string"
+        },
+        "physical_page": {
+          "exclusiveMinimum": 0,
+          "title": "Physical Page",
+          "type": "integer"
+        },
+        "policy_version": {
+          "minLength": 1,
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "printed_page_label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Printed Page Label"
+        },
+        "review_status": {
+          "$ref": "#/$defs/ReviewStatus"
+        },
+        "reviewed_excerpt": {
+          "minLength": 1,
+          "title": "Reviewed Excerpt",
+          "type": "string"
+        },
+        "source_document_id": {
+          "minLength": 1,
+          "title": "Source Document Id",
+          "type": "string"
+        },
+        "source_fragment_id": {
+          "minLength": 1,
+          "title": "Source Fragment Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_fragment_id",
+        "source_document_id",
+        "document_title",
+        "document_number",
+        "policy_version",
+        "physical_page",
+        "reviewed_excerpt",
+        "extraction_method",
+        "review_status",
+        "fragment_checksum"
+      ],
+      "title": "SourceFragment",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "documents": {
+      "items": {
+        "$ref": "#/$defs/SourceDocument"
+      },
+      "minItems": 2,
+      "title": "Documents",
+      "type": "array"
+    },
+    "expert_interpretations": {
+      "items": {
+        "$ref": "#/$defs/ExpertInterpretation"
+      },
+      "title": "Expert Interpretations",
+      "type": "array"
+    },
+    "fragments": {
+      "items": {
+        "$ref": "#/$defs/SourceFragment"
+      },
+      "minItems": 1,
+      "title": "Fragments",
+      "type": "array"
+    },
+    "manifest_checksum": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Manifest Checksum",
+      "type": "string"
+    },
+    "previous_manifest_checksum": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Previous Manifest Checksum"
+    },
+    "schema_version": {
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "documents",
+    "fragments",
+    "manifest_checksum"
+  ],
+  "title": "SourceManifest",
+  "type": "object"
+}

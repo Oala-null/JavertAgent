@@ -25,11 +25,20 @@ def _router(rules: list[dict]) -> RuleRouter:
     )
 
 
-def _rule(rid: str, *, keywords=(), codes=(), status="ready", priority="P0") -> dict:
+def _rule(
+    rid: str,
+    *,
+    keywords=(),
+    codes=(),
+    status="ready",
+    priority="P0",
+    rule_kind="audit",
+) -> dict:
     return {
         "rule_id": rid,
         "status": status,
         "priority": priority,
+        "rule_kind": rule_kind,
         "trigger_keywords": list(keywords),
         "trigger_codes": list(codes),
     }
@@ -99,6 +108,19 @@ def test_local_code_and_label_also_in_code_set():
 def test_status_gate_prunes_abandoned():
     rules = [_rule("R006", keywords=["造影"], codes=[], status="abandoned")]
     rec = _record(_fee("脑血管造影"))
+    assert _router(rules).route(rec).final_rules == []
+
+
+def test_chronic_rule_kind_is_never_returned_by_violation_router():
+    rules = [
+        _rule(
+            "CD01",
+            keywords=["再生障碍性贫血"],
+            status="ready",
+            rule_kind="chronic_disease_qualification",
+        )
+    ]
+    rec = _record(diagnoses=["再生障碍性贫血"])
     assert _router(rules).route(rec).final_rules == []
 
 

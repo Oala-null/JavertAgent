@@ -12,6 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from javert.chronic.contracts import ClinicalCriteriaEvaluation
 from javert.oncology.contracts import EligibilityEvaluation
 from javert.promises.models import PromiseTrace
 
@@ -86,6 +87,8 @@ class PatientSidebarItem(BaseModel):
     v_count: int = 0
     i_count: int = 0
     c_count: int = 0
+    chronic_count: int = 0
+    chronic_matched_count: int = 0
     reviewed_count: int = 0  # 该 patient 上「团队」已审条数 (任意专家, 全局口径; filter 下分子)
     relevant_count: int = 0  # 当前 filter 下命中的总条数 (sidebar 进度分母)
     fully_reviewed: bool = False
@@ -113,6 +116,8 @@ class HistoricalRun(BaseModel):
     created_at: datetime
     reviews: list[ReviewRecord] = Field(default_factory=list)
     eligibility_evaluation: EligibilityEvaluation | None = None
+    clinical_criteria_evaluation: ClinicalCriteriaEvaluation | None = None
+    clinical_criteria_invalid: bool = False
     promise_trace: PromiseTrace | None = None
 
 
@@ -136,6 +141,8 @@ class RunWithReviews(BaseModel):
     batch_tag: str | None = None  # v0.7: latest tag；OCR 来源患者稳定保留 ocr1.0
     gate_tag: str = ""  # add-verdict-gate-layer: gate 降级标签 (缺文书/单次放过/低置信降级/'')
     eligibility_evaluation: EligibilityEvaluation | None = None
+    clinical_criteria_evaluation: ClinicalCriteriaEvaluation | None = None
+    clinical_criteria_invalid: bool = False
     promise_trace: PromiseTrace | None = None
     reviews: list[ReviewRecord] = Field(default_factory=list)
     history: list[HistoricalRun] = Field(default_factory=list)  # v0.7
@@ -189,3 +196,16 @@ class ReviewerDrillRow(BaseModel):
 
 
 DashboardStats.model_rebuild()
+
+
+def clinical_criteria_fields(raw, rule_id: str, verdict: str, eligibility=None) -> dict:
+    """工作台/事件读取损坏扩展时关闭资格展示，不从 reasoning 猜测或泄露原 JSON。"""
+    if not raw:
+        return {"clinical_criteria_evaluation": None}
+    try:
+        value = ClinicalCriteriaEvaluation.model_validate_json(raw)
+        if value.rule_id != rule_id or value.legacy_verdict != verdict or eligibility:
+            raise ValueError("慢病结果域或投影不匹配")
+    except (ValueError, TypeError):
+        return {"clinical_criteria_evaluation": None, "clinical_criteria_invalid": True}
+    return {"clinical_criteria_evaluation": value}

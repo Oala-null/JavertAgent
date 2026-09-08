@@ -58,6 +58,7 @@ class _JavertMeta:
     status: Optional[str]
     priority: Optional[str]
     template: Optional[str]
+    rule_kind: str = "audit"
     trigger_keywords: tuple[str, ...] = ()
     trigger_codes: tuple[str, ...] = ()    # 编码前缀/类别 token, 空=不参与 (编码命中 OR keyword 命中)
 
@@ -103,6 +104,7 @@ class RuleRouter:
                 status=y.get("status"),
                 priority=y.get("priority"),
                 template=y.get("derived_from_template"),
+                rule_kind=y.get("rule_kind") or "audit",
                 trigger_keywords=tuple(y.get("trigger_keywords") or []),
                 trigger_codes=tuple(y.get("trigger_codes") or []),
             )
@@ -204,6 +206,8 @@ class RuleRouter:
     # ────────────────────────── prune helpers ──────────────────────────
 
     def _passes_status_priority(self, meta: _JavertMeta) -> bool:
+        if meta.rule_kind != "audit":
+            return False
         if meta.status not in self.enabled_statuses:
             return False
         if meta.priority and meta.priority not in self.enabled_priorities:

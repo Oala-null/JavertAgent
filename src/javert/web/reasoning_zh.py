@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import re
 
+from javert.audit.rule import RULE_ID_BODY_PATTERN
+
 # 工具名/内部文件名 → 中文 (长名在前, 防子串误替换; 纯 str.replace 不吃边界)
 _TOOL_ZH: list[tuple[str, str]] = [
     ("catalog_lookup", "诊疗目录查询"),
@@ -63,7 +65,7 @@ _JARGON_ZH: list[tuple[re.Pattern, str]] = [
 ]
 
 # 规则代号 (R191 / RD20) → 本规则 (ASCII 边界, 兼容中英相邻 "按R191规则")
-_RULE_CODE = re.compile(_A + r"RD?\d{2,3}" + _Z)
+_RULE_CODE = re.compile(_A + RULE_ID_BODY_PATTERN + _Z)
 
 # 内部注记整块剥离 (对外无可读性, 不予显示; 工作台/库内原文保留追溯):
 #   [漂移防护(历史曾判V): 历史最新 (run=aud_xx) 判 ... (只升 I 不复活 V)]

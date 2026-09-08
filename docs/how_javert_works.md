@@ -328,3 +328,7 @@ validate/preflight/服务端校验和 DRAFT 物化。专家批准、生产 publi
 **全链路内网部署，无外网依赖。** 62 的 W2 试验端口 30002 与 OCR 端口 30001 当前均已停；
 代码发布以本地和 62 的 Git HEAD 相等、远端受控工作树 clean 为完成条件，操作细节见
 `docs/deployment_192_62.md`。
+
+## 门诊慢病条件评估（shadow）
+
+CD规则在Runner入口分流到慢病运行时，内部LLM仅提议带来源定位的候选事实；代码核验引文、数字与单位并聚合四态。partial节点和未签发资产不自动认定，结果以独立clinical_criteria_json存于SQLite/SQL Server，不占用肿瘤eligibility_json。工作台区分候选命中和资格结论，CD不进入普通违规统计。当前单PDF试跑采用临床OCR页、独立病例键和“慢病”tag，参见[慢病运维](chronic_disease_operations.md)。

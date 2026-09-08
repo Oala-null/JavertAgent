@@ -54,6 +54,8 @@ FILTER_VALID = ("v_and_i", "v_only", "i_only", "all")
 
 
 def _filter_from(request: Request, query_filter: str | None) -> str:
+    if request.query_params.get("batch_tag") in {"Chronic_Disease", "慢病"}:
+        return "all"
     f = query_filter or request.cookies.get("javert_filter")
     return f if f in FILTER_VALID else "v_and_i"
 
@@ -112,6 +114,9 @@ def _resolve_hits_for_runs(
     kb_drugs: dict = {}
     kb_loaded = False
     for run in runs:
+        if run.rule_id.startswith("CD"):
+            out[run.run_id] = []
+            continue
         m = meta_map.get(run.rule_id) or {}
         drug_type = m.get("drug_rule_type")
         # 1) 缓存命中 (确定性回填的 anchors_json)
@@ -180,7 +185,7 @@ def _group_runs_by_violation_type(runs: list, meta_map: dict) -> list[dict]:
         name = (m.get("behavior_name") or "").strip() or "未分类"
         exception_key = (m.get("behavior_exception_key") or "").strip()
         code_key = code or (f"exception:{exception_key}" if exception_key else "")
-        key = (code_key, name)
+        key = ("chronic", "门诊慢性病认定条件评估") if run.rule_id.startswith("CD") else (code_key, name)
         if key not in groups:
             groups[key] = []
             order.append(key)
@@ -201,8 +206,9 @@ def _group_runs_by_violation_type(runs: list, meta_map: dict) -> list[dict]:
             "behavior_name": name,
             "exception_key": code_key.removeprefix("exception:") if code_key.startswith("exception:") else "",
             "anchor": f"vt-{i}",
-            "n_v": sum(1 for r in grp if r.verdict == "VIOLATION"),
-            "n_i": sum(1 for r in grp if r.verdict == "INCONCLUSIVE"),
+            "n_v": sum(1 for r in grp if not r.rule_id.startswith("CD") and r.verdict == "VIOLATION"),
+            "n_i": sum(1 for r in grp if not r.rule_id.startswith("CD") and r.verdict == "INCONCLUSIVE"),
+            "chronic": code_key == "chronic",
             "runs": grp,
         })
     return out
@@ -250,6 +256,8 @@ def workbench_index(request: Request, filter: str | None = None):
     f = _filter_from(request, filter)
     store = get_sqlserver_store()
     patients = _sidebar_patients(store, f, allow_cached=False)
+    if request.query_params.get("batch_tag") in {"Chronic_Disease", "慢病"}:
+        patients = [p for p in patients if p.batch_tag in {"Chronic_Disease", "慢病"}]
 
     # 欢迎 banner — 跳过条件: cookie welcome_dismissed == 当次 session login_ts
     prev_iso = request.session.get("prev_last_login")
@@ -281,7 +289,8 @@ def workbench_index(request: Request, filter: str | None = None):
     )
     resp = HTMLResponse(html)
     # filter 状态写 cookie (跨会话保持)
-    if filter and filter in FILTER_VALID:
+    if (filter and filter in FILTER_VALID
+            and request.query_params.get("batch_tag") not in {"Chronic_Disease", "慢病"}):
         resp.set_cookie(
             "javert_filter", filter,
             max_age=60 * 60 * 24 * 30, samesite="lax", httponly=False,
@@ -302,7 +311,11 @@ def workbench_patient(
         )
     f = _filter_from(request, filter)
     store = get_sqlserver_store()
+    if filter is None and store.latest_batch_tag_for_patient(patient_id) in {"Chronic_Disease", "慢病"}:
+        f = "all"
     patients = _sidebar_patients(store, f, allow_cached=True)
+    if request.query_params.get("batch_tag") in {"Chronic_Disease", "慢病"}:
+        patients = [p for p in patients if p.batch_tag in {"Chronic_Disease", "慢病"}]
     runs = store.list_runs_for_patient(patient_id=patient_id, filter_mode=f)
     if not runs:
         # 不报 404 — patient 可能存在但 filter 下空
@@ -751,7 +764,8 @@ def _notes_to_list(notes_df) -> list[dict]:
         return []
     slim = notes_df[list(cols_present)].fillna("").astype(str).rename(columns=cols_present)
     records = slim.to_dict("records")
-    for rec in records:
+    for index, rec in enumerate(records):
+        rec["source_locator"] = f"notes:{index}"
         name, order = bucket_of(rec.get("section", ""))
         rec["bucket"] = name
         rec["bucket_order"] = order
@@ -909,6 +923,7 @@ def _raw_payload(patient_id: str, tab: str | None = None) -> dict:
 
 def _format_lab_rows(rows: list[dict]) -> list[dict]:
     return [{
+        "source_locator": f"labs:{index}",
         "date": _fmt_fee_date(r.get("report_dt") or ""),
         "item": r.get("rpt_itemname") or r.get("rpt_itemcode") or "",
         "inspection": r.get("inspectionName") or "",
@@ -917,7 +932,7 @@ def _format_lab_rows(rows: list[dict]) -> list[dict]:
         "ref": r.get("result_ref") or "",
         "flag": r.get("result_flag") or "",
         "department": r.get("department") or "",
-    } for r in rows]
+    } for index, r in enumerate(rows)]
 
 
 def _labs_to_list(patient_id: str, *, allow_hub: bool = True) -> list[dict]:
@@ -939,13 +954,14 @@ def _labs_to_list(patient_id: str, *, allow_hub: bool = True) -> list[dict]:
 
 def _format_exam_rows(rows: list[dict]) -> list[dict]:
     return [{
+        "source_locator": f"examinations:{index}",
         "date": _fmt_fee_date(r.get("reportDate") or r.get("checkDate") or ""),
         "check_type": r.get("checkType") or "",
         "item": r.get("checkItemName") or "",
         "conclusion": r.get("checkConclusion") or "",
         "describe": r.get("checkDescribe") or "",
         "department": r.get("department") or "",
-    } for r in rows]
+    } for index, r in enumerate(rows)]
 
 
 def _exams_to_list(patient_id: str, *, allow_hub: bool = True) -> list[dict]:

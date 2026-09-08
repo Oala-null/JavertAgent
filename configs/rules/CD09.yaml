@@ -1,0 +1,15 @@
+rule_id: CD09
+rule_kind: chronic_disease_qualification
+clinical_criteria_ref: hlj-outpatient-chronic-2025/CD09
+domain: 门诊慢性病
+violation_type: 门诊慢性病认定条件评估
+question: 评估该病例是否符合2025版慢性病毒性肝炎门诊慢性病认定条件。
+status: drafting
+priority: P3
+handling_level: 提醒（引导）
+prompt_addon: ''
+trigger_keywords:
+  - 慢性病毒性肝炎
+  - 慢性乙型肝炎
+  - 慢性丙型肝炎
+trigger_codes: []

@@ -660,6 +660,22 @@ class Runner:
         t_start: float,
     ) -> AuditResult:
         """audit() 主体 — 提出来便于 try/finally 包裹 patient_context 管理."""
+        # CD 资格筛查不依赖费用、不调用普通 LLM 裁决，也不经过违规后置闸。
+        if rule.rule_kind == "chronic_disease_qualification" or rule.rule_id.startswith("CD"):
+            from javert.chronic.runtime import evaluate_chronic_rule
+
+            evaluation = evaluate_chronic_rule(
+                rule, patient_id, loader=self.loader, provider=self.provider, config=self.config,
+            )
+            return AuditResult(
+                run_id=run_id, rule_id=rule.rule_id, patient_id=patient_id,
+                verdict=evaluation.legacy_verdict, confidence=0.0,
+                reasoning="慢病认定条件仅供试跑复核；请核对逐节点证据、缺失材料及资产审核状态。",
+                evidence=[], tool_calls=[],
+                duration_ms=int((time.perf_counter() - t_start) * 1000),
+                model=self.provider.model_name, started_at=started,
+                clinical_criteria_evaluation=evaluation,
+            )
         # --- 终局 Promise: 在任何普通预检或 LLM 裁决之前 ---
         net_fee_ctx = self._build_net_fee_ctx(patient_id)
         promise_outcome = evaluate_terminal_promises(

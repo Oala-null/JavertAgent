@@ -1,4 +1,4 @@
--- Javert audit store schema (v9: 加 nullable 公开 headline)
+-- Javert audit store schema (v10: 加 nullable 慢病结构化结果)
 -- 一张主表 + 一张元数据表 + 索引
 -- v2 升级: synced_at / sync_attempts / sync_last_error 三列, migration 由 init_schema 兼容处理
 
@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS audit_runs (
     gate_tag TEXT,
     -- v6 (strengthen-oncology-drug-eligibility): 可空结构化资格结果
     eligibility_json TEXT,
+    clinical_criteria_json TEXT,
     -- v7 (add-evolving-promise-harness): 可空、去标识终局 Promise trace
     promise_trace_json TEXT,
     -- v8 (OCR pipeline): caseRef/version 派生安全重放键
@@ -44,4 +45,4 @@ CREATE TABLE IF NOT EXISTS _meta (
     value TEXT NOT NULL
 );
 
-INSERT OR IGNORE INTO _meta(key, value) VALUES ('schema_version', '9');
+INSERT OR IGNORE INTO _meta(key, value) VALUES ('schema_version', '10');

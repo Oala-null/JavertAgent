@@ -5,11 +5,15 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 Status = Literal["drafting", "ready", "validated", "abandoned"]
 Priority = Literal["P0", "P1", "P2", "P3"]
 HandlingLevel = Literal["违规（阻断）", "可疑（警告）", "提醒（引导）"]
+RuleKind = Literal["audit", "chronic_disease_qualification"]
+
+RULE_ID_BODY_PATTERN = r"(?:R\d{3}|RD\d{2,3}|CD\d{2,3})"
+RULE_ID_PATTERN = rf"^{RULE_ID_BODY_PATTERN}$"
 
 
 class PrecheckSpec(BaseModel):
@@ -39,8 +43,17 @@ class Rule(BaseModel):
 
     rule_id: str = Field(
         ...,
-        pattern=r"^(R\d{3}|RD\d{2,3})$",
-        description="形如 R191 (0325 序号规则) 或 RD01 (药品类规则, 无 0325 序号)",
+        pattern=RULE_ID_PATTERN,
+        description="形如 R191、RD01 或 CD01 (门诊慢病认定规则)",
+    )
+    rule_kind: RuleKind = Field(
+        default="audit",
+        description="audit=既有医保审计；chronic_disease_qualification=慢病认定条件评估",
+    )
+    clinical_criteria_ref: str | None = Field(
+        default=None,
+        pattern=r"^[a-z0-9][a-z0-9-]{0,127}/CD\d{2,3}$",
+        description="慢病规则引用的版本化条件资产，例如 hlj-outpatient-chronic-2025/CD01",
     )
     domain: str = Field(..., min_length=1, description="所属领域 (肿瘤/各科室通用类/临床检验...)")
     violation_type: str = Field(..., min_length=1, description="违规类型 (从 0325 表 copy)")
@@ -82,6 +95,22 @@ class Rule(BaseModel):
         default=None,
         description="确定性费用形态预检；空=无预检",
     )
+
+    @model_validator(mode="after")
+    def _validate_rule_kind(self) -> "Rule":
+        is_chronic_id = self.rule_id.startswith("CD")
+        is_chronic_kind = self.rule_kind == "chronic_disease_qualification"
+        if is_chronic_id != is_chronic_kind:
+            raise ValueError("CD rule_id 必须且只能使用 chronic_disease_qualification rule_kind")
+        if is_chronic_kind:
+            expected_suffix = f"/{self.rule_id}"
+            if self.clinical_criteria_ref is None:
+                raise ValueError("慢病规则必须声明 clinical_criteria_ref")
+            if not self.clinical_criteria_ref.endswith(expected_suffix):
+                raise ValueError("clinical_criteria_ref 尾部必须与 rule_id 一致")
+        elif self.clinical_criteria_ref is not None:
+            raise ValueError("audit 规则不得声明 clinical_criteria_ref")
+        return self
 
 
 class RuleValidationError(ValueError):

@@ -1,0 +1,129 @@
+[
+  {
+    "affected_node_ids": [
+      "CD07.ROOT",
+      "CD07.GRADE12_DAMAGE"
+    ],
+    "cell": "H4",
+    "interpretation_checksum": "sha256:02c63a6a468d3c06297bf2a77cf9c742c2cd92655a91b783995491d7e4556745",
+    "interpretation_id": "EXPERT2025-CD07-H4-r1",
+    "original_confirmation_status": "pending",
+    "policy_version": "2025",
+    "review_status": "needs_review",
+    "rule_id": "CD07",
+    "scope": "combination_clarification_only",
+    "sheet": "待线下确认",
+    "source_fragment_ids": [
+      "SRC2025-CD07-GRADE12_DAMAGE-P08",
+      "SRC2025-CD07-GRADE12_DAMAGE-P09",
+      "SRC2025-CD07-ROOT-P08",
+      "SRC2025-CD07-ROOT-P09"
+    ],
+    "source_kind": "user_confirmed_written_interpretation",
+    "statement": "高血压3级or（高血压1-2级+靶器官损害/临床综合征）",
+    "workbook_checksum": "sha256:a0f8816f00bbc1088d9b9350eb0aeef26c5c0e1a609a0420d87fbe22be3a4e47",
+    "workbook_name": "慢病诊断标准规则覆盖可行性反馈.xlsx"
+  },
+  {
+    "affected_node_ids": [
+      "CD19.ROOT",
+      "CD19.SCORE",
+      "CD19.XRAY",
+      "CD19.SCORE_XRAY"
+    ],
+    "cell": "H5",
+    "interpretation_checksum": "sha256:0b388ced8714e09ae2e7b631bad88c496bdcad156cc5df8bba56a47f93cdaad4",
+    "interpretation_id": "EXPERT2025-CD19-H5-r1",
+    "original_confirmation_status": "pending",
+    "policy_version": "2025",
+    "review_status": "needs_review",
+    "rule_id": "CD19",
+    "scope": "combination_clarification_only",
+    "sheet": "待线下确认",
+    "source_fragment_ids": [
+      "SRC2025-CD19-ROOT-P16",
+      "SRC2025-CD19-ROOT-P17",
+      "SRC2025-CD19-SCORE-P16",
+      "SRC2025-CD19-XRAY-P17"
+    ],
+    "source_kind": "user_confirmed_written_interpretation",
+    "statement": "总分需≥6分andX线为III期+",
+    "workbook_checksum": "sha256:a0f8816f00bbc1088d9b9350eb0aeef26c5c0e1a609a0420d87fbe22be3a4e47",
+    "workbook_name": "慢病诊断标准规则覆盖可行性反馈.xlsx"
+  },
+  {
+    "affected_node_ids": [
+      "CD09.ROOT",
+      "CD09.HISTORY",
+      "CD09.VIRAL_ANY"
+    ],
+    "cell": "H6",
+    "interpretation_checksum": "sha256:81f20dcf262d1138507346787e8bbfdce243550a8b9feb9c6e3ef0e33709787e",
+    "interpretation_id": "EXPERT2025-CD09-H6-r1",
+    "original_confirmation_status": "pending",
+    "policy_version": "2025",
+    "review_status": "needs_review",
+    "rule_id": "CD09",
+    "scope": "combination_clarification_only",
+    "sheet": "待线下确认",
+    "source_fragment_ids": [
+      "SRC2025-CD09-ROOT-P10",
+      "SRC2025-CD09-ROOT-P11"
+    ],
+    "source_kind": "user_confirmed_written_interpretation",
+    "statement": "病史是必备条件，病史and（HBV/HCV分支）",
+    "workbook_checksum": "sha256:a0f8816f00bbc1088d9b9350eb0aeef26c5c0e1a609a0420d87fbe22be3a4e47",
+    "workbook_name": "慢病诊断标准规则覆盖可行性反馈.xlsx"
+  },
+  {
+    "affected_node_ids": [
+      "CD01.ROOT",
+      "CD01.DIAGNOSTIC_ALL",
+      "CD01.CBC_2OF3",
+      "CD01.MARROW_ASP",
+      "CD01.MARROW_BIOPSY",
+      "CD01.EXCLUSION"
+    ],
+    "cell": "H7",
+    "interpretation_checksum": "sha256:ec39d34e69e99ff5a2cf95014e6886591d7e6c860c50849922e861030516a559",
+    "interpretation_id": "EXPERT2025-CD01-H7-r1",
+    "original_confirmation_status": "pending",
+    "policy_version": "2025",
+    "review_status": "needs_review",
+    "rule_id": "CD01",
+    "scope": "combination_clarification_only",
+    "sheet": "待线下确认",
+    "source_fragment_ids": [
+      "SRC2025-CD01-CBC_2OF3-P04",
+      "SRC2025-CD01-EXCLUSION-P04",
+      "SRC2025-CD01-MARROW_ASP-P04",
+      "SRC2025-CD01-MARROW_BIOPSY-P04",
+      "SRC2025-CD01-ROOT-P04"
+    ],
+    "source_kind": "user_confirmed_written_interpretation",
+    "statement": "CBCand骨髓穿刺and骨髓活检and排除检查",
+    "workbook_checksum": "sha256:a0f8816f00bbc1088d9b9350eb0aeef26c5c0e1a609a0420d87fbe22be3a4e47",
+    "workbook_name": "慢病诊断标准规则覆盖可行性反馈.xlsx"
+  },
+  {
+    "affected_node_ids": [
+      "CD03.DKD"
+    ],
+    "cell": "H8",
+    "interpretation_checksum": "sha256:9705ab815d1604b4c7a43414c187ae5573c2abe467a049ed8d363779ab63629f",
+    "interpretation_id": "EXPERT2025-CD03-H8-r1",
+    "original_confirmation_status": "pending",
+    "policy_version": "2025",
+    "review_status": "needs_review",
+    "rule_id": "CD03",
+    "scope": "combination_clarification_only",
+    "sheet": "待线下确认",
+    "source_fragment_ids": [
+      "SRC2025-CD03-DKD-P05"
+    ],
+    "source_kind": "user_confirmed_written_interpretation",
+    "statement": "糖尿病肾病4个子项满足任一即可",
+    "workbook_checksum": "sha256:a0f8816f00bbc1088d9b9350eb0aeef26c5c0e1a609a0420d87fbe22be3a4e47",
+    "workbook_name": "慢病诊断标准规则覆盖可行性反馈.xlsx"
+  }
+]

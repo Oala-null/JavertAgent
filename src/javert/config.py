@@ -75,6 +75,8 @@ class JavertConfig(BaseSettings):
     # strengthen-oncology-drug-eligibility: 肿瘤药结构化资格求值.
     # off=完全保留现网旧路径; shadow=另存比较但不改旧 verdict; on=结构化结果生效.
     oncology_eligibility_v2: Literal["off", "shadow", "on"] = "off"
+    # add-chronic-disease-criteria: 门诊慢病条件树运行模式；默认关闭，不进入生产执行集。
+    chronic_disease_criteria: Literal["off", "shadow", "on"] = "off"
     # 肿瘤医保限定生效期闸 (env: JAVERT_ONCOLOGY_ENFORCE_EFFECTIVE_DATE).
     # True=只审就诊日落在声明生效窗口内的候选 (保守, 代码默认);
     # False=不分时间全部生效, 窗口外就诊追加"核查生效时间"提示 (前端 fail-loud, 不静默).

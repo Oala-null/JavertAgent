@@ -231,7 +231,7 @@ def test_handling_level_load_default_validation_and_order(tmp_path: Path):
 def test_load_rule_with_derived_from_template(tmp_path: Path):
     d = _good_rule_dict()
     d["derived_from_template"] = "M1"
-    p = tmp_path / "R045.yaml"
+    p = tmp_path / "R191.yaml"
     p.write_text(yaml.safe_dump(d, allow_unicode=True), encoding="utf-8")
     rule = load_rule(p)
     assert rule.derived_from_template == "M1"

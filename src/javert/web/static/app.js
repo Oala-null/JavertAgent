@@ -195,7 +195,7 @@
       notes.forEach(function (n) {
         var b = n.bucket || "其他";
         if (b !== curBucket) { flush(); curBucket = b; }
-        groupRows.push('<tr data-subsection="' + _esc(n.subsection) + '">' +
+        groupRows.push('<tr data-source-locator="' + _esc(n.source_locator) + '" data-subsection="' + _esc(n.subsection) + '">' +
           "<td>" + _esc(n.ts).slice(0, 10) + "</td>" +
           "<td>" + _esc(n.section) + "</td>" +
           "<td>" + _esc(n.subsection) + "</td>" +
@@ -231,7 +231,7 @@
       var abnormal = ["", "正常", "N"];
       var lrows = labs.map(function (l) {
         var abn = l.flag && abnormal.indexOf(l.flag) < 0;
-        return '<tr data-name="' + _esc(l.item) + '"' + (abn ? ' class="lab-abnormal"' : '') + '>' +
+        return '<tr data-source-locator="' + _esc(l.source_locator) + '" data-name="' + _esc(l.item) + '"' + (abn ? ' class="lab-abnormal"' : '') + '>' +
           "<td>" + _esc(l.date) + "</td>" +
           "<td>" + _esc(l.item) +
             (l.inspection ? '<span class="lab-sub"> · ' + _esc(l.inspection) + '</span>' : '') + "</td>" +
@@ -249,7 +249,7 @@
     if (exams.length) {
       var erows = exams.map(function (e) {
         var concl = e.conclusion || e.describe || "";
-        return '<tr data-name="' + _esc(e.item || e.check_type) + '">' +
+        return '<tr data-source-locator="' + _esc(e.source_locator) + '" data-name="' + _esc(e.item || e.check_type) + '">' +
           "<td>" + _esc(e.date) + "</td>" +
           "<td>" + _esc(e.check_type) +
             (e.item && e.item !== e.check_type ? " · " + _esc(e.item) : "") + "</td>" +
@@ -423,6 +423,24 @@
     var scope = rootEl.querySelector(".src-scope");
     var hint = rootEl.querySelector(".source-hint");
     if (hint) { hint.hidden = true; hint.textContent = ""; }
+    if (anchor.exact) {
+      var exactRow = anchor.source_locator && scope && scope.querySelector('[data-source-locator="' + _cssEscape(anchor.source_locator) + '"]');
+      if (!exactRow || anchor.unresolved) {
+        if (hint) { hint.hidden = false; hint.textContent = "未能精确定位，请人工核对。"; }
+        return;
+      }
+      var exactDetails = exactRow.closest("details");
+      if (exactDetails) exactDetails.open = true;
+      exactRow.scrollIntoView({block: "center", behavior: "smooth"});
+      // 仅在已定位记录内匹配完整证据；禁用全页模糊回退。
+      if (anchor.query) {
+        var exactScope = {querySelector: function () { return exactRow; }};
+        if (!runHighlight(exactScope, anchor.query, null) && hint) {
+          hint.hidden = false; hint.textContent = "记录已定位，片段未精确匹配，请人工核对。";
+        }
+      }
+      return;
+    }
     // 先滚到 subsection 那段 (若有) — 该段若在折叠桶内, 先展开桶
     if (anchor.subsection) {
       var row = scope && scope.querySelector('[data-subsection="' + _cssEscape(anchor.subsection) + '"]');
@@ -864,6 +882,11 @@
 
   function restoreFacets() {
     if (!document.getElementById("facet-bar")) return;
+    var batch = new URLSearchParams(window.location.search).get("batch_tag");
+    if (batch === "慢病" || batch === "Chronic_Disease") {
+      applyFacets();
+      return;
+    }
     var st = null;
     try { st = JSON.parse(sessionStorage.getItem(FACET_KEY) || "null"); } catch (_) {}
     if (st) {
@@ -892,6 +915,10 @@
     es.addEventListener("review_submitted", function (e) {
       try {
         var data = JSON.parse(e.data);
+        if (/^CD\d{2,3}$/.test(data.rule_id || "")) {
+          window.location.reload();
+          return;
+        }
         // Sidebar 计数同步 (全局口径): 某 run 被「任意专家」首次审 (run_first_review) +
         // 该 run 的 AI 裁决落在当前 filter 命中集 → 进度 +1. 不分审核人 — 别的专家审完,
         // 我这边的卡片也实时 +1. run_first_review 保证改判 / 二次审不重复计数.
@@ -947,6 +974,10 @@
     es.addEventListener("new_audit_run", function (e) {
       try {
         var data = JSON.parse(e.data);
+        if (/^CD\d{2,3}$/.test(data.rule_id || "")) {
+          window.location.reload();
+          return;
+        }
         showToast("新增审计: " + data.patient_id + " " + data.rule_id + " → " + verdictLabel(data.verdict));
         var list = document.getElementById("patient-list");
         if (!list) return;

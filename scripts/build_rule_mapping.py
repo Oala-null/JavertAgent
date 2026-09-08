@@ -1,7 +1,7 @@
-"""扫 125 条 Javert yaml + 构建 rule_mapping.json.
+"""扫描当前 Javert rule YAML 并构建 rule_mapping.json.
 
 产出:
-  data/router/javert_rules_index.json   # 125 yaml 元数据 (id/status/priority/template/keywords/domain)
+  data/router/javert_rules_index.json   # 实时 yaml 元数据 (含 rule kind / criteria ref)
   configs/rule_mapping.json             # 11 Java rule × N Javert yaml 多对多 mapping
 
 Mapping 策略:
@@ -25,7 +25,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-import yaml
+from javert.audit.rule_loader import load_rule
 
 ROOT = Path(__file__).resolve().parents[1]
 YAML_DIR = ROOT / "configs" / "rules"
@@ -78,21 +78,26 @@ def _validate_trigger_codes(rule_id: str, raw_codes) -> list[str]:
 def scan_javert_yamls() -> list[dict]:
     """扫所有 yaml, 抽 router 用得到的字段."""
     out: list[dict] = []
-    for path in sorted(YAML_DIR.glob("R*.yaml")):
-        with open(path, encoding="utf-8") as f:
-            raw = yaml.safe_load(f) or {}
-        rid = raw.get("rule_id", path.stem)
+    seen: set[str] = set()
+    for path in sorted(YAML_DIR.glob("*.yaml")):
+        rule = load_rule(path)
+        rid = rule.rule_id
+        if rid in seen:
+            raise ValueError(f"重复 rule_id: {rid}")
+        seen.add(rid)
         record = {
             "rule_id": rid,
             "yaml_path": f"configs/rules/{path.name}",
-            "domain": raw.get("domain"),
-            "violation_type": raw.get("violation_type"),
-            "status": raw.get("status"),
-            "priority": raw.get("priority"),
-            "derived_from_template": raw.get("derived_from_template"),
-            "trigger_keywords": raw.get("trigger_keywords") or [],
-            "trigger_codes": _validate_trigger_codes(rid, raw.get("trigger_codes")),
-            "question": (raw.get("question") or "")[:200],
+            "domain": rule.domain,
+            "violation_type": rule.violation_type,
+            "status": rule.status,
+            "priority": rule.priority,
+            "rule_kind": rule.rule_kind,
+            "clinical_criteria_ref": rule.clinical_criteria_ref,
+            "derived_from_template": rule.derived_from_template,
+            "trigger_keywords": list(rule.trigger_keywords),
+            "trigger_codes": _validate_trigger_codes(rid, rule.trigger_codes),
+            "question": rule.question[:200],
         }
         out.append(record)
     return out
@@ -127,6 +132,8 @@ def build_mapping(yamls: list[dict], violation_dict: dict) -> dict:
 
     for y in yamls:
         rid = y["rule_id"]
+        if y.get("rule_kind", "audit") != "audit":
+            continue
         tpl = y["derived_from_template"]
         candidates = TEMPLATE_TO_JAVA.get(tpl, [])
 
@@ -153,6 +160,12 @@ def build_mapping(yamls: list[dict], violation_dict: dict) -> dict:
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "summary": {
             "total_javert_rules": len(yamls),
+            "mapped_audit_rules": sum(
+                1 for item in yamls if item.get("rule_kind", "audit") == "audit"
+            ),
+            "excluded_non_audit_rules": sum(
+                1 for item in yamls if item.get("rule_kind", "audit") != "audit"
+            ),
             "overlapping_rules": sum(len(v) for v in java_to_javert.values()),
             "javert_only_rules": len(javert_only),
             "by_template": {t: dict(d) for t, d in template_summary.items()},

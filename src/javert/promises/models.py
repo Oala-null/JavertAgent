@@ -10,6 +10,8 @@ from typing import Any, Literal, Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from javert.audit.rule import RULE_ID_BODY_PATTERN, RULE_ID_PATTERN
+
 PromiseStatus = Literal["draft", "active", "superseded"]
 DriftStatus = Literal["observed", "confirmed", "promoted", "rejected"]
 PromisePhase = Literal["decision_pre_llm", "public_projection", "transport"]
@@ -100,7 +102,7 @@ class PromiseScope(StrictModel):
         if len(value) != len(set(value)):
             raise ValueError("scope.rule_ids 不得重复")
         for rule_id in value:
-            if not re.fullmatch(r"R\d{3}|RD\d{2,3}", rule_id):
+            if not re.fullmatch(RULE_ID_BODY_PATTERN, rule_id):
                 raise ValueError(f"非法 rule scope: {rule_id}")
         return value
 
@@ -148,7 +150,7 @@ class PromiseCase(StrictModel):
     promise_id: str = Field(pattern=r"^PR-[A-Z][A-Z0-9-]*$")
     promise_version: int = Field(ge=1)
     case_type: PromiseCaseType
-    rule_id: str = Field(pattern=r"^(R\d{3}|RD\d{2,3})$")
+    rule_id: str = Field(pattern=RULE_ID_PATTERN)
     source_case_id: str | None = Field(
         default=None, pattern=r"^DRIFT-[A-Z0-9][A-Z0-9-]*$"
     )

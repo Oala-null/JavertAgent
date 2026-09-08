@@ -139,9 +139,9 @@ def test_old_row_headline_fallback_uses_rule_metadata_not_reasoning():
 
 def test_public_sanitizer_removes_internal_ids_tools_verdicts_and_reason_codes():
     text = sanitize_public_text(
-        "根据规则 RD04，search_fees 与 gate 得出 VIOLATION，原因 PROMISE_CONFLICT。"
+        "根据规则 RD04 和 CD01，search_fees 与 gate 得出 VIOLATION，原因 PROMISE_CONFLICT。"
     )
-    for forbidden in ("RD04", "search_fees", "gate", "VIOLATION", "PROMISE_CONFLICT"):
+    for forbidden in ("RD04", "CD01", "search_fees", "gate", "VIOLATION", "PROMISE_CONFLICT"):
         assert forbidden not in text
 
 

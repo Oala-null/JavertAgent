@@ -8,6 +8,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from javert.audit.rule import RULE_ID_PATTERN
+from javert.chronic.contracts import ClinicalCriteriaEvaluation
 from javert.oncology.contracts import EligibilityEvaluation
 from javert.promises.models import PromiseTrace
 
@@ -46,7 +48,7 @@ class AuditResult(BaseModel):
     """单次 (rule, patient) 审计的全量结果."""
 
     run_id: str = Field(..., pattern=r"^aud_[A-Za-z0-9_-]{12}$")
-    rule_id: str = Field(..., pattern=r"^(R\d{3}|RD\d{2,3})$")
+    rule_id: str = Field(..., pattern=RULE_ID_PATTERN)
     patient_id: str
     verdict: Verdict
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
@@ -66,6 +68,7 @@ class AuditResult(BaseModel):
     precheck_tag: str = Field(default="")
     # strengthen-oncology-drug-eligibility: 旧规则保持 None；结构化肿瘤审核带完整双轴结果.
     eligibility_evaluation: EligibilityEvaluation | None = None
+    clinical_criteria_evaluation: ClinicalCriteriaEvaluation | None = None
     # add-evolving-promise-harness: 仅命中终局 Promise 时写最小、去标识 trace。
     promise_trace: PromiseTrace | None = None
     # 内部持久化缓存：由本次审计实际收费切片确定性解析；不进入对外 API payload。
@@ -81,4 +84,16 @@ class AuditResult(BaseModel):
                 f"verdict={self.verdict} 与 eligibility_evaluation 的兼容投影 "
                 f"{self.eligibility_evaluation.legacy_verdict} 不一致"
             )
+        clinical = self.clinical_criteria_evaluation
+        if clinical is not None:
+            if self.eligibility_evaluation is not None:
+                raise ValueError("clinical_criteria_evaluation 不能与肿瘤 eligibility 混用")
+            if self.rule_id != clinical.rule_id:
+                raise ValueError("clinical_criteria_evaluation rule_id 与审计规则不一致")
+            if self.verdict != clinical.legacy_verdict:
+                raise ValueError("verdict 与 clinical_criteria_evaluation 兼容投影不一致")
+        if self.rule_id.startswith("CD") and self.eligibility_evaluation is not None:
+            raise ValueError("CD 规则不能使用肿瘤 eligibility")
+        if self.rule_id.startswith("CD") and self.verdict == "VIOLATION":
+            raise ValueError("CD 资格发现不能标记为违规")
         return self

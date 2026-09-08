@@ -1,0 +1,14 @@
+rule_id: CD10
+rule_kind: chronic_disease_qualification
+clinical_criteria_ref: hlj-outpatient-chronic-2025/CD10
+domain: 门诊慢性病
+violation_type: 门诊慢性病认定条件评估
+question: 评估该病例是否符合2025版艾滋病门诊慢性病认定条件。
+status: drafting
+priority: P3
+handling_level: 提醒（引导）
+prompt_addon: ''
+trigger_keywords:
+  - 艾滋病
+  - HIV
+trigger_codes: []

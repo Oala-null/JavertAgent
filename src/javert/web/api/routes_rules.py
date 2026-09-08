@@ -50,6 +50,8 @@ def list_rules() -> list[RuleSummary]:
         out.append(
             RuleSummary(
                 rule_id=r.rule_id,
+                rule_kind=r.rule_kind,
+                clinical_criteria_ref=r.clinical_criteria_ref,
                 domain=r.domain,
                 violation_type=r.violation_type,
                 question=r.question,
@@ -82,6 +84,8 @@ def get_rule(rule_id: str) -> RuleDetail:
 
     return RuleDetail(
         rule_id=rule.rule_id,
+        rule_kind=rule.rule_kind,
+        clinical_criteria_ref=rule.clinical_criteria_ref,
         domain=rule.domain,
         violation_type=rule.violation_type,
         question=rule.question,
@@ -108,6 +112,7 @@ def get_rule(rule_id: str) -> RuleDetail:
                     if r.eligibility_evaluation is not None
                     else None
                 ),
+                clinical_criteria_evaluation=r.clinical_criteria_evaluation,
                 eligibility_status=(
                     r.eligibility_evaluation.eligibility_status.value
                     if r.eligibility_evaluation is not None

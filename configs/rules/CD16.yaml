@@ -1,0 +1,15 @@
+rule_id: CD16
+rule_kind: chronic_disease_qualification
+clinical_criteria_ref: hlj-outpatient-chronic-2025/CD16
+domain: 门诊慢性病
+violation_type: 门诊慢性病认定条件评估
+question: 评估该病例是否符合2025版慢性阻塞性肺疾病门诊慢性病认定条件。
+status: drafting
+priority: P3
+handling_level: 提醒（引导）
+prompt_addon: ''
+trigger_keywords:
+  - 慢性阻塞性肺疾病
+  - 慢阻肺
+  - COPD
+trigger_codes: []

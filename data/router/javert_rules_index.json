@@ -1,6 +1,347 @@
 {
-  "count": 168,
+  "count": 188,
   "rules": [
+    {
+      "rule_id": "CD01",
+      "yaml_path": "configs/rules/CD01.yaml",
+      "domain": "门诊慢性病",
+      "violation_type": "门诊慢性病认定条件评估",
+      "status": "drafting",
+      "priority": "P3",
+      "rule_kind": "chronic_disease_qualification",
+      "clinical_criteria_ref": "hlj-outpatient-chronic-2025/CD01",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "再生障碍性贫血",
+        "再障"
+      ],
+      "trigger_codes": [],
+      "question": "评估该病例是否符合2025版再生障碍性贫血门诊慢性病认定条件。"
+    },
+    {
+      "rule_id": "CD02",
+      "yaml_path": "configs/rules/CD02.yaml",
+      "domain": "门诊慢性病",
+      "violation_type": "门诊慢性病认定条件评估",
+      "status": "drafting",
+      "priority": "P3",
+      "rule_kind": "chronic_disease_qualification",
+      "clinical_criteria_ref": "hlj-outpatient-chronic-2025/CD02",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "慢性肾功能不全",
+        "慢性肾衰竭",
+        "CKD"
+      ],
+      "trigger_codes": [],
+      "question": "评估该病例是否符合2025版慢性肾功能不全（III期以上）门诊慢性病认定条件。"
+    },
+    {
+      "rule_id": "CD03",
+      "yaml_path": "configs/rules/CD03.yaml",
+      "domain": "门诊慢性病",
+      "violation_type": "门诊慢性病认定条件评估",
+      "status": "drafting",
+      "priority": "P3",
+      "rule_kind": "chronic_disease_qualification",
+      "clinical_criteria_ref": "hlj-outpatient-chronic-2025/CD03",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "糖尿病合并症",
+        "糖尿病"
+      ],
+      "trigger_codes": [],
+      "question": "评估该病例是否符合2025版糖尿病合并症门诊慢性病认定条件。"
+    },
+    {
+      "rule_id": "CD04",
+      "yaml_path": "configs/rules/CD04.yaml",
+      "domain": "门诊慢性病",
+      "violation_type": "门诊慢性病认定条件评估",
+      "status": "drafting",
+      "priority": "P3",
+      "rule_kind": "chronic_disease_qualification",
+      "clinical_criteria_ref": "hlj-outpatient-chronic-2025/CD04",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "心房颤动",
+        "房颤"
+      ],
+      "trigger_codes": [],
+      "question": "评估该病例是否符合2025版心房颤动门诊慢性病认定条件。"
+    },
+    {
+      "rule_id": "CD05",
+      "yaml_path": "configs/rules/CD05.yaml",
+      "domain": "门诊慢性病",
+      "violation_type": "门诊慢性病认定条件评估",
+      "status": "drafting",
+      "priority": "P3",
+      "rule_kind": "chronic_disease_qualification",
+      "clinical_criteria_ref": "hlj-outpatient-chronic-2025/CD05",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "冠心病",
+        "心功能不全"
+      ],
+      "trigger_codes": [],
+      "question": "评估该病例是否符合2025版冠心病（心功能不全3级以上）门诊慢性病认定条件。"
+    },
+    {
+      "rule_id": "CD06",
+      "yaml_path": "configs/rules/CD06.yaml",
+      "domain": "门诊慢性病",
+      "violation_type": "门诊慢性病认定条件评估",
+      "status": "drafting",
+      "priority": "P3",
+      "rule_kind": "chronic_disease_qualification",
+      "clinical_criteria_ref": "hlj-outpatient-chronic-2025/CD06",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "风湿性心脏病",
+        "风心病"
+      ],
+      "trigger_codes": [],
+      "question": "评估该病例是否符合2025版风湿性心脏病（心功能不全3级以上）门诊慢性病认定条件。"
+    },
+    {
+      "rule_id": "CD07",
+      "yaml_path": "configs/rules/CD07.yaml",
+      "domain": "门诊慢性病",
+      "violation_type": "门诊慢性病认定条件评估",
+      "status": "drafting",
+      "priority": "P3",
+      "rule_kind": "chronic_disease_qualification",
+      "clinical_criteria_ref": "hlj-outpatient-chronic-2025/CD07",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "高血压"
+      ],
+      "trigger_codes": [],
+      "question": "评估该病例是否符合2025版高血压（III期以上）门诊慢性病认定条件。"
+    },
+    {
+      "rule_id": "CD08",
+      "yaml_path": "configs/rules/CD08.yaml",
+      "domain": "门诊慢性病",
+      "violation_type": "门诊慢性病认定条件评估",
+      "status": "drafting",
+      "priority": "P3",
+      "rule_kind": "chronic_disease_qualification",
+      "clinical_criteria_ref": "hlj-outpatient-chronic-2025/CD08",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "肝硬化失代偿期",
+        "失代偿期肝硬化"
+      ],
+      "trigger_codes": [],
+      "question": "评估该病例是否符合2025版肝硬化失代偿期门诊慢性病认定条件。"
+    },
+    {
+      "rule_id": "CD09",
+      "yaml_path": "configs/rules/CD09.yaml",
+      "domain": "门诊慢性病",
+      "violation_type": "门诊慢性病认定条件评估",
+      "status": "drafting",
+      "priority": "P3",
+      "rule_kind": "chronic_disease_qualification",
+      "clinical_criteria_ref": "hlj-outpatient-chronic-2025/CD09",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "慢性病毒性肝炎",
+        "慢性乙型肝炎",
+        "慢性丙型肝炎"
+      ],
+      "trigger_codes": [],
+      "question": "评估该病例是否符合2025版慢性病毒性肝炎门诊慢性病认定条件。"
+    },
+    {
+      "rule_id": "CD10",
+      "yaml_path": "configs/rules/CD10.yaml",
+      "domain": "门诊慢性病",
+      "violation_type": "门诊慢性病认定条件评估",
+      "status": "drafting",
+      "priority": "P3",
+      "rule_kind": "chronic_disease_qualification",
+      "clinical_criteria_ref": "hlj-outpatient-chronic-2025/CD10",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "艾滋病",
+        "HIV"
+      ],
+      "trigger_codes": [],
+      "question": "评估该病例是否符合2025版艾滋病门诊慢性病认定条件。"
+    },
+    {
+      "rule_id": "CD11",
+      "yaml_path": "configs/rules/CD11.yaml",
+      "domain": "门诊慢性病",
+      "violation_type": "门诊慢性病认定条件评估",
+      "status": "drafting",
+      "priority": "P3",
+      "rule_kind": "chronic_disease_qualification",
+      "clinical_criteria_ref": "hlj-outpatient-chronic-2025/CD11",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "布鲁氏菌病",
+        "布病"
+      ],
+      "trigger_codes": [],
+      "question": "评估该病例是否符合2025版布鲁氏菌病门诊慢性病认定条件。"
+    },
+    {
+      "rule_id": "CD12",
+      "yaml_path": "configs/rules/CD12.yaml",
+      "domain": "门诊慢性病",
+      "violation_type": "门诊慢性病认定条件评估",
+      "status": "drafting",
+      "priority": "P3",
+      "rule_kind": "chronic_disease_qualification",
+      "clinical_criteria_ref": "hlj-outpatient-chronic-2025/CD12",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "帕金森氏病",
+        "帕金森病"
+      ],
+      "trigger_codes": [],
+      "question": "评估该病例是否符合2025版帕金森氏病门诊慢性病认定条件。"
+    },
+    {
+      "rule_id": "CD13",
+      "yaml_path": "configs/rules/CD13.yaml",
+      "domain": "门诊慢性病",
+      "violation_type": "门诊慢性病认定条件评估",
+      "status": "drafting",
+      "priority": "P3",
+      "rule_kind": "chronic_disease_qualification",
+      "clinical_criteria_ref": "hlj-outpatient-chronic-2025/CD13",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "重症肌无力"
+      ],
+      "trigger_codes": [],
+      "question": "评估该病例是否符合2025版重症肌无力门诊慢性病认定条件。"
+    },
+    {
+      "rule_id": "CD14",
+      "yaml_path": "configs/rules/CD14.yaml",
+      "domain": "门诊慢性病",
+      "violation_type": "门诊慢性病认定条件评估",
+      "status": "drafting",
+      "priority": "P3",
+      "rule_kind": "chronic_disease_qualification",
+      "clinical_criteria_ref": "hlj-outpatient-chronic-2025/CD14",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "癫痫病",
+        "癫痫"
+      ],
+      "trigger_codes": [],
+      "question": "评估该病例是否符合2025版癫痫病门诊慢性病认定条件。"
+    },
+    {
+      "rule_id": "CD15",
+      "yaml_path": "configs/rules/CD15.yaml",
+      "domain": "门诊慢性病",
+      "violation_type": "门诊慢性病认定条件评估",
+      "status": "drafting",
+      "priority": "P3",
+      "rule_kind": "chronic_disease_qualification",
+      "clinical_criteria_ref": "hlj-outpatient-chronic-2025/CD15",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "脑血管病后遗症",
+        "脑卒中后遗症"
+      ],
+      "trigger_codes": [],
+      "question": "评估该病例是否符合2025版脑血管病后遗症（合并肢体功能障碍）门诊慢性病认定条件。"
+    },
+    {
+      "rule_id": "CD16",
+      "yaml_path": "configs/rules/CD16.yaml",
+      "domain": "门诊慢性病",
+      "violation_type": "门诊慢性病认定条件评估",
+      "status": "drafting",
+      "priority": "P3",
+      "rule_kind": "chronic_disease_qualification",
+      "clinical_criteria_ref": "hlj-outpatient-chronic-2025/CD16",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "慢性阻塞性肺疾病",
+        "慢阻肺",
+        "COPD"
+      ],
+      "trigger_codes": [],
+      "question": "评估该病例是否符合2025版慢性阻塞性肺疾病门诊慢性病认定条件。"
+    },
+    {
+      "rule_id": "CD17",
+      "yaml_path": "configs/rules/CD17.yaml",
+      "domain": "门诊慢性病",
+      "violation_type": "门诊慢性病认定条件评估",
+      "status": "drafting",
+      "priority": "P3",
+      "rule_kind": "chronic_disease_qualification",
+      "clinical_criteria_ref": "hlj-outpatient-chronic-2025/CD17",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "肺源性心脏病",
+        "肺心病"
+      ],
+      "trigger_codes": [],
+      "question": "评估该病例是否符合2025版肺源性心脏病（慢性心力衰竭）门诊慢性病认定条件。"
+    },
+    {
+      "rule_id": "CD18",
+      "yaml_path": "configs/rules/CD18.yaml",
+      "domain": "门诊慢性病",
+      "violation_type": "门诊慢性病认定条件评估",
+      "status": "drafting",
+      "priority": "P3",
+      "rule_kind": "chronic_disease_qualification",
+      "clinical_criteria_ref": "hlj-outpatient-chronic-2025/CD18",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "支气管哮喘",
+        "哮喘"
+      ],
+      "trigger_codes": [],
+      "question": "评估该病例是否符合2025版支气管哮喘门诊慢性病认定条件。"
+    },
+    {
+      "rule_id": "CD19",
+      "yaml_path": "configs/rules/CD19.yaml",
+      "domain": "门诊慢性病",
+      "violation_type": "门诊慢性病认定条件评估",
+      "status": "drafting",
+      "priority": "P3",
+      "rule_kind": "chronic_disease_qualification",
+      "clinical_criteria_ref": "hlj-outpatient-chronic-2025/CD19",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "类风湿性关节炎",
+        "类风湿关节炎"
+      ],
+      "trigger_codes": [],
+      "question": "评估该病例是否符合2025版类风湿性关节炎（有严重肢体功能障碍）门诊慢性病认定条件。"
+    },
+    {
+      "rule_id": "CD20",
+      "yaml_path": "configs/rules/CD20.yaml",
+      "domain": "门诊慢性病",
+      "violation_type": "门诊慢性病认定条件评估",
+      "status": "drafting",
+      "priority": "P3",
+      "rule_kind": "chronic_disease_qualification",
+      "clinical_criteria_ref": "hlj-outpatient-chronic-2025/CD20",
+      "derived_from_template": null,
+      "trigger_keywords": [
+        "系统性红斑狼疮",
+        "SLE"
+      ],
+      "trigger_codes": [],
+      "question": "评估该病例是否符合2025版系统性红斑狼疮门诊慢性病认定条件。"
+    },
     {
       "rule_id": "R003",
       "yaml_path": "configs/rules/R003.yaml",
@@ -8,6 +349,8 @@
       "violation_type": "虚构医药服务项目",
       "status": "drafting",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": null,
       "trigger_keywords": [],
       "trigger_codes": [],
@@ -20,6 +363,8 @@
       "violation_type": "虚构医药服务项目",
       "status": "drafting",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": null,
       "trigger_keywords": [],
       "trigger_codes": [],
@@ -32,6 +377,8 @@
       "violation_type": "将不属于医保支付范围的纳入医保基金结算",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [],
       "trigger_codes": [],
@@ -44,6 +391,8 @@
       "violation_type": "串换项目",
       "status": "drafting",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": null,
       "trigger_keywords": [],
       "trigger_codes": [],
@@ -56,6 +405,8 @@
       "violation_type": "DRG/DIP高编高套",
       "status": "drafting",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": null,
       "trigger_keywords": [],
       "trigger_codes": [],
@@ -68,6 +419,8 @@
       "violation_type": "串换项目",
       "status": "ready",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M7",
       "trigger_keywords": [
         "药物涂层球囊",
@@ -88,6 +441,8 @@
       "violation_type": "虚构医药服务项目",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M5",
       "trigger_keywords": [
         "有创性血流动力学监测",
@@ -109,6 +464,8 @@
       "violation_type": "重复收费",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M1",
       "trigger_keywords": [
         "冠脉内局部放射治疗",
@@ -127,6 +484,8 @@
       "violation_type": "串换项目",
       "status": "ready",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M7",
       "trigger_keywords": [
         "冠脉内膜旋磨",
@@ -148,6 +507,8 @@
       "violation_type": "超标准收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M4",
       "trigger_keywords": [
         "PTCA",
@@ -170,6 +531,8 @@
       "violation_type": "分解收费",
       "status": "ready",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M1",
       "trigger_keywords": [
         "三通道加收",
@@ -189,6 +552,8 @@
       "violation_type": "串换项目",
       "status": "ready",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M7",
       "trigger_keywords": [
         "动态血压监测",
@@ -208,6 +573,8 @@
       "violation_type": "串换项目",
       "status": "ready",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M7",
       "trigger_keywords": [
         "动态心电图",
@@ -227,6 +594,8 @@
       "violation_type": "串换项目",
       "status": "ready",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M7",
       "trigger_keywords": [
         "髓内钉",
@@ -248,6 +617,8 @@
       "violation_type": "虚构医药服务项目",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M5",
       "trigger_keywords": [
         "胸腰椎骨折切开复位内固定术",
@@ -266,6 +637,8 @@
       "violation_type": "串换项目",
       "status": "ready",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M7",
       "trigger_keywords": [
         "射频消融术",
@@ -285,6 +658,8 @@
       "violation_type": "串换项目",
       "status": "ready",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M7",
       "trigger_keywords": [
         "椎间盘消融",
@@ -303,6 +678,8 @@
       "violation_type": "串换项目",
       "status": "ready",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M7",
       "trigger_keywords": [
         "内外踝骨折",
@@ -322,6 +699,8 @@
       "violation_type": "串换项目",
       "status": "ready",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M7",
       "trigger_keywords": [
         "麻醉下大手法",
@@ -341,6 +720,8 @@
       "violation_type": "重复收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M1",
       "trigger_keywords": [
         "肩锁关节脱位",
@@ -359,6 +740,8 @@
       "violation_type": "重复收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M1",
       "trigger_keywords": [
         "关节镜下半月板修整",
@@ -380,6 +763,8 @@
       "violation_type": "重复收费",
       "status": "ready",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M7",
       "trigger_keywords": [
         "皮瓣成形",
@@ -399,6 +784,8 @@
       "violation_type": "超标准收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M4",
       "trigger_keywords": [
         "同一切口",
@@ -418,6 +805,8 @@
       "violation_type": "重复收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M1",
       "trigger_keywords": [
         "血液透析",
@@ -444,6 +833,8 @@
       "violation_type": "超标准收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M4",
       "trigger_keywords": [
         "血液透析",
@@ -467,6 +858,8 @@
       "violation_type": "串换项目",
       "status": "ready",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M7",
       "trigger_keywords": [
         "血液透析",
@@ -486,6 +879,8 @@
       "violation_type": "重复收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M1",
       "trigger_keywords": [
         "血液透析",
@@ -507,6 +902,8 @@
       "violation_type": "串换项目",
       "status": "ready",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M7",
       "trigger_keywords": [
         "血浆置换",
@@ -526,6 +923,8 @@
       "violation_type": "虚构医药服务项目",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M5",
       "trigger_keywords": [
         "日常生活能力评定",
@@ -548,6 +947,8 @@
       "violation_type": "串换项目",
       "status": "ready",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M7",
       "trigger_keywords": [
         "冷疗治疗",
@@ -568,6 +969,8 @@
       "violation_type": "将不属于医保支付范围的纳入医保基金结算",
       "status": "ready",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M6",
       "trigger_keywords": [
         "精神障碍作业疗法",
@@ -586,6 +989,8 @@
       "violation_type": "将不属于医保支付范围的纳入医保基金结算",
       "status": "ready",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M6",
       "trigger_keywords": [
         "日常生活动作训练",
@@ -606,6 +1011,8 @@
       "violation_type": "虚构医药服务项目",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M5",
       "trigger_keywords": [
         "超声检查",
@@ -625,6 +1032,8 @@
       "violation_type": "虚构医药服务项目",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M5",
       "trigger_keywords": [
         "三维重建",
@@ -644,6 +1053,8 @@
       "violation_type": "过度检查",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M2",
       "trigger_keywords": [
         "胸部CT",
@@ -664,6 +1075,8 @@
       "violation_type": "过度检查",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M2",
       "trigger_keywords": [
         "心电门控加收",
@@ -683,6 +1096,8 @@
       "violation_type": "重复收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M1",
       "trigger_keywords": [
         "CT 增强扫描",
@@ -705,6 +1120,8 @@
       "violation_type": "重复收费",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M1",
       "trigger_keywords": [
         "计算机图文报告",
@@ -724,6 +1141,8 @@
       "violation_type": "重复收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M1",
       "trigger_keywords": [
         "超声计算机图文报告",
@@ -744,6 +1163,8 @@
       "violation_type": "重复收费",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M1",
       "trigger_keywords": [
         "床旁透视",
@@ -763,6 +1184,8 @@
       "violation_type": "重复收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M1",
       "trigger_keywords": [
         "磁共振引导",
@@ -785,6 +1208,8 @@
       "violation_type": "重复收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M1",
       "trigger_keywords": [
         "CT 引导",
@@ -810,6 +1235,8 @@
       "violation_type": "过度检查",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M2",
       "trigger_keywords": [
         "妇科彩超",
@@ -831,6 +1258,8 @@
       "violation_type": "过度检查",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M2",
       "trigger_keywords": [
         "血管彩超",
@@ -851,6 +1280,8 @@
       "violation_type": "过度检查",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M2",
       "trigger_keywords": [
         "心脏彩超",
@@ -873,6 +1304,8 @@
       "violation_type": "过度检查",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M2",
       "trigger_keywords": [
         "内镜色素",
@@ -893,6 +1326,8 @@
       "violation_type": "虚构医药服务项目",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M5",
       "trigger_keywords": [
         "血常规",
@@ -912,6 +1347,8 @@
       "violation_type": "将不属于医保支付范围的纳入医保基金结算",
       "status": "drafting",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": null,
       "trigger_keywords": [],
       "trigger_codes": [],
@@ -924,6 +1361,8 @@
       "violation_type": "过度检查",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M2",
       "trigger_keywords": [
         "肌红蛋白",
@@ -946,6 +1385,8 @@
       "violation_type": "过度检查",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M2",
       "trigger_keywords": [
         "血浆乳酸",
@@ -968,6 +1409,8 @@
       "violation_type": "过度检查",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M2",
       "trigger_keywords": [
         "BNP",
@@ -991,6 +1434,8 @@
       "violation_type": "过度检查",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M2",
       "trigger_keywords": [
         "乙肝抗体",
@@ -1023,6 +1468,8 @@
       "violation_type": "过度检查",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M2",
       "trigger_keywords": [
         "甲胎蛋白",
@@ -1045,6 +1492,8 @@
       "violation_type": "过度检查",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M2",
       "trigger_keywords": [
         "癌胚抗原",
@@ -1066,6 +1515,8 @@
       "violation_type": "过度检查",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M2",
       "trigger_keywords": [
         "白介素",
@@ -1087,6 +1538,8 @@
       "violation_type": "过度检查",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M2",
       "trigger_keywords": [
         "前列腺特异性抗原",
@@ -1110,6 +1563,8 @@
       "violation_type": "过度检查",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M2",
       "trigger_keywords": [
         "降钙素原",
@@ -1132,6 +1587,8 @@
       "violation_type": "过度检查",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M2",
       "trigger_keywords": [
         "肌钙蛋白",
@@ -1156,6 +1613,8 @@
       "violation_type": "过度检查",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M2",
       "trigger_keywords": [
         "细菌抗体测定",
@@ -1176,6 +1635,8 @@
       "violation_type": "超标准收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M4",
       "trigger_keywords": [
         "全器官大切片",
@@ -1194,6 +1655,8 @@
       "violation_type": "重复收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M1",
       "trigger_keywords": [
         "根治性宫颈切除术",
@@ -1213,6 +1676,8 @@
       "violation_type": "重复收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M1",
       "trigger_keywords": [
         "PET-CT",
@@ -1234,6 +1699,8 @@
       "violation_type": "超标准收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M4",
       "trigger_keywords": [
         "浅表肿物切除",
@@ -1254,6 +1721,8 @@
       "violation_type": "超标准收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M4",
       "trigger_keywords": [
         "高强度聚焦超声",
@@ -1275,6 +1744,8 @@
       "violation_type": "超标准收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M4",
       "trigger_keywords": [
         "简易定位",
@@ -1293,6 +1764,8 @@
       "violation_type": "串换项目",
       "status": "drafting",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": null,
       "trigger_keywords": [],
       "trigger_codes": [],
@@ -1305,6 +1778,8 @@
       "violation_type": "虚构医药服务项目",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M5",
       "trigger_keywords": [
         "全身麻醉",
@@ -1327,6 +1802,8 @@
       "violation_type": "重复收费",
       "status": "ready",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M4",
       "trigger_keywords": [
         "全身麻醉",
@@ -1346,6 +1823,8 @@
       "violation_type": "重复收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M1",
       "trigger_keywords": [
         "基础麻醉",
@@ -1366,6 +1845,8 @@
       "violation_type": "超标准收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M4",
       "trigger_keywords": [
         "麻醉后复苏监护",
@@ -1386,6 +1867,8 @@
       "violation_type": "过度诊疗",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M6",
       "trigger_keywords": [
         "麻醉深度电生理监测",
@@ -1409,6 +1892,8 @@
       "violation_type": "过度诊疗",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M2",
       "trigger_keywords": [
         "麻醉中肌松监测",
@@ -1430,6 +1915,8 @@
       "violation_type": "虚构医药服务项目或过度诊疗",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M2",
       "trigger_keywords": [
         "控制性降压",
@@ -1451,6 +1938,8 @@
       "violation_type": "过度诊疗",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M6",
       "trigger_keywords": [
         "脑电双频指数",
@@ -1470,6 +1959,8 @@
       "violation_type": "过度诊疗",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M6",
       "trigger_keywords": [
         "特殊方法气管插管",
@@ -1491,6 +1982,8 @@
       "violation_type": "串换项目",
       "status": "ready",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M7",
       "trigger_keywords": [
         "特殊方法气管插管",
@@ -1510,6 +2003,8 @@
       "violation_type": "虚构医药服务项目",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M5",
       "trigger_keywords": [
         "尿常规",
@@ -1530,6 +2025,8 @@
       "violation_type": "过度诊疗或虚构医药服务项目",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M6",
       "trigger_keywords": [
         "康复治疗",
@@ -1554,6 +2051,8 @@
       "violation_type": "重复收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M1",
       "trigger_keywords": [
         "静脉高营养",
@@ -1577,6 +2076,8 @@
       "violation_type": "重复收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M1",
       "trigger_keywords": [
         "重症监护",
@@ -1601,6 +2102,8 @@
       "violation_type": "串换项目",
       "status": "ready",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M7",
       "trigger_keywords": [
         "经纤支镜特殊治疗",
@@ -1621,6 +2124,8 @@
       "violation_type": "串换项目",
       "status": "ready",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M7",
       "trigger_keywords": [
         "层流洁净病房",
@@ -1640,6 +2145,8 @@
       "violation_type": "虚构医药服务项目或以骗保为目的串换项目",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M3",
       "trigger_keywords": [
         "口腔颌面部软组织缺损局部组织瓣修复术",
@@ -1659,6 +2166,8 @@
       "violation_type": "虚构医药服务项目或以骗保为目的串换项目",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M3",
       "trigger_keywords": [
         "口腔颌面部巨大血管瘤淋巴管瘤切除术",
@@ -1678,6 +2187,8 @@
       "violation_type": "虚构医药服务项目或以骗保为目的串换项目",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M3",
       "trigger_keywords": [
         "口腔颌面部骨缺损游离骨瓣移植修复术",
@@ -1697,6 +2208,8 @@
       "violation_type": "虚构医药服务项目或以骗保为目的串换项目",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M3",
       "trigger_keywords": [
         "带血管游离骨移植颌骨重建术",
@@ -1716,6 +2229,8 @@
       "violation_type": "虚构医药服务项目或以骗保为目的串换项目",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M3",
       "trigger_keywords": [
         "牙周组织瓣移植术",
@@ -1735,6 +2250,8 @@
       "violation_type": "虚构医药服务项目或以骗保为目的串换项目",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M3",
       "trigger_keywords": [
         "显微根管治疗术",
@@ -1754,6 +2271,8 @@
       "violation_type": "虚构医药服务项目或以骗保为目的串换项目",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M3",
       "trigger_keywords": [
         "根管再治疗术",
@@ -1772,6 +2291,8 @@
       "violation_type": "虚构医药服务项目或以骗保为目的串换项目",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M3",
       "trigger_keywords": [
         "根管充填术",
@@ -1790,6 +2311,8 @@
       "violation_type": "虚构医药服务项目或以骗保为目的串换项目",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M3",
       "trigger_keywords": [
         "牙髓失活术",
@@ -1808,6 +2331,8 @@
       "violation_type": "虚构医药服务项目或以骗保为目的串换项目",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M3",
       "trigger_keywords": [
         "牙髓摘除术",
@@ -1827,6 +2352,8 @@
       "violation_type": "虚构医药服务项目或以骗保为目的串换项目",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M3",
       "trigger_keywords": [
         "牙脱敏治疗",
@@ -1846,6 +2373,8 @@
       "violation_type": "虚构医药服务项目或以骗保为目的串换项目",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M3",
       "trigger_keywords": [
         "牙体缺损粘接修复术",
@@ -1865,6 +2394,8 @@
       "violation_type": "虚构医药服务",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M3",
       "trigger_keywords": [
         "口腔颌面软组织清创术",
@@ -1886,6 +2417,8 @@
       "violation_type": "虚构医药服务",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M3",
       "trigger_keywords": [
         "根尖搔刮术",
@@ -1905,6 +2438,8 @@
       "violation_type": "虚构医药服务",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M3",
       "trigger_keywords": [
         "分根术",
@@ -1924,6 +2459,8 @@
       "violation_type": "虚构医药服务",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M3",
       "trigger_keywords": [
         "牙龈切除术",
@@ -1943,6 +2480,8 @@
       "violation_type": "虚构医药服务",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M3",
       "trigger_keywords": [
         "龈瓣整形术",
@@ -1962,6 +2501,8 @@
       "violation_type": "超标准收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M4",
       "trigger_keywords": [
         "开髓引流",
@@ -1982,6 +2523,8 @@
       "violation_type": "重复收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M1",
       "trigger_keywords": [
         "牙龈翻瓣术",
@@ -2001,6 +2544,8 @@
       "violation_type": "串换项目",
       "status": "ready",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M7",
       "trigger_keywords": [
         "电脑血糖监测",
@@ -2020,6 +2565,8 @@
       "violation_type": "过度检查",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M2",
       "trigger_keywords": [
         "肾上腺皮质激素",
@@ -2039,6 +2586,8 @@
       "violation_type": "过度检查",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M2",
       "trigger_keywords": [
         "甲状腺功能三项",
@@ -2059,6 +2608,8 @@
       "violation_type": "诱导住院骗取医保基金",
       "status": "drafting",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": null,
       "trigger_keywords": [],
       "trigger_codes": [],
@@ -2071,6 +2622,8 @@
       "violation_type": "诱导住院骗取医保基金",
       "status": "drafting",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": null,
       "trigger_keywords": [],
       "trigger_codes": [],
@@ -2083,6 +2636,8 @@
       "violation_type": "虚假诊断",
       "status": "drafting",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": null,
       "trigger_keywords": [],
       "trigger_codes": [],
@@ -2095,6 +2650,8 @@
       "violation_type": "虚构病情",
       "status": "drafting",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": null,
       "trigger_keywords": [],
       "trigger_codes": [],
@@ -2107,6 +2664,8 @@
       "violation_type": "虚假住院",
       "status": "drafting",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": null,
       "trigger_keywords": [],
       "trigger_codes": [],
@@ -2119,6 +2678,8 @@
       "violation_type": "虚构诊疗",
       "status": "drafting",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": null,
       "trigger_keywords": [],
       "trigger_codes": [],
@@ -2131,6 +2692,8 @@
       "violation_type": "虚构诊疗",
       "status": "drafting",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": null,
       "trigger_keywords": [],
       "trigger_codes": [],
@@ -2143,6 +2706,8 @@
       "violation_type": "超标准收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M4",
       "trigger_keywords": [
         "精神科监护",
@@ -2162,6 +2727,8 @@
       "violation_type": "超标准收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M4",
       "trigger_keywords": [
         "首诊精神病",
@@ -2181,6 +2748,8 @@
       "violation_type": "超标准收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M4",
       "trigger_keywords": [
         "心理治疗",
@@ -2201,6 +2770,8 @@
       "violation_type": "重复收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M1",
       "trigger_keywords": [
         "精神科监护",
@@ -2219,6 +2790,8 @@
       "violation_type": "重复收费",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M1",
       "trigger_keywords": [
         "作业疗法",
@@ -2237,6 +2810,8 @@
       "violation_type": "重复收费",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M1",
       "trigger_keywords": [
         "精神障碍作业疗法",
@@ -2256,6 +2831,8 @@
       "violation_type": "重复收费",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M1",
       "trigger_keywords": [
         "身体功能障碍作业疗法",
@@ -2275,6 +2852,8 @@
       "violation_type": "串换项目",
       "status": "ready",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M7",
       "trigger_keywords": [
         "行为观察和治疗",
@@ -2295,6 +2874,8 @@
       "violation_type": "串换项目",
       "status": "ready",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M7",
       "trigger_keywords": [
         "心理治疗",
@@ -2314,6 +2895,8 @@
       "violation_type": "串换项目",
       "status": "ready",
       "priority": "P2",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M7",
       "trigger_keywords": [
         "心理治疗",
@@ -2333,6 +2916,8 @@
       "violation_type": "过度诊疗",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M6",
       "trigger_keywords": [
         "精神科住院",
@@ -2352,6 +2937,8 @@
       "violation_type": "过度诊疗",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M6",
       "trigger_keywords": [
         "精神科监护",
@@ -2370,6 +2957,8 @@
       "violation_type": "过度诊疗",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M6",
       "trigger_keywords": [
         "脑反射治疗",
@@ -2390,6 +2979,8 @@
       "violation_type": "过度诊疗",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M2",
       "trigger_keywords": [
         "抗精神病药物治疗监测",
@@ -2413,6 +3004,8 @@
       "violation_type": "虚构医药服务项目",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M5",
       "trigger_keywords": [
         "溶栓术",
@@ -2432,6 +3025,8 @@
       "violation_type": "虚构医药服务项目",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M5",
       "trigger_keywords": [
         "经胃镜特殊治疗",
@@ -2451,6 +3046,8 @@
       "violation_type": "超标准收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": null,
       "trigger_keywords": [
         "结膜囊冲洗",
@@ -2476,6 +3073,8 @@
       "violation_type": "虚构医药服务项目",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": null,
       "trigger_keywords": [
         "睑板腺",
@@ -2498,6 +3097,8 @@
       "violation_type": "虚构医药服务项目",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": null,
       "trigger_keywords": [
         "床头心电图",
@@ -2519,6 +3120,8 @@
       "violation_type": "过度检查",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": null,
       "trigger_keywords": [
         "A型超声检查",
@@ -2554,6 +3157,8 @@
       "violation_type": "分解收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": null,
       "trigger_keywords": [
         "眼球粘连分离",
@@ -2578,6 +3183,8 @@
       "violation_type": "超标准收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": null,
       "trigger_keywords": [
         "眼内能量",
@@ -2594,6 +3201,8 @@
       "violation_type": "重复收费",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": null,
       "trigger_keywords": [
         "眼内穿刺",
@@ -2610,6 +3219,8 @@
       "violation_type": "虚构医药服务项目",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": null,
       "trigger_keywords": [
         "特殊手法针法",
@@ -2633,6 +3244,8 @@
       "violation_type": "超药品说明书适应症用药",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [],
       "trigger_codes": [],
@@ -2645,6 +3258,8 @@
       "violation_type": "超医保限定二线用药",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [],
       "trigger_codes": [],
@@ -2657,6 +3272,8 @@
       "violation_type": "用药安全/禁忌",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [],
       "trigger_codes": [],
@@ -2669,6 +3286,8 @@
       "violation_type": "超医保限定支付适应症用药",
       "status": "ready",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [],
       "trigger_codes": [],
@@ -2681,6 +3300,8 @@
       "violation_type": "超医保限定支付适应症用药",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "人血白蛋白"
@@ -2695,6 +3316,8 @@
       "violation_type": "超医保限定支付适应症用药",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "聚桂醇注射液",
@@ -2710,6 +3333,8 @@
       "violation_type": "超医保限定支付适应症用药",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "果糖注射液",
@@ -2725,6 +3350,8 @@
       "violation_type": "超医保限定支付适应症用药",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "ω-3鱼油脂肪乳注射液",
@@ -2740,6 +3367,8 @@
       "violation_type": "超医保限定支付适应症用药",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "注射用盐酸万古霉素",
@@ -2755,6 +3384,8 @@
       "violation_type": "超医保限定支付适应症用药",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "复方氨基酸注射液(20AA)"
@@ -2769,6 +3400,8 @@
       "violation_type": "超医保限定支付适应症用药",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "恩替卡韦口服溶液",
@@ -2784,6 +3417,8 @@
       "violation_type": "超医保限定支付适应症用药",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "注射用福沙匹坦双葡甲胺",
@@ -2799,6 +3434,8 @@
       "violation_type": "超医保限定支付适应症用药",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "右酮洛芬氨丁三醇注射液",
@@ -2814,6 +3451,8 @@
       "violation_type": "超医保限定支付适应症用药",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "重组人血小板生成素注射液",
@@ -2829,6 +3468,8 @@
       "violation_type": "超医保限定支付适应症用药",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "注射用艾普拉唑钠",
@@ -2844,6 +3485,8 @@
       "violation_type": "超医保限定支付适应症用药",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "泽布替尼胶囊",
@@ -2859,6 +3502,8 @@
       "violation_type": "超医保限定支付适应症用药",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "拓培非格司亭注射液",
@@ -2874,6 +3519,8 @@
       "violation_type": "超医保限定支付适应症用药",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "盐酸莫西沙星注射液",
@@ -2889,6 +3536,8 @@
       "violation_type": "超药品说明书适应症用药",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "甲状腺片",
@@ -2904,6 +3553,8 @@
       "violation_type": "超药品说明书适应症用药",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "盐酸尼卡地平注射液",
@@ -2919,6 +3570,8 @@
       "violation_type": "超药品说明书适应症用药",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "盐酸二甲双胍片",
@@ -2934,6 +3587,8 @@
       "violation_type": "超药品说明书适应症用药",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "苯磺酸氨氯地平片",
@@ -2949,6 +3604,8 @@
       "violation_type": "超药品说明书适应症用药",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "缬沙坦片",
@@ -2964,6 +3621,8 @@
       "violation_type": "用药安全/禁忌",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "奥美拉唑肠溶片",
@@ -2979,6 +3638,8 @@
       "violation_type": "用药安全/禁忌",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "葡萄糖酸钙片",
@@ -2994,6 +3655,8 @@
       "violation_type": "用药安全/禁忌",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "碳酸钙片",
@@ -3009,6 +3672,8 @@
       "violation_type": "用药安全/禁忌",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "对乙酰氨基酚片",
@@ -3024,6 +3689,8 @@
       "violation_type": "用药安全/禁忌",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "乙酰半胱氨酸颗粒",
@@ -3039,6 +3706,8 @@
       "violation_type": "用药安全/禁忌",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "甲氧氯普胺片",
@@ -3054,6 +3723,8 @@
       "violation_type": "用药安全/禁忌",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "阿司匹林片",
@@ -3069,6 +3740,8 @@
       "violation_type": "用药安全/禁忌",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "瑞舒伐他汀钙片",
@@ -3084,6 +3757,8 @@
       "violation_type": "超医保限定二线用药",
       "status": "drafting",
       "priority": "P1",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": "M8",
       "trigger_keywords": [
         "艾普拉唑肠溶片",
@@ -3099,6 +3774,8 @@
       "violation_type": "过度诊疗",
       "status": "ready",
       "priority": "P0",
+      "rule_kind": "audit",
+      "clinical_criteria_ref": null,
       "derived_from_template": null,
       "trigger_keywords": [
         "毛果芸香碱",

@@ -402,3 +402,32 @@ curl --http1.1 \
 5. 命中项目以 `matched_items[]` 为准；三个兼容数组只用于现有模型快速接入。
 6. RD04 展开区直接读取 `eligibility_evaluation`，不要从大篇幅 reasoning 反解析限定条件。
 7. 忽略未知字段；若使用严格 DTO，将 `narrative` 建模为可选字段，以便 v2 后续继续只增不删。
+
+### 慢病结构化结果（新增可空字段）
+
+结果项新增 `clinical_criteria_evaluation: object | null`，v1 为 `results[]`，v2/v3 为
+`cards[]`；单条审计详情、历史结果列表和 SSE `result` / `new_audit_run` 同样携带该字段。
+旧字段不删除、不改名。历史行与普通 R/RD 结果为 `null`，不回填；肿瘤
+`eligibility_evaluation` 与慢病字段不能混用。
+
+对象采用 `chronic/contracts.py` 的 `ClinicalCriteriaEvaluation`，包含
+`domain=chronic_disease`、`rule_id`、病种、`policy_version`、`release_id`、
+`disease_revision_id`、`asset_checksum`、`execution_status`、`evaluation_mode`、
+`root_state`、`qualified`、`qualification_disposition`、`legacy_verdict`、
+`proof_tree`、`shadow_proof_tree`、`missing_items`、`conflict_items`、
+`blocking_reasons`、`data_quality_flags` 及版本/时间字段。节点保留四态、决定分支、
+至少 N 项上下界、观测值/单位/日期与证据锚点，不应从 reasoning 反解析。
+
+本次未签发资产固定 `BLOCKED / REVIEW_REQUIRED / qualified=null`；真实候选证据在
+`shadow_proof_tree`，不形成自动资格或违规。`data_quality_flags` 中
+`CHRONIC_CANDIDATE_MATCHED` 显示“慢病命中（待复核）”，
+`CHRONIC_NO_CANDIDATE` 显示“慢病无候选命中”；`CANDIDATE_EVIDENCE:CDxx.NODE`
+标识带已校验 locator、逐字 quote 和 raw_value 的节点。不能把所有 CD 结果计为命中。
+未来受审资产的 `QUALIFIED` 与 `NOT_QUALIFIED` 均兼容为 CLEAN，待复核兼容为
+INCONCLUSIVE；慢病结果排除于 Workbench 普通 V/I/C badge 和违规率。
+工作台本次 tag 为“慢病”，并兼容 `Chronic_Disease`，入口使用 `filter=all`。
+
+下游核查（2026-09-08，静态检查）：2C `ThirdPartyApiClient` 的 ObjectMapper 已设置
+`FAIL_ON_UNKNOWN_PROPERTIES=false`，`ResExternalAuditVO.ResExternalAuditItem` 尚无该字段，
+因此能够忽略新增字段，但不会转发/展示慢病结构。本次未修改 2C；未来消费时需补可空 DTO，
+保留未知字段兼容，不能把候选命中或 CLEAN 投影当作行政认定结果。

@@ -24,6 +24,7 @@ from typing import Any, Optional
 
 from javert.audit.result import AuditResult, Evidence, ToolCall
 from javert.audit.rule import Rule
+from javert.chronic.contracts import ClinicalCriteriaEvaluation
 from javert.config import PROJECT_ROOT, JavertConfig, get_config
 from javert.oncology.contracts import EligibilityEvaluation
 from javert.promises.models import PromiseTrace
@@ -40,9 +41,16 @@ from .models import (
     RunWithReviews,
     SinceLastLoginStats,
     User,
+    clinical_criteria_fields,
 )
 
 logger = logging.getLogger("javert.store.sqlserver_store")
+
+
+def _clinical_event_fields(raw, rule_id, verdict, eligibility) -> dict:
+    fields = clinical_criteria_fields(raw, rule_id, verdict, eligibility)
+    value = fields["clinical_criteria_evaluation"]
+    return {"clinical_criteria_evaluation": value.model_dump(mode="json") if value else None}
 
 
 class DuplicateUsernameError(Exception):
@@ -263,6 +271,10 @@ class SqlServerStore:
             if result.eligibility_evaluation is not None
             else None
         )
+        clinical_criteria_json = (
+            result.clinical_criteria_evaluation.model_dump_json()
+            if result.clinical_criteria_evaluation is not None else None
+        )
         promise_trace_json = (
             json.dumps(
                 result.promise_trace.model_dump(mode="json"),
@@ -334,13 +346,13 @@ class SqlServerStore:
                         INSERT INTO javert_audit_runs (
                             run_id, rule_id, patient_id, verdict, confidence,
                             headline, reasoning, evidence_json, tool_calls_json,
-                            eligibility_json, promise_trace_json, anchors_json,
+                            eligibility_json, promise_trace_json, anchors_json, clinical_criteria_json,
                             duration_ms, model, rule_yaml_snapshot, rule_status,
                             triggered_by, started_at, batch_tag, gate_tag, replay_key
                         ) VALUES (
                             :run_id, :rule_id, :patient_id, :verdict, :confidence,
                             :headline, :reasoning, :evidence_json, :tool_calls_json,
-                            :eligibility_json, :promise_trace_json, :anchors_json,
+                            :eligibility_json, :promise_trace_json, :anchors_json, :clinical_criteria_json,
                             :duration_ms, :model, :rule_yaml_snapshot, :rule_status,
                             :triggered_by, :started_at, :batch_tag, :gate_tag, :replay_key
                         )
@@ -357,6 +369,7 @@ class SqlServerStore:
                         "evidence_json": evidence_json,
                         "tool_calls_json": tool_calls_json,
                         "eligibility_json": eligibility_json,
+                        "clinical_criteria_json": clinical_criteria_json,
                         "promise_trace_json": promise_trace_json,
                         "anchors_json": result.anchors_json,
                         "duration_ms": int(result.duration_ms),
@@ -438,7 +451,7 @@ class SqlServerStore:
                     text(
                         "SELECT run_id, rule_id, patient_id, verdict, confidence, "
                         "reasoning, evidence_json, tool_calls_json, duration_ms, model, "
-                        "started_at, gate_tag, eligibility_json, promise_trace_json, anchors_json, headline "
+                        "started_at, gate_tag, eligibility_json, promise_trace_json, anchors_json, headline, clinical_criteria_json "
                         "FROM javert_audit_runs WHERE run_id = :rid"
                     ),
                     {"rid": run_id},
@@ -476,6 +489,10 @@ class SqlServerStore:
                 started_at=row[10],
                 gate_tag=row[11] or "",
                 eligibility_evaluation=eligibility,
+                clinical_criteria_evaluation=(
+                    ClinicalCriteriaEvaluation.model_validate_json(row[16])
+                    if len(row) > 16 and row[16] else None
+                ),
                 promise_trace=promise_trace,
                 anchors_json=(row[14] if len(row) > 14 else None),
             )
@@ -819,7 +836,7 @@ class SqlServerStore:
         # OCR 是患者来源属性；后续普通重跑即使 batch_tag=NULL，也不能把 ocr1.0 覆盖掉。
         sql_counts = """
             WITH latest AS (
-                SELECT id, patient_id, rule_id, verdict, run_id, batch_tag, created_at,
+                SELECT id, patient_id, rule_id, verdict, run_id, batch_tag, created_at, clinical_criteria_json,
                        ROW_NUMBER() OVER (
                            PARTITION BY patient_id, rule_id
                            ORDER BY created_at DESC, id DESC
@@ -837,6 +854,9 @@ class SqlServerStore:
             patient_tag AS (
                 SELECT patient_id,
                        CASE
+                           WHEN MAX(CASE WHEN batch_tag IN (N'Chronic_Disease', N'慢病') THEN 1 ELSE 0 END) = 1
+                               THEN CASE WHEN MAX(CASE WHEN batch_tag = N'慢病' THEN 1 ELSE 0 END) = 1
+                                         THEN N'慢病' ELSE N'Chronic_Disease' END
                            WHEN MAX(CASE WHEN batch_tag = N'ocr1.0' THEN 1 ELSE 0 END) = 1
                                THEN N'ocr1.0'
                            ELSE MAX(CASE WHEN rn_tag = 1 THEN batch_tag END)
@@ -845,11 +865,17 @@ class SqlServerStore:
                 GROUP BY patient_id
             )
             SELECT latest.patient_id,
-                   SUM(CASE WHEN verdict = N'VIOLATION' THEN 1 ELSE 0 END) AS v_count,
-                   SUM(CASE WHEN verdict = N'INCONCLUSIVE' THEN 1 ELSE 0 END) AS i_count,
-                   SUM(CASE WHEN verdict = N'CLEAN' THEN 1 ELSE 0 END) AS c_count,
+                   SUM(CASE WHEN verdict = N'VIOLATION' AND rule_id NOT LIKE N'CD%' THEN 1 ELSE 0 END) AS v_count,
+                   SUM(CASE WHEN verdict = N'INCONCLUSIVE' AND rule_id NOT LIKE N'CD%' THEN 1 ELSE 0 END) AS i_count,
+                   SUM(CASE WHEN verdict = N'CLEAN' AND latest.rule_id NOT LIKE N'CD%' THEN 1 ELSE 0 END) AS c_count,
                    MAX(pt.batch_tag) AS batch_tag,
-                   MAX(latest.created_at) AS updated_at
+                   MAX(latest.created_at) AS updated_at,
+                   SUM(CASE WHEN latest.rule_id LIKE N'CD%' THEN 1 ELSE 0 END) AS chronic_count,
+                   SUM(CASE WHEN latest.rule_id LIKE N'CD%' AND
+                       JSON_QUERY(CASE WHEN ISJSON(clinical_criteria_json) = 1
+                                       THEN clinical_criteria_json ELSE NULL END, '$.data_quality_flags')
+                       LIKE N'%"CHRONIC_CANDIDATE_MATCHED"%'
+                       THEN 1 ELSE 0 END) AS chronic_matched_count
             FROM latest
             LEFT JOIN patient_tag pt ON pt.patient_id = latest.patient_id
             WHERE latest.rn = 1
@@ -863,12 +889,12 @@ class SqlServerStore:
                        ROW_NUMBER() OVER (PARTITION BY patient_id, rule_id ORDER BY created_at DESC) AS rn
                 FROM javert_audit_runs
             )
-            SELECT l.patient_id, l.verdict, COUNT(DISTINCT l.run_id) AS n
+            SELECT l.patient_id, CASE WHEN l.rule_id LIKE N'CD%' THEN N'CHRONIC' ELSE l.verdict END, COUNT(DISTINCT l.run_id) AS n
             FROM latest l
             INNER JOIN javert_vio_review rv
                     ON rv.run_id = l.run_id AND rv.is_latest = 1
             WHERE l.rn = 1
-            GROUP BY l.patient_id, l.verdict
+            GROUP BY l.patient_id, CASE WHEN l.rule_id LIKE N'CD%' THEN N'CHRONIC' ELSE l.verdict END
         """
         try:
             with engine.connect() as conn:
@@ -891,6 +917,7 @@ class SqlServerStore:
             c = int(r[3] or 0)
             batch_tag = r[4] if len(r) > 4 else None
             updated_at = r[5] if len(r) > 5 else None
+            chronic = int(r[6] or 0) if len(r) > 6 else 0
             # filter 决定 sidebar 是否展示 + relevant_count 分母
             if filter_mode == "v_and_i":
                 relevant = v + i
@@ -899,9 +926,9 @@ class SqlServerStore:
             elif filter_mode == "i_only":
                 relevant = i
             else:  # 'all'
-                relevant = v + i + c
+                relevant = v + i + c + chronic
             # OCR 患者即使全部 CLEAN 也必须可发现；详情链接会自动切到 all。
-            if filter_mode != "all" and relevant == 0 and batch_tag != "ocr1.0":
+            if filter_mode != "all" and relevant == 0 and batch_tag not in {"ocr1.0", "Chronic_Disease", "慢病"}:
                 continue
             rmap = reviewed.get(pid, {})
             if filter_mode == "v_and_i":
@@ -919,6 +946,8 @@ class SqlServerStore:
                     v_count=v,
                     i_count=i,
                     c_count=c,
+                    chronic_count=chronic,
+                    chronic_matched_count=int(r[7] or 0) if len(r) > 7 else 0,
                     reviewed_count=reviewed_n,
                     relevant_count=relevant,
                     fully_reviewed=fully,
@@ -959,7 +988,7 @@ class SqlServerStore:
                 FROM javert_audit_runs
                 {tag_filter}
             )
-            SELECT rule_id, patient_id, verdict FROM latest WHERE rn = 1
+            SELECT rule_id, patient_id, verdict FROM latest WHERE rn = 1 AND rule_id NOT LIKE N'CD%'
         """
         params = {"tag": batch_tag} if batch_tag is not None else {}
         try:
@@ -984,6 +1013,12 @@ class SqlServerStore:
                         "WHEN EXISTS (SELECT 1 FROM javert_audit_runs "
                         "             WHERE patient_id = :pid AND batch_tag = N'ocr1.0') "
                         "THEN N'ocr1.0' "
+                        "WHEN EXISTS (SELECT 1 FROM javert_audit_runs "
+                        "             WHERE patient_id = :pid AND batch_tag = N'慢病') "
+                        "THEN N'慢病' "
+                        "WHEN EXISTS (SELECT 1 FROM javert_audit_runs "
+                        "             WHERE patient_id = :pid AND batch_tag = N'Chronic_Disease') "
+                        "THEN N'Chronic_Disease' "
                         "ELSE (SELECT TOP (1) batch_tag FROM javert_audit_runs "
                         "      WHERE patient_id = :pid ORDER BY created_at DESC, run_id DESC) END"
                     ),
@@ -1018,7 +1053,7 @@ class SqlServerStore:
             SELECT run_id, rule_id, patient_id, verdict, confidence,
                    reasoning, evidence_json, tool_calls_json,
                    duration_ms, model, started_at, created_at, triggered_by, batch_tag,
-                   gate_tag, eligibility_json, promise_trace_json, headline
+                   gate_tag, eligibility_json, promise_trace_json, headline, clinical_criteria_json
             FROM javert_audit_runs
             WHERE patient_id = :pid
             ORDER BY rule_id ASC, created_at DESC
@@ -1075,12 +1110,16 @@ class SqlServerStore:
         out: list[RunWithReviews] = []
         for rule_id, runs in by_rule.items():
             latest = runs[0]
-            if latest[3] not in pass_set:
+            if latest[3] not in pass_set or (filter_mode != "all" and rule_id.startswith("CD")):
                 continue
             history_runs = []
             for h in runs[1:]:
                 history_runs.append(
                     HistoricalRun(
+                        **clinical_criteria_fields(
+                            h[18] if len(h) > 18 else None, rule_id, h[3],
+                            h[15] if len(h) > 15 else None,
+                        ),
                         run_id=h[0],
                         verdict=h[3],
                         confidence=float(h[4] or 0.0),
@@ -1103,6 +1142,10 @@ class SqlServerStore:
                 )
             out.append(
                 RunWithReviews(
+                    **clinical_criteria_fields(
+                        latest[18] if len(latest) > 18 else None, rule_id, latest[3],
+                        latest[15] if len(latest) > 15 else None,
+                    ),
                     run_id=latest[0],
                     rule_id=latest[1],
                     patient_id=latest[2],
@@ -1288,8 +1331,8 @@ class SqlServerStore:
                     row = conn.execute(
                         text(
                             "SELECT COUNT(DISTINCT patient_id), "
-                            "SUM(CASE WHEN verdict = N'VIOLATION' THEN 1 ELSE 0 END), "
-                            "SUM(CASE WHEN verdict = N'INCONCLUSIVE' THEN 1 ELSE 0 END) "
+                            "SUM(CASE WHEN verdict = N'VIOLATION' AND rule_id NOT LIKE N'CD%' THEN 1 ELSE 0 END), "
+                            "SUM(CASE WHEN verdict = N'INCONCLUSIVE' AND rule_id NOT LIKE N'CD%' THEN 1 ELSE 0 END) "
                             "FROM javert_audit_runs"
                         )
                     ).fetchone()
@@ -1297,8 +1340,8 @@ class SqlServerStore:
                     row = conn.execute(
                         text(
                             "SELECT COUNT(DISTINCT patient_id), "
-                            "SUM(CASE WHEN verdict = N'VIOLATION' THEN 1 ELSE 0 END), "
-                            "SUM(CASE WHEN verdict = N'INCONCLUSIVE' THEN 1 ELSE 0 END) "
+                            "SUM(CASE WHEN verdict = N'VIOLATION' AND rule_id NOT LIKE N'CD%' THEN 1 ELSE 0 END), "
+                            "SUM(CASE WHEN verdict = N'INCONCLUSIVE' AND rule_id NOT LIKE N'CD%' THEN 1 ELSE 0 END) "
                             "FROM javert_audit_runs WHERE created_at > :since"
                         ),
                         {"since": since},
@@ -1345,7 +1388,7 @@ class SqlServerStore:
                 rows = conn.execute(
                     text(
                         f"SELECT TOP ({limit_int}) run_id, patient_id, rule_id, verdict, "
-                        "confidence, created_at, eligibility_json, promise_trace_json, headline "
+                        "confidence, created_at, eligibility_json, promise_trace_json, headline, clinical_criteria_json "
                         "FROM javert_audit_runs "
                         "WHERE created_at > :last_seen "
                         "ORDER BY created_at ASC"
@@ -1367,6 +1410,9 @@ class SqlServerStore:
                             json.loads(r[7]) if len(r) > 7 and r[7] else None
                         ),
                         "headline": (r[8] or "") if len(r) > 8 else "",
+                        **_clinical_event_fields(
+                            r[9] if len(r) > 9 else None, r[2], r[3], r[6] if len(r) > 6 else None,
+                        ),
                     }
                     for r in rows
                 ]
@@ -1422,7 +1468,7 @@ class SqlServerStore:
                 rows = conn.execute(
                     text(
                         f"SELECT TOP ({limit_int}) id, run_id, patient_id, rule_id, "
-                        "verdict, confidence, created_at, eligibility_json, promise_trace_json, headline "
+                        "verdict, confidence, created_at, eligibility_json, promise_trace_json, headline, clinical_criteria_json "
                         "FROM javert_audit_runs "
                         "WHERE id > :last_id "
                         "ORDER BY id ASC"
@@ -1445,6 +1491,9 @@ class SqlServerStore:
                             json.loads(r[8]) if len(r) > 8 and r[8] else None
                         ),
                         "headline": (r[9] or "") if len(r) > 9 else "",
+                        **_clinical_event_fields(
+                            r[10] if len(r) > 10 else None, r[3], r[4], r[7] if len(r) > 7 else None,
+                        ),
                     }
                     for r in rows
                 ]
@@ -1485,6 +1534,7 @@ class SqlServerStore:
                 SELECT run_id, rule_id, patient_id, verdict, gate_tag,
                        ROW_NUMBER() OVER (PARTITION BY patient_id, rule_id ORDER BY created_at DESC) AS rn
                 FROM javert_audit_runs
+                WHERE rule_id NOT LIKE N'CD%'
             )
         """
         try:
@@ -1651,6 +1701,8 @@ class SqlServerStore:
             "i_only": "r.verdict = N'INCONCLUSIVE'",
             "all": "1=1",
         }.get(scope, "r.verdict IN (N'VIOLATION', N'INCONCLUSIVE')")
+        if scope != "all":
+            verdict_clause += " AND r.rule_id NOT LIKE N'CD%'"
         # latest-per-(rule_id, patient_id) — 导出和工作台一致, 不带重复行
         _LATEST_CTE = (
             "WITH latest AS ("

@@ -1,0 +1,2561 @@
+{
+  "asset_checksum": "sha256:c128ff6e99a8ab6d031bd08506f9b19d120c90442654fb8c0eedb925c515de92",
+  "asset_type": "chronic_disease_criteria",
+  "ordered_disease_revision_ids": [
+    "CD01-2025-r1",
+    "CD02-2025-r1",
+    "CD03-2025-r1",
+    "CD04-2025-r1",
+    "CD05-2025-r1",
+    "CD06-2025-r1",
+    "CD07-2025-r1",
+    "CD08-2025-r1",
+    "CD09-2025-r1",
+    "CD10-2025-r1",
+    "CD11-2025-r1",
+    "CD12-2025-r1",
+    "CD13-2025-r1",
+    "CD14-2025-r1",
+    "CD15-2025-r1",
+    "CD16-2025-r1",
+    "CD17-2025-r1",
+    "CD18-2025-r1",
+    "CD19-2025-r1",
+    "CD20-2025-r1"
+  ],
+  "policy_sets": [
+    {
+      "disease_revisions": [
+        {
+          "blocker": {
+            "affected_node_ids": [
+              "CD01.ROOT",
+              "CD01.CBC_2OF3",
+              "CD01.MARROW_ASP",
+              "CD01.MARROW_BIOPSY",
+              "CD01.EXCLUSION"
+            ],
+            "block_reason_code": "DIAGNOSTIC_BASIS_COMBINATION_AMBIGUITY",
+            "prohibited_fallbacks": [
+              "2020_POLICY",
+              "LLM",
+              "LOCAL_DEFAULT"
+            ],
+            "required_approver_roles": [
+              "医保办",
+              "血液科专家"
+            ],
+            "resolution_reference": null,
+            "unresolved_question": "诊断依据1-4是全部必备、至少若干项还是其他组合？"
+          },
+          "canonical_disease_id": "aplastic-anemia",
+          "coverage_class": "C",
+          "coverage_notes": "2025版为新认定主口径；不能用2020版补缺",
+          "disease_name": "再生障碍性贫血",
+          "effective_from": "2025-09-02",
+          "effective_to": null,
+          "execution_status": "BLOCKED",
+          "lifecycle": "draft",
+          "nodes": [
+            {
+              "authoring_status": "BLOCKED",
+              "compilation_status": "blocked",
+              "criterion_id": "",
+              "evidence_domains": [
+                "多域"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "",
+                "source_node_type": "ALL",
+                "summary": "临床表现分支 AND 诊断依据块"
+              },
+              "fact_type": "",
+              "node_id": "CD01.ROOT",
+              "node_type": "BLOCKED_ROOT",
+              "notes": "诊断依据1-4组合待确认",
+              "operator": null,
+              "parent_node_id": null,
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD01-ROOT-P04"
+              ],
+              "summary": "临床表现分支 AND 诊断依据块",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "READY",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "文书",
+                "诊断"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "至少1项",
+                "source_node_type": "ANY",
+                "summary": "贫血、感染、出血任一"
+              },
+              "fact_type": "",
+              "node_id": "CD01.CLINICAL_ANY",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "OR",
+              "parent_node_id": "CD01.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD01-CLINICAL_ANY-P04"
+              ],
+              "summary": "贫血、感染、出血任一",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "READY",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "检验"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "3项至少2项；HGB<100g/L；PLT<50×10^9/L；ANC<1.5×10^9/L",
+                "source_node_type": "AT_LEAST_N",
+                "summary": "HGB、PLT、ANC阈值"
+              },
+              "fact_type": "",
+              "node_id": "CD01.CBC_2OF3",
+              "node_type": "LOGIC",
+              "notes": "单位需双人复核",
+              "operator": "AT_LEAST_N",
+              "parent_node_id": "CD01.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD01-CBC_2OF3-P04"
+              ],
+              "summary": "HGB、PLT、ANC阈值",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": 2,
+              "unit_policy": {
+                "review_status": "needs_review",
+                "source_declaration": "3项至少2项；HGB<100g/L；PLT<50×10^9/L；ANC<1.5×10^9/L"
+              }
+            },
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "CD01.MARROW_ASP",
+              "evidence_domains": [
+                "病理",
+                "文书"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "报告结论",
+                "source_node_type": "LEAF",
+                "summary": "多部位骨髓穿刺符合标准"
+              },
+              "fact_type": "clinical_assertion",
+              "node_id": "CD01.MARROW_ASP",
+              "node_type": "LEAF",
+              "notes": "与其余诊断依据如何组合待确认",
+              "operator": null,
+              "parent_node_id": "CD01.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD01-MARROW_ASP-P04"
+              ],
+              "summary": "多部位骨髓穿刺符合标准",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "CD01.MARROW_BIOPSY",
+              "evidence_domains": [
+                "病理",
+                "文书"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "报告结论",
+                "source_node_type": "LEAF",
+                "summary": "髂骨骨髓活检符合标准"
+              },
+              "fact_type": "clinical_assertion",
+              "node_id": "CD01.MARROW_BIOPSY",
+              "node_type": "LEAF",
+              "notes": "与其余诊断依据如何组合待确认",
+              "operator": null,
+              "parent_node_id": "CD01.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD01-MARROW_BIOPSY-P04"
+              ],
+              "summary": "髂骨骨髓活检符合标准",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "CD01.EXCLUSION",
+              "evidence_domains": [
+                "文书",
+                "检验"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "明确排除证据",
+                "source_node_type": "LEAF",
+                "summary": "排除PNH、Fanconi贫血、Evans综合征等"
+              },
+              "fact_type": "laboratory_observation",
+              "node_id": "CD01.EXCLUSION",
+              "node_type": "LEAF",
+              "notes": "缺失不等于已排除",
+              "operator": null,
+              "parent_node_id": "CD01.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD01-EXCLUSION-P04"
+              ],
+              "summary": "排除PNH、Fanconi贫血、Evans综合征等",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            }
+          ],
+          "policy_version": "2025",
+          "review_status": "needs_review",
+          "revision_id": "CD01-2025-r1",
+          "root_node_id": "CD01.ROOT",
+          "rule_id": "CD01",
+          "source_fragment_ids": [
+            "SRC2025-CD01-ROOT-P04"
+          ]
+        },
+        {
+          "blocker": null,
+          "canonical_disease_id": "chronic-kidney-disease-stage-3-plus",
+          "coverage_class": "A",
+          "coverage_notes": "最适合首批端到端验证",
+          "disease_name": "慢性肾功能不全（III期以上）",
+          "effective_from": "2025-09-02",
+          "effective_to": null,
+          "execution_status": "EVALUATABLE",
+          "lifecycle": "draft",
+          "nodes": [
+            {
+              "authoring_status": "READY",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "诊断",
+                "检验"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "",
+                "source_node_type": "ALL",
+                "summary": "病史 AND 重复GFR阈值 AND 时间跨度"
+              },
+              "fact_type": "",
+              "node_id": "CD02.ROOT",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "AND",
+              "parent_node_id": null,
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD02-ROOT-P05"
+              ],
+              "summary": "病史 AND 重复GFR阈值 AND 时间跨度",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "READY",
+              "compilation_status": "compiled",
+              "criterion_id": "CD02.HISTORY",
+              "evidence_domains": [
+                "诊断",
+                "文书"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "存在",
+                "source_node_type": "LEAF",
+                "summary": "慢性肾功能不全病史"
+              },
+              "fact_type": "clinical_assertion",
+              "node_id": "CD02.HISTORY",
+              "node_type": "LEAF",
+              "notes": "",
+              "operator": null,
+              "parent_node_id": "CD02.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD02-HISTORY-P05"
+              ],
+              "summary": "慢性肾功能不全病史",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "READY",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "检验"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "至少2次",
+                "source_node_type": "AT_LEAST_N",
+                "summary": "GFR<60ml/(min·1.73m²)"
+              },
+              "fact_type": "",
+              "node_id": "CD02.GFR_REPEAT",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "AT_LEAST_N",
+              "parent_node_id": "CD02.ROOT",
+              "repetition_policy": {
+                "review_status": "needs_review",
+                "source_declaration": "至少2次GFR<60ml/(min·1.73m²)"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD02-GFR_REPEAT-P05"
+              ],
+              "summary": "GFR<60ml/(min·1.73m²)",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": 2,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "READY",
+              "compilation_status": "compiled",
+              "criterion_id": "CD02.GFR_SPAN",
+              "evidence_domains": [
+                "检验日期"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "≥3个月",
+                "source_node_type": "LEAF",
+                "summary": "符合阈值的两次GFR跨度"
+              },
+              "fact_type": "observation_series",
+              "node_id": "CD02.GFR_SPAN",
+              "node_type": "LEAF",
+              "notes": "",
+              "operator": null,
+              "parent_node_id": "CD02.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD02-GFR_SPAN-P05"
+              ],
+              "summary": "符合阈值的两次GFR跨度",
+              "temporal_policy": {
+                "review_status": "needs_review",
+                "source_declaration": "≥3个月符合阈值的两次GFR跨度"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            }
+          ],
+          "policy_version": "2025",
+          "review_status": "needs_review",
+          "revision_id": "CD02-2025-r1",
+          "root_node_id": "CD02.ROOT",
+          "rule_id": "CD02",
+          "source_fragment_ids": [
+            "SRC2025-CD02-ROOT-P05"
+          ]
+        },
+        {
+          "blocker": null,
+          "canonical_disease_id": "diabetes-with-complications",
+          "coverage_class": "B",
+          "coverage_notes": "候选多，但必须证明至少一个合并症分支",
+          "disease_name": "糖尿病合并症",
+          "effective_from": "2025-09-02",
+          "effective_to": null,
+          "execution_status": "EVALUATABLE",
+          "lifecycle": "draft",
+          "nodes": [
+            {
+              "authoring_status": "READY",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "多域"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "",
+                "source_node_type": "ALL",
+                "summary": "糖尿病病史 AND 并发症任一"
+              },
+              "fact_type": "",
+              "node_id": "CD03.ROOT",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "AND",
+              "parent_node_id": null,
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD03-ROOT-P05",
+                "SRC2025-CD03-ROOT-P06"
+              ],
+              "summary": "糖尿病病史 AND 并发症任一",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "READY",
+              "compilation_status": "compiled",
+              "criterion_id": "CD03.DM_HISTORY",
+              "evidence_domains": [
+                "诊断",
+                "文书"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "存在",
+                "source_node_type": "LEAF",
+                "summary": "明确糖尿病病史"
+              },
+              "fact_type": "clinical_assertion",
+              "node_id": "CD03.DM_HISTORY",
+              "node_type": "LEAF",
+              "notes": "",
+              "operator": null,
+              "parent_node_id": "CD03.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD03-DM_HISTORY-P05"
+              ],
+              "summary": "明确糖尿病病史",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "多域"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "至少1分支",
+                "source_node_type": "ANY",
+                "summary": "肾病/视网膜/周围神经/四肢动脉/冠心病任一"
+              },
+              "fact_type": "",
+              "node_id": "CD03.COMPLICATION_ANY",
+              "node_type": "LOGIC",
+              "notes": "肾病子项组合建议签发",
+              "operator": "OR",
+              "parent_node_id": "CD03.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD03-COMPLICATION_ANY-P05",
+                "SRC2025-CD03-COMPLICATION_ANY-P06"
+              ],
+              "summary": "肾病/视网膜/周围神经/四肢动脉/冠心病任一",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "检验"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "任一（待签发）",
+                "source_node_type": "ANY",
+                "summary": "eGFR<60；尿蛋白+；蛋白定量≥300mg/g或≥0.5g/24h；UACR≥300mg/g"
+              },
+              "fact_type": "",
+              "node_id": "CD03.DKD",
+              "node_type": "LOGIC",
+              "notes": "原文子项组合需确认",
+              "operator": "OR",
+              "parent_node_id": "CD03.COMPLICATION_ANY",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD03-DKD-P05"
+              ],
+              "summary": "eGFR<60；尿蛋白+；蛋白定量≥300mg/g或≥0.5g/24h；UACR≥300mg/g",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "CD03.RETINA",
+              "evidence_domains": [
+                "眼底检查"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "II期及以上",
+                "source_node_type": "LEAF",
+                "summary": "糖尿病视网膜病变"
+              },
+              "fact_type": "examination_finding",
+              "node_id": "CD03.RETINA",
+              "node_type": "LEAF",
+              "notes": "",
+              "operator": null,
+              "parent_node_id": "CD03.COMPLICATION_ANY",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD03-RETINA-P05"
+              ],
+              "summary": "糖尿病视网膜病变",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "文书",
+                "电生理"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "两项均有",
+                "source_node_type": "ALL",
+                "summary": "周围神经病理性疼痛 AND 神经传导速度下降"
+              },
+              "fact_type": "",
+              "node_id": "CD03.NEUROPATHY",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "AND",
+              "parent_node_id": "CD03.COMPLICATION_ANY",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD03-NEUROPATHY-P05"
+              ],
+              "summary": "周围神经病理性疼痛 AND 神经传导速度下降",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "READY",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "血管检查",
+                "手术"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "任一",
+                "source_node_type": "ANY",
+                "summary": "动脉狭窄≥50%或坏疽/截趾/截肢"
+              },
+              "fact_type": "",
+              "node_id": "CD03.PAD",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "OR",
+              "parent_node_id": "CD03.COMPLICATION_ANY",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD03-PAD-P05"
+              ],
+              "summary": "动脉狭窄≥50%或坏疽/截趾/截肢",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "READY",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "冠脉",
+                "心超",
+                "手术"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "任一",
+                "source_node_type": "ANY",
+                "summary": "左主干≥50%或单支≥70%；EF≤50%；PCI/CABG术后"
+              },
+              "fact_type": "",
+              "node_id": "CD03.CAD_BRANCH",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "OR",
+              "parent_node_id": "CD03.COMPLICATION_ANY",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD03-CAD_BRANCH-P06"
+              ],
+              "summary": "左主干≥50%或单支≥70%；EF≤50%；PCI/CABG术后",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            }
+          ],
+          "policy_version": "2025",
+          "review_status": "needs_review",
+          "revision_id": "CD03-2025-r1",
+          "root_node_id": "CD03.ROOT",
+          "rule_id": "CD03",
+          "source_fragment_ids": [
+            "SRC2025-CD03-ROOT-P05",
+            "SRC2025-CD03-ROOT-P06"
+          ]
+        },
+        {
+          "blocker": null,
+          "canonical_disease_id": "atrial-fibrillation",
+          "coverage_class": "B",
+          "coverage_notes": "诊断名只能召回，不能直接满足规则",
+          "disease_name": "心房颤动",
+          "effective_from": "2025-09-02",
+          "effective_to": null,
+          "execution_status": "EVALUATABLE",
+          "lifecycle": "draft",
+          "nodes": [
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "文书",
+                "检查"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "",
+                "source_node_type": "ALL",
+                "summary": "典型表现 AND ECG AND Holter AND 持续性分支"
+              },
+              "fact_type": "",
+              "node_id": "CD04.ROOT",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "AND",
+              "parent_node_id": null,
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD04-ROOT-P06"
+              ],
+              "summary": "典型表现 AND ECG AND Holter AND 持续性分支",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "CD04.ECG",
+              "evidence_domains": [
+                "ECG"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "报告支持",
+                "source_node_type": "LEAF",
+                "summary": "P波消失/F波、室率极不规则等房颤特征"
+              },
+              "fact_type": "examination_finding",
+              "node_id": "CD04.ECG",
+              "node_type": "LEAF",
+              "notes": "",
+              "operator": null,
+              "parent_node_id": "CD04.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD04-ECG-P06"
+              ],
+              "summary": "P波消失/F波、室率极不规则等房颤特征",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "CD04.HOLTER",
+              "evidence_domains": [
+                "Holter"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "全时限",
+                "source_node_type": "LEAF",
+                "summary": "24h动态心电图全时限显示房颤"
+              },
+              "fact_type": "examination_finding",
+              "node_id": "CD04.HOLTER",
+              "node_type": "LEAF",
+              "notes": "",
+              "operator": null,
+              "parent_node_id": "CD04.ROOT",
+              "repetition_policy": {
+                "review_status": "needs_review",
+                "source_declaration": "全时限24h动态心电图全时限显示房颤"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD04-HOLTER-P06"
+              ],
+              "summary": "24h动态心电图全时限显示房颤",
+              "temporal_policy": {
+                "review_status": "needs_review",
+                "source_declaration": "全时限24h动态心电图全时限显示房颤"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "READY",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "文书",
+                "诊断"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "任一",
+                "source_node_type": "ANY",
+                "summary": "发作≥7天且不能自行终止；或明确持久/永久性房颤"
+              },
+              "fact_type": "",
+              "node_id": "CD04.PERSISTENCE_ANY",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "OR",
+              "parent_node_id": "CD04.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD04-PERSISTENCE_ANY-P06"
+              ],
+              "summary": "发作≥7天且不能自行终止；或明确持久/永久性房颤",
+              "temporal_policy": {
+                "review_status": "needs_review",
+                "source_declaration": "任一发作≥7天且不能自行终止；或明确持久/永久性房颤"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            }
+          ],
+          "policy_version": "2025",
+          "review_status": "needs_review",
+          "revision_id": "CD04-2025-r1",
+          "root_node_id": "CD04.ROOT",
+          "rule_id": "CD04",
+          "source_fragment_ids": [
+            "SRC2025-CD04-ROOT-P06"
+          ]
+        },
+        {
+          "blocker": null,
+          "canonical_disease_id": "coronary-heart-disease-nyha-3-plus",
+          "coverage_class": "B",
+          "coverage_notes": "不以PCI/CABG单独代替心功能不全3级",
+          "disease_name": "冠心病（心功能不全3级以上）",
+          "effective_from": "2025-09-02",
+          "effective_to": null,
+          "execution_status": "EVALUATABLE",
+          "lifecycle": "draft",
+          "nodes": [
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "多域"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "",
+                "source_node_type": "ALL",
+                "summary": "冠心病病史/典型症状 AND NYHA≥3 AND 必要心超异常"
+              },
+              "fact_type": "",
+              "node_id": "CD05.ROOT",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "AND",
+              "parent_node_id": null,
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD05-ROOT-P06",
+                "SRC2025-CD05-ROOT-P07"
+              ],
+              "summary": "冠心病病史/典型症状 AND NYHA≥3 AND 必要心超异常",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "CD05.NYHA",
+              "evidence_domains": [
+                "文书",
+                "诊断"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "≥3级",
+                "source_node_type": "LEAF",
+                "summary": "NYHA心功能分级"
+              },
+              "fact_type": "clinical_assertion",
+              "node_id": "CD05.NYHA",
+              "node_type": "LEAF",
+              "notes": "",
+              "operator": null,
+              "parent_node_id": "CD05.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD05-NYHA-P07"
+              ],
+              "summary": "NYHA心功能分级",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "READY",
+              "compilation_status": "compiled",
+              "criterion_id": "CD05.ECHO",
+              "evidence_domains": [
+                "心超"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "必要条件",
+                "source_node_type": "LEAF",
+                "summary": "心室壁/左室功能异常或EF<50"
+              },
+              "fact_type": "examination_finding",
+              "node_id": "CD05.ECHO",
+              "node_type": "LEAF",
+              "notes": "异常与EF细节待签发",
+              "operator": null,
+              "parent_node_id": "CD05.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD05-ECHO-P07"
+              ],
+              "summary": "心室壁/左室功能异常或EF<50",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            }
+          ],
+          "policy_version": "2025",
+          "review_status": "needs_review",
+          "revision_id": "CD05-2025-r1",
+          "root_node_id": "CD05.ROOT",
+          "rule_id": "CD05",
+          "source_fragment_ids": [
+            "SRC2025-CD05-ROOT-P06",
+            "SRC2025-CD05-ROOT-P07"
+          ]
+        },
+        {
+          "blocker": null,
+          "canonical_disease_id": "rheumatic-heart-disease-nyha-3-plus",
+          "coverage_class": "B",
+          "coverage_notes": "技术可覆盖，当前样本不可验证",
+          "disease_name": "风湿性心脏病（心功能不全3级以上）",
+          "effective_from": "2025-09-02",
+          "effective_to": null,
+          "execution_status": "EVALUATABLE",
+          "lifecycle": "draft",
+          "nodes": [
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "诊断",
+                "文书",
+                "心超"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "",
+                "source_node_type": "ALL",
+                "summary": "病史 AND NYHA≥3 AND 风湿性瓣膜心超"
+              },
+              "fact_type": "",
+              "node_id": "CD06.ROOT",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "AND",
+              "parent_node_id": null,
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD06-ROOT-P07",
+                "SRC2025-CD06-ROOT-P08"
+              ],
+              "summary": "病史 AND NYHA≥3 AND 风湿性瓣膜心超",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            }
+          ],
+          "policy_version": "2025",
+          "review_status": "needs_review",
+          "revision_id": "CD06-2025-r1",
+          "root_node_id": "CD06.ROOT",
+          "rule_id": "CD06",
+          "source_fragment_ids": [
+            "SRC2025-CD06-ROOT-P07",
+            "SRC2025-CD06-ROOT-P08"
+          ]
+        },
+        {
+          "blocker": {
+            "affected_node_ids": [
+              "CD07.ROOT",
+              "CD07.BP_GRADE3",
+              "CD07.GRADE12_DAMAGE"
+            ],
+            "block_reason_code": "POLICY_ROOT_LOGIC_CONFLICT",
+            "prohibited_fallbacks": [
+              "2020_POLICY",
+              "LLM",
+              "LOCAL_DEFAULT"
+            ],
+            "required_approver_roles": [
+              "医保办",
+              "心血管专家"
+            ],
+            "resolution_reference": null,
+            "unresolved_question": "3级血压路径与1-2级伴靶器官损害路径的根关系是OR还是AND？"
+          },
+          "canonical_disease_id": "hypertension-grade-3-plus",
+          "coverage_class": "C",
+          "coverage_notes": "候选最多，但不能由工程侧猜口径",
+          "disease_name": "高血压（III期以上）",
+          "effective_from": "2025-09-02",
+          "effective_to": null,
+          "execution_status": "BLOCKED",
+          "lifecycle": "draft",
+          "nodes": [
+            {
+              "authoring_status": "BLOCKED",
+              "compilation_status": "blocked",
+              "criterion_id": "",
+              "evidence_domains": [
+                "多域"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "",
+                "source_node_type": "BLOCKED",
+                "summary": "3级路径与1-2级+靶器官路径逻辑冲突"
+              },
+              "fact_type": "",
+              "node_id": "CD07.ROOT",
+              "node_type": "BLOCKED_ROOT",
+              "notes": "需主管部门书面解释",
+              "operator": null,
+              "parent_node_id": null,
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD07-ROOT-P08",
+                "SRC2025-CD07-ROOT-P09"
+              ],
+              "summary": "3级路径与1-2级+靶器官路径逻辑冲突",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "READY",
+              "compilation_status": "compiled",
+              "criterion_id": "CD07.BP_GRADE3",
+              "evidence_domains": [
+                "生命体征",
+                "文书"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "3级",
+                "source_node_type": "LEAF",
+                "summary": "收缩压≥180和/或舒张压≥110"
+              },
+              "fact_type": "clinical_assertion",
+              "node_id": "CD07.BP_GRADE3",
+              "node_type": "LEAF",
+              "notes": "",
+              "operator": null,
+              "parent_node_id": "CD07.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD07-BP_GRADE3-P08"
+              ],
+              "summary": "收缩压≥180和/或舒张压≥110",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "READY",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "多域"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "",
+                "source_node_type": "ALL",
+                "summary": "高血压1-2级 AND 靶器官损害/临床合并症任一"
+              },
+              "fact_type": "",
+              "node_id": "CD07.GRADE12_DAMAGE",
+              "node_type": "LOGIC",
+              "notes": "仅提取，不聚合定性",
+              "operator": "AND",
+              "parent_node_id": "CD07.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD07-GRADE12_DAMAGE-P08",
+                "SRC2025-CD07-GRADE12_DAMAGE-P09"
+              ],
+              "summary": "高血压1-2级 AND 靶器官损害/临床合并症任一",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            }
+          ],
+          "policy_version": "2025",
+          "review_status": "needs_review",
+          "revision_id": "CD07-2025-r1",
+          "root_node_id": "CD07.ROOT",
+          "rule_id": "CD07",
+          "source_fragment_ids": [
+            "SRC2025-CD07-ROOT-P08",
+            "SRC2025-CD07-ROOT-P09"
+          ]
+        },
+        {
+          "blocker": null,
+          "canonical_disease_id": "decompensated-cirrhosis",
+          "coverage_class": "B",
+          "coverage_notes": "稀缺病例优先全纳入候选复核",
+          "disease_name": "肝硬化失代偿期",
+          "effective_from": "2025-09-02",
+          "effective_to": null,
+          "execution_status": "EVALUATABLE",
+          "lifecycle": "draft",
+          "nodes": [
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "多域"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "",
+                "source_node_type": "ALL",
+                "summary": "病因 AND 肝功能减退+门静脉高压 AND 支持证据任一"
+              },
+              "fact_type": "",
+              "node_id": "CD08.ROOT",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "AND",
+              "parent_node_id": null,
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD08-ROOT-P09",
+                "SRC2025-CD08-ROOT-P10"
+              ],
+              "summary": "病因 AND 肝功能减退+门静脉高压 AND 支持证据任一",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "READY",
+              "compilation_status": "compiled",
+              "criterion_id": "CD08.ETIOLOGY",
+              "evidence_domains": [
+                "诊断",
+                "文书"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "存在",
+                "source_node_type": "LEAF",
+                "summary": "乙肝/丙肝或其他慢性肝病病因"
+              },
+              "fact_type": "clinical_assertion",
+              "node_id": "CD08.ETIOLOGY",
+              "node_type": "LEAF",
+              "notes": "",
+              "operator": null,
+              "parent_node_id": "CD08.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD08-ETIOLOGY-P09"
+              ],
+              "summary": "乙肝/丙肝或其他慢性肝病病因",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "文书",
+                "诊断"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "两类均有",
+                "source_node_type": "ALL",
+                "summary": "肝功能减退 AND 门静脉高压表现"
+              },
+              "fact_type": "",
+              "node_id": "CD08.CLINICAL_ALL",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "AND",
+              "parent_node_id": "CD08.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD08-CLINICAL_ALL-P09"
+              ],
+              "summary": "肝功能减退 AND 门静脉高压表现",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "READY",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "检验",
+                "检查",
+                "手术"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "任一",
+                "source_node_type": "ANY",
+                "summary": "白蛋白<35/PT延长>3s；PLT<100×10^9/L；超声；CT/MRI；脾切除/病理"
+              },
+              "fact_type": "",
+              "node_id": "CD08.SUPPORT_ANY",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "OR",
+              "parent_node_id": "CD08.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD08-SUPPORT_ANY-P09",
+                "SRC2025-CD08-SUPPORT_ANY-P10"
+              ],
+              "summary": "白蛋白<35/PT延长>3s；PLT<100×10^9/L；超声；CT/MRI；脾切除/病理",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            }
+          ],
+          "policy_version": "2025",
+          "review_status": "needs_review",
+          "revision_id": "CD08-2025-r1",
+          "root_node_id": "CD08.ROOT",
+          "rule_id": "CD08",
+          "source_fragment_ids": [
+            "SRC2025-CD08-ROOT-P09",
+            "SRC2025-CD08-ROOT-P10"
+          ]
+        },
+        {
+          "blocker": {
+            "affected_node_ids": [
+              "CD09.ROOT",
+              "CD09.HBV_ANY",
+              "CD09.HCV_ANY"
+            ],
+            "block_reason_code": "POLICY_ROOT_CLOSURE_MISSING",
+            "prohibited_fallbacks": [
+              "2020_POLICY",
+              "LLM",
+              "LOCAL_DEFAULT"
+            ],
+            "required_approver_roles": [
+              "医保办",
+              "感染或肝病专家"
+            ],
+            "resolution_reference": null,
+            "unresolved_question": "慢性病史是否必备，HBV/HCV分支如何与病史组合？"
+          },
+          "canonical_disease_id": "chronic-viral-hepatitis",
+          "coverage_class": "C",
+          "coverage_notes": "不能拿常识自动补原文缺句",
+          "disease_name": "慢性病毒性肝炎",
+          "effective_from": "2025-09-02",
+          "effective_to": null,
+          "execution_status": "BLOCKED",
+          "lifecycle": "draft",
+          "nodes": [
+            {
+              "authoring_status": "BLOCKED",
+              "compilation_status": "blocked",
+              "criterion_id": "",
+              "evidence_domains": [
+                "诊断",
+                "检验",
+                "病理"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "",
+                "source_node_type": "BLOCKED",
+                "summary": "病史与HBV/HCV分支的根组合缺收口"
+              },
+              "fact_type": "",
+              "node_id": "CD09.ROOT",
+              "node_type": "BLOCKED_ROOT",
+              "notes": "需专家确认",
+              "operator": null,
+              "parent_node_id": null,
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD09-ROOT-P10",
+                "SRC2025-CD09-ROOT-P11"
+              ],
+              "summary": "病史与HBV/HCV分支的根组合缺收口",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "READY",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "检验",
+                "病理",
+                "病史"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "任一",
+                "source_node_type": "ANY",
+                "summary": "ALT>ULN且HBV-DNA阳性；或ALT正常+HBV-DNA阳性+附加条件任一"
+              },
+              "fact_type": "",
+              "node_id": "CD09.HBV_ANY",
+              "node_type": "LOGIC",
+              "notes": "根组合未激活",
+              "operator": "OR",
+              "parent_node_id": "CD09.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD09-HBV_ANY-P10"
+              ],
+              "summary": "ALT>ULN且HBV-DNA阳性；或ALT正常+HBV-DNA阳性+附加条件任一",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "检验",
+                "病史"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "任一",
+                "source_node_type": "ANY",
+                "summary": "按原文HCV诊断分支归一"
+              },
+              "fact_type": "",
+              "node_id": "CD09.HCV_ANY",
+              "node_type": "LOGIC",
+              "notes": "扫描转录需双录",
+              "operator": "OR",
+              "parent_node_id": "CD09.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD09-HCV_ANY-P10",
+                "SRC2025-CD09-HCV_ANY-P11"
+              ],
+              "summary": "按原文HCV诊断分支归一",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            }
+          ],
+          "policy_version": "2025",
+          "review_status": "needs_review",
+          "revision_id": "CD09-2025-r1",
+          "root_node_id": "CD09.ROOT",
+          "rule_id": "CD09",
+          "source_fragment_ids": [
+            "SRC2025-CD09-ROOT-P10",
+            "SRC2025-CD09-ROOT-P11"
+          ]
+        },
+        {
+          "blocker": null,
+          "canonical_disease_id": "hiv-aids",
+          "coverage_class": "A",
+          "coverage_notes": "技术A，不代表当前有可用样本",
+          "disease_name": "艾滋病",
+          "effective_from": "2025-09-02",
+          "effective_to": null,
+          "execution_status": "EVALUATABLE",
+          "lifecycle": "draft",
+          "nodes": [
+            {
+              "authoring_status": "READY",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "高敏感文书",
+                "检验"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "",
+                "source_node_type": "ALL",
+                "summary": "流行病学史 AND 实验室确证分支"
+              },
+              "fact_type": "",
+              "node_id": "CD10.ROOT",
+              "node_type": "LOGIC",
+              "notes": "权限不足时阻断",
+              "operator": "AND",
+              "parent_node_id": null,
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD10-ROOT-P11"
+              ],
+              "summary": "流行病学史 AND 实验室确证分支",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "READY",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "检验"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "任一",
+                "source_node_type": "ANY",
+                "summary": "确证抗体阳性；或筛查阳性且核酸阳性/定量>1000"
+              },
+              "fact_type": "",
+              "node_id": "CD10.LAB_ANY",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "OR",
+              "parent_node_id": "CD10.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD10-LAB_ANY-P11"
+              ],
+              "summary": "确证抗体阳性；或筛查阳性且核酸阳性/定量>1000",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            }
+          ],
+          "policy_version": "2025",
+          "review_status": "needs_review",
+          "revision_id": "CD10-2025-r1",
+          "root_node_id": "CD10.ROOT",
+          "rule_id": "CD10",
+          "source_fragment_ids": [
+            "SRC2025-CD10-ROOT-P11"
+          ]
+        },
+        {
+          "blocker": null,
+          "canonical_disease_id": "brucellosis",
+          "coverage_class": "B",
+          "coverage_notes": "当前样本不可验证",
+          "disease_name": "布鲁氏菌病",
+          "effective_from": "2025-09-02",
+          "effective_to": null,
+          "execution_status": "EVALUATABLE",
+          "lifecycle": "draft",
+          "nodes": [
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "文书",
+                "检验"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "",
+                "source_node_type": "ALL",
+                "summary": "流行病学史 AND 临床表现任一 AND 实验室分支任一"
+              },
+              "fact_type": "",
+              "node_id": "CD11.ROOT",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "AND",
+              "parent_node_id": null,
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD11-ROOT-P11",
+                "SRC2025-CD11-ROOT-P12"
+              ],
+              "summary": "流行病学史 AND 临床表现任一 AND 实验室分支任一",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "READY",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "检验"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "任一",
+                "source_node_type": "ANY",
+                "summary": "SAT滴度路径；培养阳性；二代测序阳性"
+              },
+              "fact_type": "",
+              "node_id": "CD11.LAB_ANY",
+              "node_type": "LOGIC",
+              "notes": "SAT格式需标准化",
+              "operator": "OR",
+              "parent_node_id": "CD11.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD11-LAB_ANY-P11",
+                "SRC2025-CD11-LAB_ANY-P12"
+              ],
+              "summary": "SAT滴度路径；培养阳性；二代测序阳性",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            }
+          ],
+          "policy_version": "2025",
+          "review_status": "needs_review",
+          "revision_id": "CD11-2025-r1",
+          "root_node_id": "CD11.ROOT",
+          "rule_id": "CD11",
+          "source_fragment_ids": [
+            "SRC2025-CD11-ROOT-P11",
+            "SRC2025-CD11-ROOT-P12"
+          ]
+        },
+        {
+          "blocker": null,
+          "canonical_disease_id": "parkinson-disease",
+          "coverage_class": "B",
+          "coverage_notes": "唯一候选优先但不保证最终符合",
+          "disease_name": "帕金森氏病",
+          "effective_from": "2025-09-02",
+          "effective_to": null,
+          "execution_status": "EVALUATABLE",
+          "lifecycle": "draft",
+          "nodes": [
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "文书",
+                "诊断"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "",
+                "source_node_type": "ALL",
+                "summary": "运动迟缓、病史≥1年、病程特征、左旋多巴有效、排除综合征、其他运动体征任一"
+              },
+              "fact_type": "",
+              "node_id": "CD12.ROOT",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "AND",
+              "parent_node_id": null,
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD12-ROOT-P12"
+              ],
+              "summary": "运动迟缓、病史≥1年、病程特征、左旋多巴有效、排除综合征、其他运动体征任一",
+              "temporal_policy": {
+                "review_status": "needs_review",
+                "source_declaration": "运动迟缓、病史≥1年、病程特征、左旋多巴有效、排除综合征、其他运动体征任一"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "文书"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "至少1项",
+                "source_node_type": "ANY",
+                "summary": "肌强直/静止性震颤/姿势步态障碍"
+              },
+              "fact_type": "",
+              "node_id": "CD12.MOTOR_ANY",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "OR",
+              "parent_node_id": "CD12.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD12-MOTOR_ANY-P12"
+              ],
+              "summary": "肌强直/静止性震颤/姿势步态障碍",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            }
+          ],
+          "policy_version": "2025",
+          "review_status": "needs_review",
+          "revision_id": "CD12-2025-r1",
+          "root_node_id": "CD12.ROOT",
+          "rule_id": "CD12",
+          "source_fragment_ids": [
+            "SRC2025-CD12-ROOT-P12"
+          ]
+        },
+        {
+          "blocker": null,
+          "canonical_disease_id": "myasthenia-gravis",
+          "coverage_class": "B",
+          "coverage_notes": "可做稀缺病种锚点",
+          "disease_name": "重症肌无力",
+          "effective_from": "2025-09-02",
+          "effective_to": null,
+          "execution_status": "EVALUATABLE",
+          "lifecycle": "draft",
+          "nodes": [
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "文书",
+                "电生理",
+                "检验"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "",
+                "source_node_type": "ALL",
+                "summary": "临床表现 AND 新斯的明阳性 AND 疲劳试验阳性"
+              },
+              "fact_type": "",
+              "node_id": "CD13.ROOT",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "AND",
+              "parent_node_id": null,
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD13-ROOT-P12",
+                "SRC2025-CD13-ROOT-P13"
+              ],
+              "summary": "临床表现 AND 新斯的明阳性 AND 疲劳试验阳性",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            }
+          ],
+          "policy_version": "2025",
+          "review_status": "needs_review",
+          "revision_id": "CD13-2025-r1",
+          "root_node_id": "CD13.ROOT",
+          "rule_id": "CD13",
+          "source_fragment_ids": [
+            "SRC2025-CD13-ROOT-P12",
+            "SRC2025-CD13-ROOT-P13"
+          ]
+        },
+        {
+          "blocker": null,
+          "canonical_disease_id": "epilepsy",
+          "coverage_class": "B",
+          "coverage_notes": "诊断命中不能代替两次发作+EEG",
+          "disease_name": "癫痫病",
+          "effective_from": "2025-09-02",
+          "effective_to": null,
+          "execution_status": "EVALUATABLE",
+          "lifecycle": "draft",
+          "nodes": [
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "文书",
+                "EEG",
+                "影像"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "",
+                "source_node_type": "ALL",
+                "summary": "两次以上发作 AND EEG痫样放电 AND（药物可控 OR CT/MR异常）AND 排除非癫痫发作"
+              },
+              "fact_type": "",
+              "node_id": "CD14.ROOT",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "AND",
+              "parent_node_id": null,
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD14-ROOT-P13",
+                "SRC2025-CD14-ROOT-P14"
+              ],
+              "summary": "两次以上发作 AND EEG痫样放电 AND（药物可控 OR CT/MR异常）AND 排除非癫痫发作",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "CD14.EEG",
+              "evidence_domains": [
+                "EEG"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "至少1项",
+                "source_node_type": "LEAF",
+                "summary": "尖波/棘波/尖慢波/棘慢波等痫样放电"
+              },
+              "fact_type": "clinical_assertion",
+              "node_id": "CD14.EEG",
+              "node_type": "LEAF",
+              "notes": "",
+              "operator": null,
+              "parent_node_id": "CD14.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD14-EEG-P13"
+              ],
+              "summary": "尖波/棘波/尖慢波/棘慢波等痫样放电",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            }
+          ],
+          "policy_version": "2025",
+          "review_status": "needs_review",
+          "revision_id": "CD14-2025-r1",
+          "root_node_id": "CD14.ROOT",
+          "rule_id": "CD14",
+          "source_fragment_ids": [
+            "SRC2025-CD14-ROOT-P13",
+            "SRC2025-CD14-ROOT-P14"
+          ]
+        },
+        {
+          "blocker": null,
+          "canonical_disease_id": "cerebrovascular-sequelae-with-limb-dysfunction",
+          "coverage_class": "B",
+          "coverage_notes": "首批重要病种；严防把急性脑卒中当后遗症",
+          "disease_name": "脑血管病后遗症（合并肢体功能障碍）",
+          "effective_from": "2025-09-02",
+          "effective_to": null,
+          "execution_status": "EVALUATABLE",
+          "lifecycle": "draft",
+          "nodes": [
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "诊断",
+                "时间",
+                "功能"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "",
+                "source_node_type": "ALL",
+                "summary": "确诊病种 AND 病史>6个月 AND 功能障碍任一"
+              },
+              "fact_type": "",
+              "node_id": "CD15.ROOT",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "AND",
+              "parent_node_id": null,
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD15-ROOT-P14"
+              ],
+              "summary": "确诊病种 AND 病史>6个月 AND 功能障碍任一",
+              "temporal_policy": {
+                "review_status": "needs_review",
+                "source_declaration": "确诊病种 AND 病史>6个月 AND 功能障碍任一"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "文书",
+                "体征"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "任一",
+                "source_node_type": "ANY",
+                "summary": "偏瘫/单瘫肌力≤3，四肢瘫肌力≤4；或共济/锥外系影响自主行动"
+              },
+              "fact_type": "",
+              "node_id": "CD15.FUNCTION_ANY",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "OR",
+              "parent_node_id": "CD15.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD15-FUNCTION_ANY-P14"
+              ],
+              "summary": "偏瘫/单瘫肌力≤3，四肢瘫肌力≤4；或共济/锥外系影响自主行动",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            }
+          ],
+          "policy_version": "2025",
+          "review_status": "needs_review",
+          "revision_id": "CD15-2025-r1",
+          "root_node_id": "CD15.ROOT",
+          "rule_id": "CD15",
+          "source_fragment_ids": [
+            "SRC2025-CD15-ROOT-P14"
+          ]
+        },
+        {
+          "blocker": null,
+          "canonical_disease_id": "chronic-obstructive-pulmonary-disease",
+          "coverage_class": "B",
+          "coverage_notes": "适合覆盖结构化数值与影像文本两种分支",
+          "disease_name": "慢性阻塞性肺疾病",
+          "effective_from": "2025-09-02",
+          "effective_to": null,
+          "execution_status": "EVALUATABLE",
+          "lifecycle": "draft",
+          "nodes": [
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "文书",
+                "CT",
+                "肺功能"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "",
+                "source_node_type": "ALL",
+                "summary": "慢性症状史 AND 客观证据路径任一"
+              },
+              "fact_type": "",
+              "node_id": "CD16.ROOT",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "AND",
+              "parent_node_id": null,
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD16-ROOT-P14"
+              ],
+              "summary": "慢性症状史 AND 客观证据路径任一",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "READY",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "检查",
+                "肺功能"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "任一",
+                "source_node_type": "ANY",
+                "summary": "CT肺气肿且排除其他慢性肺病；或支扩后FEV1/FVC<70%"
+              },
+              "fact_type": "",
+              "node_id": "CD16.OBJECTIVE_ANY",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "OR",
+              "parent_node_id": "CD16.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD16-OBJECTIVE_ANY-P14"
+              ],
+              "summary": "CT肺气肿且排除其他慢性肺病；或支扩后FEV1/FVC<70%",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            }
+          ],
+          "policy_version": "2025",
+          "review_status": "needs_review",
+          "revision_id": "CD16-2025-r1",
+          "root_node_id": "CD16.ROOT",
+          "rule_id": "CD16",
+          "source_fragment_ids": [
+            "SRC2025-CD16-ROOT-P14"
+          ]
+        },
+        {
+          "blocker": null,
+          "canonical_disease_id": "chronic-cor-pulmonale-heart-failure",
+          "coverage_class": "B",
+          "coverage_notes": "真实样本稀少，需合成金标补边界",
+          "disease_name": "肺源性心脏病（慢性心力衰竭）",
+          "effective_from": "2025-09-02",
+          "effective_to": null,
+          "execution_status": "EVALUATABLE",
+          "lifecycle": "draft",
+          "nodes": [
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "文书",
+                "检查"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "两块均满足",
+                "source_node_type": "ALL",
+                "summary": "临床表现块 AND 辅助检查块"
+              },
+              "fact_type": "",
+              "node_id": "CD17.ROOT",
+              "node_type": "LOGIC",
+              "notes": "最低集合待签发",
+              "operator": "AND",
+              "parent_node_id": null,
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD17-ROOT-P14",
+                "SRC2025-CD17-ROOT-P15"
+              ],
+              "summary": "临床表现块 AND 辅助检查块",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            }
+          ],
+          "policy_version": "2025",
+          "review_status": "needs_review",
+          "revision_id": "CD17-2025-r1",
+          "root_node_id": "CD17.ROOT",
+          "rule_id": "CD17",
+          "source_fragment_ids": [
+            "SRC2025-CD17-ROOT-P14",
+            "SRC2025-CD17-ROOT-P15"
+          ]
+        },
+        {
+          "blocker": null,
+          "canonical_disease_id": "bronchial-asthma",
+          "coverage_class": "B",
+          "coverage_notes": "可与COPD构成交叉鉴别边界测试",
+          "disease_name": "支气管哮喘",
+          "effective_from": "2025-09-02",
+          "effective_to": null,
+          "execution_status": "EVALUATABLE",
+          "lifecycle": "draft",
+          "nodes": [
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "文书",
+                "肺功能"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "",
+                "source_node_type": "ALL",
+                "summary": "症状体征 AND 可逆性/变异性证据任一 AND 排除其他病因"
+              },
+              "fact_type": "",
+              "node_id": "CD18.ROOT",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "AND",
+              "parent_node_id": null,
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD18-ROOT-P15",
+                "SRC2025-CD18-ROOT-P16"
+              ],
+              "summary": "症状体征 AND 可逆性/变异性证据任一 AND 排除其他病因",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "READY",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "肺功能"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "任一",
+                "source_node_type": "ANY",
+                "summary": "支气管舒张试验/激发试验/PEF变异率路径"
+              },
+              "fact_type": "",
+              "node_id": "CD18.OBJECTIVE_ANY",
+              "node_type": "LOGIC",
+              "notes": "阈值需按原页双录",
+              "operator": "OR",
+              "parent_node_id": "CD18.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD18-OBJECTIVE_ANY-P15",
+                "SRC2025-CD18-OBJECTIVE_ANY-P16"
+              ],
+              "summary": "支气管舒张试验/激发试验/PEF变异率路径",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            }
+          ],
+          "policy_version": "2025",
+          "review_status": "needs_review",
+          "revision_id": "CD18-2025-r1",
+          "root_node_id": "CD18.ROOT",
+          "rule_id": "CD18",
+          "source_fragment_ids": [
+            "SRC2025-CD18-ROOT-P15",
+            "SRC2025-CD18-ROOT-P16"
+          ]
+        },
+        {
+          "blocker": {
+            "affected_node_ids": [
+              "CD19.ROOT",
+              "CD19.SCORE",
+              "CD19.XRAY"
+            ],
+            "block_reason_code": "SCORE_AND_FUNCTION_THRESHOLD_MISSING",
+            "prohibited_fallbacks": [
+              "2020_POLICY",
+              "LLM",
+              "LOCAL_DEFAULT"
+            ],
+            "required_approver_roles": [
+              "医保办",
+              "风湿免疫专家"
+            ],
+            "resolution_reference": null,
+            "unresolved_question": "ACR/EULAR评分阈值、严重功能障碍分级及其与X线III期的组合是什么？"
+          },
+          "canonical_disease_id": "rheumatoid-arthritis-severe-limb-dysfunction",
+          "coverage_class": "C",
+          "coverage_notes": "PDF视觉复核为X线III期及以上",
+          "disease_name": "类风湿性关节炎（有严重肢体功能障碍）",
+          "effective_from": "2025-09-02",
+          "effective_to": null,
+          "execution_status": "BLOCKED",
+          "lifecycle": "draft",
+          "nodes": [
+            {
+              "authoring_status": "BLOCKED",
+              "compilation_status": "blocked",
+              "criterion_id": "",
+              "evidence_domains": [
+                "多域"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "",
+                "source_node_type": "BLOCKED",
+                "summary": "ACR/EULAR评分 + X线III期+ + 严重功能障碍"
+              },
+              "fact_type": "",
+              "node_id": "CD19.ROOT",
+              "node_type": "BLOCKED_ROOT",
+              "notes": "评分阈值和功能分级缺失",
+              "operator": null,
+              "parent_node_id": null,
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD19-ROOT-P16",
+                "SRC2025-CD19-ROOT-P17"
+              ],
+              "summary": "ACR/EULAR评分 + X线III期+ + 严重功能障碍",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "BLOCKED",
+              "compilation_status": "partial",
+              "criterion_id": "CD19.SCORE",
+              "evidence_domains": [
+                "文书",
+                "检验"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "阈值缺失",
+                "source_node_type": "SCORE",
+                "summary": "关节受累、血清学、急性期反应、病程加权计分"
+              },
+              "fact_type": "composite_score",
+              "node_id": "CD19.SCORE",
+              "node_type": "LEAF",
+              "notes": "不得套用2020≥6分",
+              "operator": null,
+              "parent_node_id": "CD19.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD19-SCORE-P16"
+              ],
+              "summary": "关节受累、血清学、急性期反应、病程加权计分",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "READY",
+              "compilation_status": "compiled",
+              "criterion_id": "CD19.XRAY",
+              "evidence_domains": [
+                "X线"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "III期及以上",
+                "source_node_type": "LEAF",
+                "summary": "手/足X线改变"
+              },
+              "fact_type": "examination_finding",
+              "node_id": "CD19.XRAY",
+              "node_type": "LEAF",
+              "notes": "OCR曾误成II，已视觉复核为III",
+              "operator": null,
+              "parent_node_id": "CD19.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD19-XRAY-P17"
+              ],
+              "summary": "手/足X线改变",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            }
+          ],
+          "policy_version": "2025",
+          "review_status": "needs_review",
+          "revision_id": "CD19-2025-r1",
+          "root_node_id": "CD19.ROOT",
+          "rule_id": "CD19",
+          "source_fragment_ids": [
+            "SRC2025-CD19-ROOT-P16",
+            "SRC2025-CD19-ROOT-P17"
+          ]
+        },
+        {
+          "blocker": null,
+          "canonical_disease_id": "systemic-lupus-erythematosus",
+          "coverage_class": "B",
+          "coverage_notes": "适合验证AT_LEAST_N与跨域约束",
+          "disease_name": "系统性红斑狼疮",
+          "effective_from": "2025-09-02",
+          "effective_to": null,
+          "execution_status": "EVALUATABLE",
+          "lifecycle": "draft",
+          "nodes": [
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "病理",
+                "检验",
+                "文书"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "至少1路径",
+                "source_node_type": "ANY",
+                "summary": "肾活检路径 OR 累计标准路径"
+              },
+              "fact_type": "",
+              "node_id": "CD20.ROOT",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "OR",
+              "parent_node_id": null,
+              "repetition_policy": {
+                "review_status": "needs_review",
+                "source_declaration": "至少1路径肾活检路径 OR 累计标准路径"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD20-ROOT-P17",
+                "SRC2025-CD20-ROOT-P18"
+              ],
+              "summary": "肾活检路径 OR 累计标准路径",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "病理",
+                "检验"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "",
+                "source_node_type": "ALL",
+                "summary": "肾活检狼疮肾炎 AND（ANA OR dsDNA）"
+              },
+              "fact_type": "",
+              "node_id": "CD20.BIOPSY_PATH",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "AND",
+              "parent_node_id": "CD20.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD20-BIOPSY_PATH-P17",
+                "SRC2025-CD20-BIOPSY_PATH-P18"
+              ],
+              "summary": "肾活检狼疮肾炎 AND（ANA OR dsDNA）",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": null,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            },
+            {
+              "authoring_status": "REVIEW",
+              "compilation_status": "partial",
+              "criterion_id": "",
+              "evidence_domains": [
+                "文书",
+                "检验"
+              ],
+              "expected_condition": {
+                "operator_or_threshold": "≥4且跨两域",
+                "source_node_type": "AT_LEAST_N",
+                "summary": "总计≥4条且至少1条临床标准+1条免疫标准"
+              },
+              "fact_type": "",
+              "node_id": "CD20.COUNT_PATH",
+              "node_type": "LOGIC",
+              "notes": "",
+              "operator": "AT_LEAST_N",
+              "parent_node_id": "CD20.ROOT",
+              "repetition_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "source_fragment_ids": [
+                "SRC2025-CD20-COUNT_PATH-P17",
+                "SRC2025-CD20-COUNT_PATH-P18"
+              ],
+              "summary": "总计≥4条且至少1条临床标准+1条免疫标准",
+              "temporal_policy": {
+                "mode": "not_applicable_or_unspecified"
+              },
+              "threshold": 4,
+              "unit_policy": {
+                "mode": "not_applicable_or_unspecified"
+              }
+            }
+          ],
+          "policy_version": "2025",
+          "review_status": "needs_review",
+          "revision_id": "CD20-2025-r1",
+          "root_node_id": "CD20.ROOT",
+          "rule_id": "CD20",
+          "source_fragment_ids": [
+            "SRC2025-CD20-ROOT-P17",
+            "SRC2025-CD20-ROOT-P18"
+          ]
+        }
+      ],
+      "effective_from": "2025-09-02",
+      "effective_to": null,
+      "execution_enabled": false,
+      "lifecycle": "draft",
+      "notes": "新认定唯一主口径；所有 revision 待逐页双人转录和专家审批",
+      "policy_id": "hlj-outpatient-chronic-2025",
+      "policy_role": "current_recognition",
+      "policy_version": "2025",
+      "release_id": "chronic-criteria-2025-draft-r1",
+      "review_status": "needs_review",
+      "source_document_ids": [
+        "hlj-outpatient-chronic-2025"
+      ]
+    },
+    {
+      "disease_revisions": [],
+      "effective_from": "2020-05-15",
+      "effective_to": null,
+      "execution_enabled": false,
+      "lifecycle": "draft",
+      "notes": "仅保留历史版本边界，未编译历史树；不得向2025提供节点、阈值或默认值",
+      "policy_id": "heihe-outpatient-chronic-2020",
+      "policy_role": "historical_reference",
+      "policy_version": "2020",
+      "release_id": "chronic-criteria-2020-reference-r1",
+      "review_status": "needs_review",
+      "source_document_ids": [
+        "heihe-outpatient-chronic-2020"
+      ]
+    }
+  ],
+  "release_id": "chronic-criteria-2025-draft-r1",
+  "schema_version": "1.0.0",
+  "source_manifest_checksum": "sha256:022760c3cbff23a6e91a790816a4f4d545286c3664e910c3bc2a7b72ae40a9b0"
+}

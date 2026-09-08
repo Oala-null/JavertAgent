@@ -10,6 +10,7 @@ from collections import Counter
 from collections.abc import Mapping
 from typing import Any
 
+from .rule import RULE_ID_BODY_PATTERN
 from .result import AuditResult, Verdict
 
 logger = logging.getLogger("javert.audit.headline")
@@ -18,7 +19,10 @@ HEADLINE_MIN_LENGTH = 15
 HEADLINE_MAX_LENGTH = 60
 
 _INTERNAL_PATTERNS = (
-    re.compile(r"(?<![A-Za-z0-9])RD?\d{2,3}(?![A-Za-z0-9])", re.IGNORECASE),
+    re.compile(
+        rf"(?<![A-Za-z0-9]){RULE_ID_BODY_PATTERN}(?![A-Za-z0-9])",
+        re.IGNORECASE,
+    ),
     re.compile(
         r"(?<![A-Za-z0-9_])(?:search_[a-z_]+|drug_audit_lookup|tool_calls?|"
         r"gate|precheck|run_id|ownership_id|patient_id)(?![A-Za-z0-9_])",

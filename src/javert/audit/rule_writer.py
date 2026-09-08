@@ -15,6 +15,8 @@ from .rule import Rule
 
 _FIELD_ORDER = [
     "rule_id",
+    "rule_kind",
+    "clinical_criteria_ref",
     "domain",
     "violation_type",
     "question",

@@ -172,3 +172,19 @@ def test_oncology_eligibility_v2_rejects_unknown_mode(monkeypatch):
     monkeypatch.setenv("JAVERT_ONCOLOGY_ELIGIBILITY_V2", "maybe")
     with pytest.raises(ValueError):
         JavertConfig()
+
+
+def test_chronic_disease_criteria_defaults_off():
+    assert JavertConfig().chronic_disease_criteria == "off"
+
+
+@pytest.mark.parametrize("mode", ["off", "shadow", "on"])
+def test_chronic_disease_criteria_env_modes(monkeypatch, mode):
+    monkeypatch.setenv("JAVERT_CHRONIC_DISEASE_CRITERIA", mode)
+    assert JavertConfig().chronic_disease_criteria == mode
+
+
+def test_chronic_disease_criteria_rejects_unknown_mode(monkeypatch):
+    monkeypatch.setenv("JAVERT_CHRONIC_DISEASE_CRITERIA", "maybe")
+    with pytest.raises(ValueError):
+        JavertConfig()

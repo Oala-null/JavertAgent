@@ -26,13 +26,18 @@ def load_rule(path: Path) -> Rule:
     if not isinstance(data, dict):
         raise RuleValidationError(f"yaml 顶层必须是 mapping: {path}")
     try:
-        return Rule(**data)
+        rule = Rule(**data)
     except ValidationError as exc:
         # 提取首条错误说清楚是哪个字段
         first = exc.errors()[0] if exc.errors() else None
         loc = ".".join(str(x) for x in (first.get("loc") if first else ())) or "?"
         msg = first.get("msg") if first else str(exc)
         raise RuleValidationError(f"{path.name} 字段 '{loc}' 校验失败: {msg}") from exc
+    if path.stem != rule.rule_id:
+        raise RuleValidationError(
+            f"rule 文件名与 rule_id 不一致: {path.name} 声明 {rule.rule_id}"
+        )
+    return rule
 
 
 def load_all(rules_dir: Path) -> dict[str, Rule]:
@@ -43,7 +48,7 @@ def load_all(rules_dir: Path) -> dict[str, Rule]:
     if not rules_dir.exists():
         raise RuleValidationError(f"rules 目录不存在: {rules_dir}")
     out: dict[str, Rule] = {}
-    for yaml_path in sorted(rules_dir.glob("R*.yaml")):
+    for yaml_path in sorted(rules_dir.glob("*.yaml")):
         rule = load_rule(yaml_path)
         if rule.rule_id in out:
             raise RuleValidationError(f"重复 rule_id: {rule.rule_id} (in {yaml_path})")
