@@ -60,6 +60,7 @@
   {% for p in patients %}
     <a class="patient-card {% if p.patient_id == active_patient %}active{% endif %} {% if p.fully_reviewed %}fully-reviewed{% endif %}"
        data-patient-id="{{ p.patient_id }}"
+       data-display-label="{{ p.display_label or p.patient_id }}"
        data-v-count="{{ p.v_count }}"
        data-i-count="{{ p.i_count }}"
        data-c-count="{{ p.c_count }}"
@@ -71,7 +72,7 @@
        data-updated="{{ p.updated_at.isoformat() if p.updated_at else '' }}"
        href="/workbench/{{ p.patient_id }}?filter={{ 'all' if p.batch_tag in ['ocr1.0', 'Chronic_Disease', '慢病'] else filter }}{% if p.batch_tag in ['Chronic_Disease', '慢病'] %}&amp;batch_tag=%E6%85%A2%E7%97%85{% endif %}">
       <div class="row1">
-        <span>{% if p.fully_reviewed %}<span class="check-icon"></span>{% endif %}{{ p.patient_id }}</span>
+        <span>{% if p.fully_reviewed %}<span class="check-icon"></span>{% endif %}{{ p.display_label or p.patient_id }}</span>
         {% if p.batch_tag %}<span class="batch-badge batch-{{ p.batch_tag }}">{{ p.batch_tag }}</span>{% endif %}
       </div>
       {% if p.primary_dx %}

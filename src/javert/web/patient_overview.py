@@ -568,6 +568,23 @@ def _extract_from_fees_df(df) -> dict[str, Any]:
 # =========================================================
 # 主入口 — 拼装单患者概览数据
 # =========================================================
+def source_identity(notes_df) -> dict[str, Any]:
+    """仅消费已核验的显示列；不解析原文，不改变内部患者键。冲突时不拼接身份。"""
+    fields = ("source_patient_name", "source_visit_id")
+    values = []
+    for field in fields:
+        unique = set()
+        if notes_df is not None and field in notes_df.columns:
+            unique = {str(v).strip() for v in notes_df[field].dropna()
+                      if str(v).strip() and str(v).strip().lower() not in {"nan", "none", "null"}}
+        if len(unique) > 1:
+            return {"display_label": "原文身份信息冲突", "source_visit_id": None,
+                    "source_identity_present": True}
+        values.append(next(iter(unique), None))
+    return {"display_label": " · ".join(v for v in values if v) or None,
+            "source_visit_id": values[1], "source_identity_present": any(values)}
+
+
 def build_overview(patient_id: str, loader: CsvLoader) -> dict[str, Any]:
     """单患者概览数据 dict, 可直接传 Jinja2 模板.
 
@@ -708,6 +725,7 @@ def _build_overview_cached(patient_id: str, loader: CsvLoader) -> dict[str, Any]
 
     return {
         "patient_id": patient_id,
+        **source_identity(notes_df),
         "admit_date": admit_date,
         "discharge_date": discharge_date,
         "los_days": los_days,

@@ -20,6 +20,31 @@ def bundle():
     ]}
 
 
+def test_source_identity_stays_original_and_requires_source_quote(tmp_path):
+    data = bundle()
+    data['pages'][1]['text'] = '姓名：合成甲；住院号：00123。合成病历。'
+    data['source_identity'] = {
+        'patient_name': {'value': '合成甲', 'source_page': 2, 'quote': '姓名：合成甲'},
+        'visit_id': {'value': '00123', 'source_page': 2, 'quote': '住院号：00123'},
+    }
+    notes = pilot.prepare_notes(data)
+    assert notes[0]['source_patient_name'] == '合成甲'
+    assert notes[0]['source_visit_id'] == '00123'
+    target = tmp_path / 'case_notes.csv'
+    old = '住院号,事件时间,阶段,子阶段,内容,来源文件\nother-case,,入院,,旧合成内容,page-old\n'
+    target.write_text(old)
+    pilot.append_notes(target, notes, tmp_path / 'backup')
+    import csv
+    with target.open() as f:
+        rows = list(csv.DictReader(f))
+    assert rows[0]['内容'] == '旧合成内容' and rows[0]['source_patient_name'] == ''
+    assert rows[1]['source_visit_id'] == '00123'
+    assert pilot.append_notes(target, notes, tmp_path / 'backup') is False
+    data['source_identity']['patient_name']['value'] = '未经原文支持'
+    with pytest.raises(ValueError, match='SOURCE_IDENTITY'):
+        pilot.prepare_notes(data)
+
+
 def test_page_coverage_and_clinical_isolation():
     data = bundle()
     notes = pilot.prepare_notes(data)

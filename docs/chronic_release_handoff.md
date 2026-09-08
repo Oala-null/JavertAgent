@@ -32,3 +32,12 @@
 尚未完整实现，CD19功能障碍分级仍待明确。5+45严格QUALIFIED样本阶段未完成；
 本次仅授权单PDF的shadow发布，CD10关闭，不扩展到其他患者或243。未归档change。
 62真实验收：20条已同步、21临床页、7候选规则、29证据锚点、tag=慢病，普通V/I/C均0；临时隐私材料已清理。完整记录见`chronic_disease_criteria_qa.md`，不在本文件复制患者资料。
+
+### 原始身份显示修正
+
+`source_patient_name/source_visit_id`是经原文核验的可选显示元数据，不进行脱敏。
+必须成组：`scripts/run_chronic_pdf_pilot.py`、`src/javert/store/models.py`、
+`src/javert/web/patient_overview.py`、`src/javert/web/api/routes_workbench.py`、
+`src/javert/web/templates/{_sidebar,patient_detail,_patient_overview}.html`、
+`src/javert/web/static/app.js`。配套`tests/test_source_identity_display.py`和导入回归。
+关联键不重写，已发布的20条结果与21页原文保持原有内容；界面显示原姓名/原就诊号。

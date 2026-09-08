@@ -187,6 +187,18 @@ def prepare_notes(bundle: dict) -> list[dict]:
         raise ValueError("PAGE_COVERAGE_INVALID")
     if any(p.get("kind") not in {"clinical", "fee", "financial", "administrative", "unreadable"} for p in pages):
         raise ValueError("PAGE_KIND_INVALID")
+    identity = {}
+    for key, column in (("patient_name", "source_patient_name"), ("visit_id", "source_visit_id")):
+        entry = (bundle.get("source_identity") or {}).get(key)
+        if not entry:
+            continue
+        page = next((p for p in pages if p["page"] == entry.get("source_page")), None)
+        value, quote = entry.get("value"), entry.get("quote")
+        if (not page or not isinstance(value, str) or not value.strip()
+                or len(value) > 80 or "\n" in value or not isinstance(quote, str)
+                or not quote or value not in quote or quote not in page.get("text", "")):
+            raise ValueError("SOURCE_IDENTITY_UNVERIFIED")
+        identity[column] = value
     notes = []
     for page in pages:
         if page["kind"] != "clinical":
@@ -196,21 +208,24 @@ def prepare_notes(bundle: dict) -> list[dict]:
         notes.append(dict(zip(NOTE_FIELDS, [case_id, "", "OCR临床材料（未人工核对）",
                      "扫描页", "[OCR未人工核对；日期、数值和否定表述须复核]\n" + page["text"],
                      f"page-{page['page']}"])))
+        notes[-1].update(identity)
     if not notes:
         raise ValueError("NO_CLINICAL_PAGES")
     return notes
 
 
 def append_notes(target: Path, notes: list[dict], backup: Path) -> bool:
-    """原文件字节保留，整批幂等追加；同病例不同内容拒绝覆盖。"""
+    """整批幂等追加；增加原始身份显示列时只扩列，既有字段逐值保留。"""
     original = target.read_bytes() if target.exists() else b""
     reader = csv.DictReader(io.StringIO(original.decode("utf-8-sig")))
     fields = reader.fieldnames or NOTE_FIELDS
     if not set(NOTE_FIELDS).issubset(fields):
         raise ValueError("OVERLAY_SCHEMA_MISMATCH")
-    existing = [r for r in reader if r.get("住院号") == notes[0]["住院号"]]
+    original_rows = list(reader)
+    existing = [r for r in original_rows if r.get("住院号") == notes[0]["住院号"]]
+    note_fields = list(notes[0])
     if existing:
-        if [{k: r.get(k, "") for k in NOTE_FIELDS} for r in existing] != notes:
+        if [{k: r.get(k, "") for k in note_fields} for r in existing] != notes:
             raise ValueError("CASE_OVERLAY_CONFLICT")
         return False
     backup.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -219,17 +234,22 @@ def append_notes(target: Path, notes: list[dict], backup: Path) -> bool:
         (backup / "case_notes.before.csv").write_bytes(original)
         (backup / "case_notes.before.csv").chmod(0o600)
     stream = io.StringIO(newline="")
+    added_fields = [k for k in note_fields if k not in fields]
+    fields = list(fields) + added_fields
     writer = csv.DictWriter(stream, fieldnames=fields)
-    if not original:
+    if not original or added_fields:
         writer.writeheader()
+    if added_fields:
+        writer.writerows(original_rows)
     writer.writerows(notes)
     target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd, temporary = tempfile.mkstemp(prefix=".chronic-", dir=target.parent)
     try:
         with os.fdopen(fd, "wb") as handle:
-            handle.write(original)
-            if original and not original.endswith(b"\n"):
-                handle.write(b"\n")
+            if not added_fields:
+                handle.write(original)
+                if original and not original.endswith(b"\n"):
+                    handle.write(b"\n")
             handle.write(stream.getvalue().encode("utf-8"))
             handle.flush()
             os.fsync(handle.fileno())
@@ -313,7 +333,7 @@ def run_pilot(args, cfg, sql, target, bundle, notes, private):
         note_path, fee_path = Path(temporary) / "case_notes.csv", Path(temporary) / "shi_fee.csv"
         with note_path.open("w", newline="", encoding="utf-8") as f:
             os.fchmod(f.fileno(), 0o600)
-            writer = csv.DictWriter(f, fieldnames=NOTE_FIELDS)
+            writer = csv.DictWriter(f, fieldnames=list(notes[0]))
             writer.writeheader()
             writer.writerows(notes)
         fee_path.write_text("bah,med_list_codg,medins_list_name,cnt,pric,det_item_fee_sumamt,fee_ocur_time\n")

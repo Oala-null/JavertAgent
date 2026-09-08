@@ -5,7 +5,7 @@
 
   <section class="detail-panel">
     <div class="patient-header">
-      <h1>{{ active_patient }}</h1>
+      <h1>{{ display_label or (overview.display_label if overview else none) or active_patient }}</h1>
       <span class="meta">{{ filter_label }} · 共 {{ runs|length }} 条</span>
       <a class="btn-secondary"
          href="/export?format=xlsx&scope=all&patient_id={{ active_patient }}"
@@ -387,5 +387,6 @@
 {% endblock %}
 
 {% block scripts %}
+<script>window.JAVERT_DISPLAY_LABEL = {{ (display_label or (overview.display_label if overview else none) or active_patient) | tojson }};</script>
 <script src="/static/app.js?v={{ asset_v }}" defer></script>
 {% endblock %}

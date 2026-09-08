@@ -84,6 +84,7 @@ class PatientSidebarItem(BaseModel):
     """workbench 左侧 patient sidebar 单行."""
 
     patient_id: str
+    display_label: str | None = None  # 可选来源身份，仅显示，patient_id 仍是查询键
     v_count: int = 0
     i_count: int = 0
     c_count: int = 0

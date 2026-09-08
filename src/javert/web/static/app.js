@@ -270,6 +270,10 @@
   }
 
   // ---------- 原始病历 modal (全量浏览入口, 保留) ----------
+  function patientDisplayLabel(patientId) {
+    return patientId === window.JAVERT_PATIENT ? (window.JAVERT_DISPLAY_LABEL || patientId) : patientId;
+  }
+
   window.showRawData = function (patientId) {
     var root = document.getElementById("modal-root") || document.body;
     _firstAvailableRaw(patientId, ["notes", "fees", "labs"]).then(function (data) {
@@ -278,7 +282,7 @@
         '<div class="modal-overlay" onclick="if(event.target===this)closeModal()">' +
         '<div class="modal raw-modal" style="max-width:1040px;">' +
           '<button class="close-btn" onclick="closeModal()" title="关闭 (Esc)">×</button>' +
-          '<h2>' + _esc(patientId) + ' · 原始病历</h2>' +
+          '<h2>' + _esc(patientDisplayLabel(patientId)) + ' · 原始病历</h2>' +
           '<p class="muted">主诊: ' + _esc(data.main_diagnosis || "—") + '</p>' +
           '<div class="modal-tabs" role="tablist">' +
             ["notes", "fees", "labs"].map(function (tab) {
@@ -364,14 +368,14 @@
     var targetTab = anchor.tab;
     if (targetTab === "labs" || targetTab === "exams") targetTab = "labs";
     else if (targetTab !== "fees") targetTab = "notes";
-    panel.innerHTML = '<div class="source-head"><strong>' + _esc(pid) +
+    panel.innerHTML = '<div class="source-head"><strong>' + _esc(patientDisplayLabel(pid)) +
       ' · 原文对照</strong><button class="close-btn" onclick="closeSourcePanel()" title="关闭 (Esc)">×</button></div>' +
       '<div class="source-hint">正在加载' + _tabLabel(targetTab) + '…</div>';
     document.body.classList.add("compare-open");
     fetchRaw(pid, targetTab).then(function (data) {
       panel.innerHTML =
         '<div class="source-head">' +
-          '<strong>' + _esc(pid) + ' · 原文对照</strong>' +
+          '<strong>' + _esc(patientDisplayLabel(pid)) + ' · 原文对照</strong>' +
           '<button class="close-btn" onclick="closeSourcePanel()" title="关闭 (Esc)">×</button>' +
         '</div>' +
         '<div class="modal-tabs" role="tablist">' +
@@ -392,7 +396,7 @@
           _tabPanelHtml(targetTab, data, false) + '</div>';
       _applyAnchorInScope(panel, anchor);
     }).catch(function (err) {
-      panel.innerHTML = '<div class="source-head"><strong>' + _esc(pid) +
+      panel.innerHTML = '<div class="source-head"><strong>' + _esc(patientDisplayLabel(pid)) +
         ' · 原文对照</strong><button class="close-btn" onclick="closeSourcePanel()">×</button></div>' +
         '<div class="source-hint">' + _esc(_rawErrorMessage(err)) +
         (err.retryable ? ' <button type="button" class="btn-secondary" id="source-retry">重试</button>' : '') + '</div>';
@@ -835,7 +839,7 @@
     cards.forEach(function (card) {
       var ok = true;
       if (pidq) {
-        var pid = (card.getAttribute("data-patient-id") || "").toLowerCase();
+        var pid = ((card.getAttribute("data-patient-id") || "") + " " + (card.getAttribute("data-display-label") || "")).toLowerCase();
         if (pid.indexOf(pidq) < 0) ok = false;
       }
       if (ok && dxq) {

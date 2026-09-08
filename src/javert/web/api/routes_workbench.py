@@ -40,6 +40,7 @@ from javert.web.patient_overview import (
     build_overview,
     get_fees_sum_map,
     get_primary_dx,
+    source_identity,
 )
 from javert.web.rule_meta import load_rule_meta
 from javert.web.public_presenter import present_public_explanation
@@ -68,8 +69,14 @@ def _enrich_sidebar(patients: list) -> list:
     """
     if not patients:
         return patients
+    for p in patients:
+        if p.batch_tag in {"慢病", "Chronic_Disease"}:
+            p.display_label = "原文未提取"
     try:
         loader = _get_loader()
+        for p in patients:
+            if p.batch_tag in {"慢病", "Chronic_Disease"}:
+                p.display_label = source_identity(loader.get_notes(p.patient_id))["display_label"] or "原文未提取"
         fees_map = get_fees_sum_map(loader)
         for p in patients:
             p.fees_sum = fees_map.get(p.patient_id, 0.0)
@@ -358,9 +365,20 @@ def workbench_patient(
     # 按细类分组 + 组内 V 前 I 后 (D5) — 模板按 run_groups 渲染可折叠 section + 顶部 chip
     run_groups = _group_runs_by_violation_type(runs, meta_map)
 
+    display_label = (overview or {}).get("display_label")
+    sidebar_patient = next((p for p in patients if p.patient_id == patient_id), None)
+    is_chronic = bool(
+        (sidebar_patient and sidebar_patient.batch_tag in {"慢病", "Chronic_Disease"})
+        or any(r.rule_id.startswith("CD") for r in runs)
+    )
+    display_label = display_label or (sidebar_patient.display_label if sidebar_patient else None)
+    display_label = display_label or ("原文未提取" if is_chronic else patient_id)
+    if overview is not None and is_chronic:
+        overview["source_identity_present"] = True
     return HTMLResponse(render(
         "patient_detail.html",
-        title=f"{patient_id} · 工作台",
+        title=f"{display_label} · 工作台",
+        display_label=display_label,
         current_user=user,
         patients=patients,
         active_patient=patient_id,

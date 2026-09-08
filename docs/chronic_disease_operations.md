@@ -56,3 +56,9 @@ PYTHONPATH=src .venv/bin/python scripts/run_chronic_pdf_pilot.py \
   后续写入时恢复对应备份，不覆盖其他病例新增数据；结果撤回走专家review。
 
 5+45严格QUALIFIED样本、完整跨就诊归一和整体知识签发仍按OpenSpec后续任务进行。
+
+## 原始身份显示（不脱敏导入）
+
+内部病例关联键与界面身份分开：用户要求不脱敏时，OCR服务/内部模型从原文提取姓名与就诊号，逐字核验来源后作为显示列保存，不替换病历正文。可选bundle.source_identity以patient_name、visit_id各自的value/source_page/quote记录来源；脚本保留source_patient_name、source_visit_id，不转换为星号或替代姓名。侧栏、详情、概览和原文弹窗显示原始身份；查询及证据仍沿原有内部关联，不重写已发布审计结果。
+
+值冲突时显示身份待核，缺少原号显示“原文未提取”，不拿随机关联键冒充住院号。显示字段仅存在于受控患者数据，不进入规则资产或Git。增加显示列时CSV会重写表头，但所有原有字段逐值保留；不适用此前“仅追加字节”的描述。旧普通病例没有有效原始显示列时仍沿用原先显示。

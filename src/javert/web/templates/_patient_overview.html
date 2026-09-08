@@ -10,7 +10,7 @@
       <col style="width:13%"><col style="width:37%"><col style="width:13%"><col style="width:37%">
     </colgroup>
     <tr>
-      <th>住院号</th><td><strong>{{ overview.patient_id }}</strong></td>
+      <th>住院号</th><td><strong>{{ (overview.source_visit_id or "原文未提取") if overview.source_identity_present else overview.patient_id }}</strong></td>
       <th>性别 · 年龄</th><td>{{ overview.gender or "—" }} · {{ overview.age or "—" }}</td>
     </tr>
     <tr>
