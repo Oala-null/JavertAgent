@@ -1,6 +1,6 @@
 # 慢病专家反馈与试跑 QA
 
-## 2026-09-08 当前发布候选
+## 2026-09-08 当前已发布版本
 
 本次专家反馈取自《慢病诊断标准规则覆盖可行性反馈.xlsx》“待线下确认”H4:H8；用户确认该列为专家意见，G列旧“待确认”值原样保留为来源事实。仅记录五条解释及工作簿checksum/单元格，不把候选患者统计或真实病例放入Git。
 
@@ -13,9 +13,9 @@
 - manifest checksum：`sha256:c3e60659d06d6b923cb79d5c8f98a23e0ef2f3d2d0c8e42f6de6f7cdfc2267b1`。
 - r1资产和source快照单独保留，r2记录previous revision/checksum；构建不依赖临时xlsx。
 
-已验证知识构建`--check`、Router重建和OpenSpec strict；规则注册/配置/既有展示定向组合111 passed。完整组合、部署、真实结果对账将在完成后追加，当前不提前声明已上线或已上Workbench。
+已验证知识构建`--check`、Router重建和OpenSpec strict；规则注册/配置/既有展示定向组合111 passed。完整组合、部署和真实结果对账已完成，见本文末尾的最终验收记录。
 
-内部OCR完成授权文件25页：21临床、3行政、1费用汇总，未发现可完整对账的费用明细页。计划只运行19条CD shadow和CD10关闭状态；费用完整性未知，不以空收费跑全量普通规则。病例内容由内部服务处理，模型对话与终端仅接收聚合质量统计。
+内部OCR完成授权文件25页：21临床、3行政、1费用汇总，未发现可完整对账的费用明细页。实际运行19条CD shadow和CD10关闭状态；费用完整性未知，不以空收费跑全量普通规则。病例内容由内部服务处理，模型对话与终端仅接收聚合质量统计。
 
 以下为旧r1历史快照，不代表当前资产。
 
@@ -192,6 +192,23 @@
 
 ### 修正后的代码门禁
 
-排除上述50个逐项复现的既有节点后：1326 selected，1314 passed，12 skipped，0 failed，0 errors；50 deselected。新旧测试存在本次新增用例数量差异，不以相减推算回归结论。慢病定向组合150 passed；实际CsvLoader→Runner合成CSV全20规则端到端已通过，off不读患者/不调LLM、19shadow全部REVIEW_REQUIRED。尚未执行真实生产写入，后续追加发布事实。
+排除上述50个逐项复现的既有节点后：1326 selected，1314 passed，12 skipped，0 failed，0 errors；50 deselected。新旧测试存在本次新增用例数量差异，不以相减推算回归结论。慢病定向组合150 passed；实际CsvLoader→Runner合成CSV全20规则端到端已通过，off不读患者/不调LLM、19shadow全部REVIEW_REQUIRED。该段为写入前代码门禁快照；真实生产验收见下节。
 
 最终存储/UI/API组合271 passed；发布脚本追加冲突/断点/目录隔离/目标绑定/质量门禁测试34 passed。脚本仅在两端身份、标签与完整结果均一致时标记同步完成，既有run跳过SQLite插入并精确补远端，避免恢复时主键冲突。
+
+## 2026-09-08 最终部署与授权单PDF验收
+
+- 功能提交`baf16bc5468295c7a00e2bbdd33fe408a2a182dc`已推送`codex/chronic-expert-pilot`，标准artifact/install部署到62的production-62。两端HEAD一致，受控tracked clean；原项目工作树未提交修改保留。
+- 代码及环境备份`/home/admin2/backup/javert-git-20260908-153139-2536884`；SQLite原生备份/旧配置/旧overlay备份`/home/admin2/backup/javert-chronic-20260908-152702`，目录0700、文件0600。SQLite备份完整性校验通过。
+- 先代码/配置/index，再双库幂等迁移，后重启；双库clinical_criteria_json各恰一列且nullable。病例运行前SQL该字段非空行数0，运行后20，无历史回填。新旧进程29个JAVERT环境值及既有解析配置一致，慢病全局开关仍off。
+- 每次重启后登录200、SQL health true、Hub SELECT 1成功；v3空数组submit202、合成unknown查询200/unknown。
+- 用户明确授权的一份25页PDF只交内部PP-OCR及内部Qwen处理。21临床页进入本次原文，3行政页及1费用汇总页未进临床notes；无可信全量费用明细，因此没有运行全量费用规则。原始患者文件未进入Git或模型对话。
+- 19条慢病shadow + CD10关闭状态，共20条REVIEW_REQUIRED。7条存在可定位候选：CD01/CD03/CD04/CD05/CD06/CD07/CD19；它们是宽召回证据，不代表已诊断这些病种或满足认定标准。未形成QUALIFIED，也未生成VIOLATION。
+- 抽取质量：资产不可用0、服务抽取失败0、截断/不完整0、发布阻断0；13条规则出现候选引用校验拒绝标记，被拒绝候选没有入证据，结果保留提示。
+- 20条在SQLite与SQL Server逐项回读相同，20条synced、0额外行，全部batch_tag=慢病。限定本次run集合，无全历史pending同步；再次发布使用同run检查和精确补写。
+- 真实Workbench存储查询可发现该批次，全部20条CD可读；侧栏慢病候选数7，普通V/I/C均0。21页临床原文逐字与本次清单一致，29个证据锚点逐条匹配所属页面；20张慢病模板实际渲染通过。未使用浏览器查看患者正文。
+- 线上v3实际病例查询HTTP200、20cards，全部携带结构化慢病字段。此次验证只输出计数和布尔值，不输出病例键、run或病历原文。
+- 追加后的overlay以原文件字节为前缀，旧内容未改。临时PDF、页面图片、OCR原文、执行CSV和私有结果清单均已清理；受控生产备份及无患者信息的聚合QA保留。可读取的本次journal中整段原文匹配0；系统提示一份旧journal截断被忽略，因此不将该检查扩大声称为全部历史日志审计。
+- 后续文档提交只同步Git HEAD元数据，运行时blob与功能提交一致；不重复跑LLM或写病例。
+
+剩余范围：完整知识签发、复杂单位/重复测量/跨就诊时间策略、CD19功能障碍分级及5+45严格QUALIFIED样本。它们未被本次shadow验收替代；OpenSpec change保持开放，不归档。

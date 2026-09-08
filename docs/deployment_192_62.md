@@ -916,3 +916,17 @@ server {
 - 只替换目标患者overlay行，其他行逐字段校验未变；新增R326重跑结果，旧审计不修改、不删除。最新卡I/0.50、3项规则命中；完整费用行数62与规则命中数3必须区分。
 - 重启清除旧数据缓存后，环境值一致、systemd active、SQL/Hub健康，登录200、v3空submit202、unknown200/unknown，真实结果200；官方check显示功能HEAD一致、受控tracked clean。
 - 后续文档HEAD同步运行时blob不变，不重复更换数据或重跑LLM。临时原页渲染、OCR尝试和发布暂存目录清理；生产备份保留。
+
+
+## 16. 慢病专家反馈与shadow链路（2026-09-08）
+
+功能提交`baf16bc5468295c7a00e2bbdd33fe408a2a182dc`在隔离分支`codex/chronic-expert-pilot`完成测试与推送，基于62此前的`ef0f625`，保留已上线眼科规则和完整PDF导入功能。经标准artifact/install发布到production-62，官方check确认两端HEAD相等、受控tracked dirty为空。
+
+- 安装备份：`/home/admin2/backup/javert-git-20260908-153139-2536884`；上线前SQLite原生备份及实际配置：`/home/admin2/backup/javert-chronic-20260908-152702`。目录0700，敏感文件0600。SQLite备份integrity_check=ok。
+- 先安装代码/配置/index，再ensure-mssql-schema和SQLite幂等迁移，最后重启；双库各恰一列nullable clinical_criteria_json，真实病例运行前SQL慢病非空行数为0，未回填旧行。
+- 新旧进程29项JAVERT环境逐值一致；解析后的既有配置逐字段一致。systemd active，登录200，SQL health true，Hub SELECT 1成功；v3空submit202、合成unknown results200/unknown。
+- 生产默认慢病开关维持off；授权单病例脚本显式用19条shadow及CD10关闭状态，不把未签发条件放入普通默认审计集。
+- 健康验收脚本最初将sql_server_142结构化对象当bool，断言失败后修正为检查其sql_server字段；生产接口实际健康，不涉及代码回滚。
+- 本次单PDF用户明确免除2C脱敏流程，数据只在受控内部OCR/LLM及工作台处理。真实发布、精确同步、原文和标签检查结果见`docs/chronic_disease_criteria_qa.md`，不能用部署完成替代病例发布完成。
+
+单PDF最终发布已完成：20条结果精确双库同步、21页临床原文、7条慢病候选、29个来源锚点通过，tag=慢病，普通违规计数增量0。重启后v3真例HTTP200/20cards，原文源回读一致。含PHI临时目录已清理，旧overlay字节保留；受控生产备份按本节路径保留。

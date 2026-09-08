@@ -81,7 +81,7 @@
 - [x] 9.1 更新 README、架构文档、慢病维护/试跑/回滚 runbook 与 Workbench 用户指南
 - [x] 9.2 若共享序列化使 2C 暴露新字段，按“只加不删不改名”同步全部 v1/v2/v3 对接文档并验证 DTO
 - [x] 9.3 运行直接相关测试、受影响模块组合测试、端到端命令和全量非慢测试，记录原始 pass/skip/fail/error
-- [ ] 9.4 运行知识资产、Router index、SQLite/SQL Server 迁移、Workbench 与 PHI 门禁的严格 QA
+- [x] 9.4 运行知识资产、Router index、SQLite/SQL Server 迁移、Workbench 与 PHI 门禁的严格 QA
 - [x] 9.5 运行 `openspec validate add-chronic-disease-criteria --strict`，确保 tasks 状态与真实验证一致
 
 ## 10. 2026-09-08 专家反馈与单PDF shadow交付
@@ -90,7 +90,7 @@
 - [x] 10.2 接通CD专用Runner、候选证据校验和shadow proof；off零患者读取，未审批不自动认定
 - [x] 10.3 接通nullable双库存储、API/SSE、工作台慢病候选标记与“慢病”tag
 - [x] 10.4 验证私有单病例清单、临床页隔离、幂等追加及限定run双库对账
-- [ ] 10.5 定向/组合测试与OpenSpec strict通过，提交推送隔离分支
-- [ ] 10.6 从已提交HEAD发布62，核对环境、迁移、服务、v3、HEAD与受控clean
-- [ ] 10.7 完成授权单PDF OCR、19条慢病shadow+CD10关闭状态，发布工作台并核验原文与tag
-- [ ] 10.8 记录聚合QA，清理含PHI临时材料；不归档本change
+- [x] 10.5 定向/组合测试与OpenSpec strict通过，提交推送隔离分支
+- [x] 10.6 从已提交HEAD发布62，核对环境、迁移、服务、v3、HEAD与受控clean
+- [x] 10.7 完成授权单PDF OCR、19条慢病shadow+CD10关闭状态，发布工作台并核验原文与tag
+- [x] 10.8 记录聚合QA，清理含PHI临时材料；不归档本change
