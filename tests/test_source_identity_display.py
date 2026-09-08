@@ -7,10 +7,22 @@ from javert.store.models import PatientSidebarItem, User
 from javert.web import patient_overview as po
 from javert.web.api import routes_workbench as wb
 from javert.web.templating import render
+from javert.data.csv_loader import CsvLoader
 
 KEY = 'chronic-synthetic-case'
 NAME = '合成姓名'
 VISIT = 'SYNTHETIC-VISIT-001'
+
+
+def test_source_visit_id_stays_text_through_base_and_overlay_csv(tmp_path):
+    base=tmp_path/'case_notes.csv'
+    base.write_text('住院号,内容,source_patient_name,source_visit_id\nSYNTHETIC-OLD,旧合成文书,,\n')
+    overlay=tmp_path/'overlay';overlay.mkdir()
+    (overlay/'case_notes.csv').write_text('住院号,内容,source_patient_name,source_visit_id\nchronic-synthetic-case,合成正文,合成姓名,000123\n')
+    loader=CsvLoader(base,tmp_path/'fees.csv',overlay)
+    assert po.source_identity(loader.get_notes(KEY))['source_visit_id']=='000123'
+    direct=CsvLoader(overlay/'case_notes.csv',tmp_path/'fees.csv')
+    assert po.source_identity(direct.get_notes(KEY))['source_visit_id']=='000123'
 
 
 def test_sidebar_uses_source_label_but_keeps_internal_link():

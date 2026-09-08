@@ -41,3 +41,5 @@
 `src/javert/web/templates/{_sidebar,patient_detail,_patient_overview}.html`、
 `src/javert/web/static/app.js`。配套`tests/test_source_identity_display.py`和导入回归。
 关联键不重写，已发布的20条结果与21页原文保持原有内容；界面显示原姓名/原就诊号。
+
+原始身份显示组还必须合并`src/javert/data/csv_loader.py`：base和overlay将source_visit_id/source_patient_name按字符串读取，禁止数值推断破坏原始号码。

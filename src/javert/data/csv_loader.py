@@ -84,8 +84,9 @@ class CsvLoader(DataLoader):
     def _load_notes(self) -> pd.DataFrame:
         if self._notes is None:
             t0 = time.perf_counter()
-            df = pd.read_csv(self.notes_path, dtype={"住院号": str}, low_memory=False)
-            self._notes = self._overlay(df, "case_notes.csv", {"住院号": str})
+            dtype = {"住院号": str, "source_visit_id": str, "source_patient_name": str}
+            df = pd.read_csv(self.notes_path, dtype=dtype, low_memory=False)
+            self._notes = self._overlay(df, "case_notes.csv", dtype)
             self._notes_index = self._build_index(self._notes, exact_col="住院号")
             elapsed = time.perf_counter() - t0
             logger.info(
