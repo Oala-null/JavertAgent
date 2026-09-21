@@ -11,6 +11,10 @@ from __future__ import annotations
 
 import threading
 import time
+import json
+import os
+import re
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable
 
@@ -31,6 +35,36 @@ from javert.tools.registry import build_executor
 
 
 VALID_PRIORITIES = ("P0", "P1", "P2", "P3")
+
+
+def _receipt_target():
+    """可选院内批跑回执；与含临床文本的stdout分离，不能靠日志文本伪造完成。"""
+    value = os.environ.get("JAVERT_PATIENT_RECEIPT")
+    if not value:
+        return None
+    path = Path(value)
+    root = Path(__file__).resolve().parents[3] / "output"
+    if (not path.is_absolute() or path.is_symlink() or path.parent.is_symlink()
+            or path.parent.resolve().parent != root.resolve()
+            or not path.parent.name.startswith("lis-batch.")
+            or not re.fullmatch(r"patient-[0-9]{4,8}\.audit\.json", path.name)
+            or path.exists() or path.with_suffix(".started.json").exists()):
+        raise ValueError("AUDIT_RECEIPT_PATH_INVALID")
+    return path
+
+
+def _write_receipt(path, cfg, patient_id, status, **counts):
+    if path is None:
+        return
+    payload = {"version": 1, "tag": cfg.batch_tag, "patient_id": patient_id,
+               "status": status, **counts}
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    with temporary.open("w", encoding="utf-8") as stream:
+        os.chmod(temporary, 0o600)
+        json.dump(payload, stream, ensure_ascii=False)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
 
 
 def _resolve_selection(
@@ -423,6 +457,22 @@ def run_audit_patient(
         return 2
 
     cfg = get_config()
+    receipt = _receipt_target()
+    receipt_labs = {}
+    if cfg.hub_linkage_mode == "shanghai":
+        from javert.data.hub_source import HospitalLinkageError, validate_settlement_snapshot, validate_lis_snapshot
+        try:
+            validate_settlement_snapshot(cfg)
+            snapshot = validate_lis_snapshot(cfg, patient_id)
+            receipt_labs = {"lab_source": snapshot["lab_source"]["source"],
+                            "lab_rows": snapshot["rows"]["labs"],
+                            "lab_assigned_reports": snapshot["lab_linkage"]["assigned_reports"],
+                            "lab_pending_reports": snapshot["lab_linkage"]["pending_reports"]}
+            if not (cfg.batch_tag or "").startswith("st-"):
+                raise HospitalLinkageError("SETTLEMENT_NEW_BATCH_TAG_REQUIRED")
+        except HospitalLinkageError as exc:
+            click.echo(f"预检未通过：{exc}；请重新抽取院内快照", err=True)
+            return 2
     all_rules = load_all(cfg.rules_path)
 
     try:
@@ -438,6 +488,8 @@ def run_audit_patient(
         return 2
 
     loader = CsvLoader(cfg.notes_path, cfg.fees_path)
+    if receipt is not None:
+        _write_receipt(receipt.with_suffix(".started.json"), cfg, patient_id, "STARTED")
 
     # ─── Stage A: router prefilter (可选) ───
     router_decision: RouterDecision | None = None
@@ -451,6 +503,7 @@ def run_audit_patient(
             click.echo(f"rule selection: {selection_label}", err=True)
             _print_router_block(router_decision)
             click.echo(f"✓ router 判定无可疑规则, 跳过 LLM 审计 (V=0 C=0 I=0, 0.0s)", err=True)
+            _write_receipt(receipt, cfg, patient_id, "ROUTER_SKIPPED", completed=0, selected=0, **receipt_labs)
             return 0
 
     executor = build_executor(loader, cfg)
@@ -520,6 +573,12 @@ def run_audit_patient(
         pending_run_ids=pending_run_ids,
     )
 
+    complete = (len(results) == len(selected) and bool(results) and not failed_rules and not llm_failed_rules
+                and sync_counters.get("synced", 0) == len(results)
+                and sync_counters.get("pending", 0) == 0 and sync_counters.get("skipped", 0) == 0)
+    _write_receipt(receipt, cfg, patient_id, "PASSED" if complete else "FAILED_AUDIT",
+                   completed=len(results), selected=len(selected),
+                   failed=len(failed_rules)+len(llm_failed_rules), sync=sync_counters, **receipt_labs)
     if failed_rules or llm_failed_rules:
         return 1
     return 0

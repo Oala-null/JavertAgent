@@ -58,7 +58,8 @@ def _enrich_sidebar(patients: list) -> list:
     updated_at 已由 store SQL 填好. fees_sum 走一次性 groupby 缓存; primary_dx
     复用 _load_zd 进程缓存 + note 兜底. 失败不阻断 sidebar 渲染.
     """
-    if not patients:
+    # 上海侧栏只展示审计列表；原文在选中患者详情时读取，避免逐人加载整套数据。
+    if not patients or get_config().hub_linkage_mode == "shanghai":
         return patients
     try:
         loader = _get_loader()
@@ -238,6 +239,7 @@ def workbench_index(request: Request, filter: str | None = None):
         active_patient=None,
         filter=f,
         filter_label=_filter_label(f),
+        sidebar_summary_available=get_config().hub_linkage_mode != "shanghai",
         runs=[],
         show_banner=show_banner,
         banner_stats=stats,
@@ -307,6 +309,7 @@ def workbench_patient(
         active_patient=patient_id,
         filter=f,
         filter_label=_filter_label(f),
+        sidebar_summary_available=get_config().hub_linkage_mode != "shanghai",
         runs=runs,
         run_groups=run_groups,
         rule_meta=meta_map,
@@ -608,6 +611,11 @@ def _raw_payload(patient_id: str) -> dict:
 
     labs = _labs_to_list(patient_id)
     exams = _exams_to_list(patient_id)
+    lab_linkage, pending_labs = {}, []
+    if get_config().hub_linkage_mode == "shanghai":
+        hub = _get_hub_source()
+        lab_linkage = hub.get_lab_linkage(patient_id)
+        pending_labs = _format_lab_rows(hub.get_pending_labs(patient_id))
 
     return {
         "patient_id": patient_id,
@@ -621,6 +629,9 @@ def _raw_payload(patient_id: str) -> dict:
         "n_notes": len(notes_df) if notes_df is not None else 0,
         "n_labs": len(labs),
         "n_exams": len(exams),
+        "lab_linkage": lab_linkage,
+        "pending_labs": pending_labs,
+        "n_pending_labs": len(pending_labs),
     }
 
 
@@ -634,6 +645,24 @@ def _labs_to_list(patient_id: str) -> list[dict]:
         rows = []
     if not rows and get_config().hub_raw_enabled:
         rows = _get_hub_source().get_labs(patient_id)
+    return _format_lab_rows(rows)
+
+
+_LIS_REASONS = {
+    "REPORT_KEY_MISSING": "报告关联键缺失或无效",
+    "OTHER_ADMISSION": "关联到其他次住院",
+    "ADMISSION_AMBIGUOUS": "对应多次住院，归属待核对",
+    "MEDICAL_ADMISSION_NOT_FOUND": "医疗记录与首页住院日期未对齐",
+    "MEDICAL_TIME_MISSING": "医疗记录住院时间缺失或无效",
+    "MEDICAL_VISIT_MISSING": "未找到本院正常医疗记录",
+    "MEDICAL_CARD_CONFLICT": "医疗记录卡信息不一致",
+    "REPORT_CARD_CONFLICT": "报告卡信息不一致",
+    "REPORT_HEADER_AMBIGUOUS": "报告主记录存在冲突",
+    "REPORT_VISIT_MISSING": "报告缺少有效就诊号",
+}
+
+
+def _format_lab_rows(rows) -> list[dict]:
     out: list[dict] = []
     for r in rows:
         out.append({
@@ -646,6 +675,9 @@ def _labs_to_list(patient_id: str) -> list[dict]:
             "flag": r.get("result_flag") or "",
             "department": r.get("department") or "",
         })
+        if r.get("linkage_reason"):
+            out[-1]["linkage_reason"] = r["linkage_reason"]
+            out[-1]["linkage_note"] = _LIS_REASONS.get(r["linkage_reason"], "归属待核对")
     return out
 
 
@@ -707,7 +739,7 @@ def _get_main_diagnosis(patient_id: str) -> str | None:
             mains = df[df[flag_col].astype(str).str.strip() == "1"]
             for _, row in mains.iterrows():
                 pid = str(row[id_col]).strip()
-                # bah 形如 "H310...J13365"; 提取末段
+                # bah 形如 "H310...CASE_DEMO"; 提取末段
                 pid_match = pid.split("-")[-1].strip()
                 label = str(row[name_col])
                 if code_col and code_col in row.index:

@@ -1,0 +1,110 @@
+{
+  "patch_id": "249-lis-medical-v1",
+  "base_commit": "8645a2deb1c4c99921a65a3ab01754275ec2ac4e",
+  "required_tables": {
+    "TB_BA_SYJBK": [
+      "YLJGYQDM",
+      "SYXH",
+      "BAH",
+      "KH",
+      "KLX",
+      "RYRQ",
+      "CYRQ"
+    ],
+    "TB_YL_ZY_MEDICAL_RECORD": [
+      "YLJGYQDM",
+      "JZLSH",
+      "BAH",
+      "KH",
+      "KLX",
+      "RYSJ",
+      "CYSJ",
+      "XGBZ"
+    ],
+    "TB_LIS_REPORT": [
+      "YLJGYQDM",
+      "JZLSH",
+      "BGDH",
+      "BGRQ",
+      "KH",
+      "KLX",
+      "SQKS",
+      "BGSJ",
+      "BBMC",
+      "BGDLB",
+      "BRNL",
+      "BRXB",
+      "BGYHRYXM",
+      "SHYHRYXM"
+    ],
+    "TB_LIS_INDICATORS": [
+      "YLJGYQDM",
+      "BGDH",
+      "BGRQ",
+      "JYZBMC",
+      "JYZBDM",
+      "JYZBJG",
+      "JLDW",
+      "CKZ",
+      "YCTS"
+    ]
+  },
+  "files": {
+    "scripts/check_243_lis.py": {
+      "before": null,
+      "after": "a3880b233eee4636b649cfcf737c7ff03ffe2fc07230fa235f0fee378b8fc55a",
+      "mode": 420
+    },
+    "scripts/etl_from_data_hub.py": {
+      "before": "1adb075481c86d6c38e8240fea7873601fb3ed0b5acfa54ffb485d5b0c4d1730",
+      "after": "81df8dff4215a88f776c9211875b920a5dd49499f05e839919726d814424977f",
+      "mode": 420
+    },
+    "scripts/lis_batch.sh": {
+      "before": null,
+      "after": "0093ce67f2e1ee006277c34cc8540330f8efdd42af477edc4f062712b230dd61",
+      "mode": 493
+    },
+    "scripts/run_243_lis_batch.py": {
+      "before": null,
+      "after": "f07ec61a02913b6a9070265b9c5aecc73829f7bd5c17f1d2bf3289cfd6e5aaff",
+      "mode": 420
+    },
+    "scripts/run_243_patient.sh": {
+      "before": "cfe5a6240d278a6f8eda5d3cc36f416b07de7c4144fcf46780b27b7dbc4e672a",
+      "after": "909afd9339de6130f47e1a1bcb0dada78602ebba575ff518a7b3875549a0f996",
+      "mode": 493
+    },
+    "src/javert/commands/audit_patient.py": {
+      "before": "ac06f466b7c35b70f9159dbde1e134bfc142ef11f0cafe3005d7bbf4eade1a12",
+      "after": "585cbc19ffbe92ed7b8bdb81ddc7b9f5ad0967bfae3e86b146cb5dd593e2a6d6",
+      "mode": 420
+    },
+    "src/javert/data/hub_source.py": {
+      "before": "8d4fbce0cba0385fca0446977480d17c896d60bb58658e4f70b8dbb9b13ebb8f",
+      "after": "db73357dccb0647272c3a7b06bd390cb96de3be9cb5ab59812ad14aac8322bce",
+      "mode": 420
+    },
+    "src/javert/web/api/routes_workbench.py": {
+      "before": "5d78fbb1faa5744adbcfa8d58831baa27d82628570eea0871ed2656e46f6a251",
+      "after": "7d724263baf0970f14897f3d74d2b5e43ce7dcf063aaa1a007f1b0d1a5920b16",
+      "mode": 420
+    },
+    "src/javert/web/hub_raw_source.py": {
+      "before": "6e8b4efae9508cf28fa801f3e9a4a3fd669c0e6ef8422ec621e386445e4ab6b9",
+      "after": "153f22c0aa18dcae95590a4ff36386b1b88e68c84008791d2de95b3761f1d38c",
+      "mode": 420
+    },
+    "src/javert/web/static/app.js": {
+      "before": "d56661e1b2adba19478ab92294cf1ce53499a0e88dcd910ab8c2185f4f5fa223",
+      "after": "85717be400cfeebcea5dc6814e98dabaeb5fddcbc51dbef55147e3180afbd933",
+      "mode": 420
+    }
+  },
+  "dependencies": {
+    "scripts/check_243_runtime.py": "183cad5f63a472ef355e9893cd24687babdc8bc194fb06894f208f7b7e89fb23",
+    "scripts/find_243_patient.py": "a721736de3cddec0efcfdb1db57a1c2fc9c639d1fa271c8f3f2ede1a72ef9885",
+    "scripts/run_243_settlement_500.sh": "14aa509a67acd12732c38854e9d3621d5703837153f2a92759285a2932cb96ff",
+    "src/javert/web/templates/_sidebar.html": "32f2e6c878089707da8e7bc489e796e1521ec198972614d7707a8a38f405ec4d"
+  }
+}

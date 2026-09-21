@@ -2,7 +2,7 @@
 """反向取数桥: sh_yb_platform (TB_* 国标表) → Javert 内部 6 文件 (流 B).
 
 用法:
-    uv run python scripts/etl_from_data_hub.py --patients 211530148,J66252 --output data_import_hub
+    uv run python scripts/etl_from_data_hub.py --patients CASE_DEMO,CASE_SECOND --output data_import_hub
     uv run python scripts/etl_from_data_hub.py --all --output data_import_hub
 
 产出列契约 = configs/schema_manifest.yaml 各 spoke 的 output_schema (v0.7 外部数据同一契约),
@@ -10,7 +10,7 @@
     export JAVERT_DATA_DIR=data_import_hub JAVERT_ZD_FILE=shi_zd.csv JAVERT_SS_FILE=shi_ss.csv \\
            JAVERT_LABS_FILE=lab_results.csv JAVERT_EXAMINATIONS_FILE=examinations.csv \\
            JAVERT_SQL_ENABLED=false
-    uv run javert audit-patient 211530148 --use-router --concurrency 5
+    uv run javert audit-patient CASE_DEMO --use-router --concurrency 5
 
 映射逻辑在 src/javert/data/hub_source.py (add-workbench-sql-raw-source D2 提取,
 与工作台 HubRawSource 共用) — 本脚本只留 CLI + 落盘.
@@ -42,13 +42,19 @@ def hospital_etl(args, cfg):
         bundle = hs.fetch_hospital_bundle(cn, pids[0], cfg.hub_hospital_code)
     files = {"fees": "shi_fee.csv", "notes": "case_notes.csv", "zd": "shi_zd.csv",
              "ss": "shi_ss.csv", "labs": "lab_results.csv", "exams": "examinations.csv"}
+    print(f"费用来源：{hs.SETTLEMENT_FEE_TABLE}；时间口径：STFSJ收退费时间")
     report = {"mode": "shanghai", "rows": {name: len(bundle[name]) for name in files},
-              "warnings": bundle["warnings"]}
+              "warnings": bundle["warnings"], "lab_linkage": bundle.get("lab_linkage", {})}
+    report["patient_scope"] = {"hospital": cfg.hub_hospital_code, "syxh": pids[0]}
     for name, count in report["rows"].items():
         print(f"  {name}: {count} 行")
     for code, count in report["warnings"].items():
         if count:
             print(f"  WARNING {code}={count}")
+    linkage = report["lab_linkage"]
+    if linkage:
+        print(f'LIS来源：{linkage["source"]}；候选报告{linkage["candidate_reports"]}份，'
+              f'本次住院{linkage["assigned_reports"]}份，未纳入{linkage["pending_reports"]}份')
     if args.check_only:
         print("[2/2] 预检完成，未写快照、未启动审计")
         return
@@ -62,6 +68,14 @@ def hospital_etl(args, cfg):
             path = stage / filename
             bundle[name].to_csv(path, index=False, encoding="utf-8-sig")
             path.chmod(0o600)
+        report["fee_source"] = hs.settlement_fee_snapshot(stage / files["fees"])
+        report["lab_source"] = hs.lis_snapshot(stage / files["labs"])
+        pending = bundle.get("pending_labs", [])
+        if pending:
+            import pandas as pd
+            pending_path = stage / "lab_results_pending.csv"
+            pd.DataFrame(pending).to_csv(pending_path, index=False, encoding="utf-8-sig")
+            pending_path.chmod(0o600)
         report_path = stage / "preflight.json"
         report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         report_path.chmod(0o600)

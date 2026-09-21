@@ -27,8 +27,8 @@ def main():
             JOIN dbo.TB_CIS_LEAVEHOSPITAL_SUMMARY s
               ON s.YLJGYQDM=b.YLJGYQDM AND s.BAH=b.BAH AND s.KH=b.KH AND s.KLX=b.KLX
             WHERE b.YLJGYQDM=?
-              AND EXISTS (SELECT 1 FROM dbo.TB_HIS_ZY_FEE_DETAIL_FS f
-                          WHERE f.YLJGYQDM=s.YLJGYQDM AND f.JZLSH=s.JZLSH)
+              AND EXISTS (SELECT 1 FROM dbo.TB_HIS_ZY_FEE_DETAIL f
+                          WHERE f.YLJGYQDM=s.YLJGYQDM AND f.JZLSH=s.JZLSH AND f.XGBZ='1')
             ORDER BY b.CYRQ DESC, b.SYXH
         """, (args.max_candidates, cfg.hub_hospital_code))
         for i, pid in enumerate(candidates["SYXH"], 1):

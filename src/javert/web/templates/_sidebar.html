@@ -1,4 +1,5 @@
 {# partial: patient sidebar; expects vars: patients, active_patient, filter, filter_label #}
+{% set summary_available = sidebar_summary_available is not sameas false %}
 {% set tags = patients | selectattr('batch_tag') | map(attribute='batch_tag') | unique | list %}
 <aside class="sidebar-panel" id="sidebar">
   <div class="sidebar-head">
@@ -16,14 +17,20 @@
   {# facet 栏 — 纯前端, 与服务端 verdict filter 叠加 (只在已渲染集内筛, 无 reload) #}
   <div class="facet-bar" id="facet-bar">
     <input type="text" id="facet-pid" class="facet-input" placeholder="住院号 (如 J66252)…" oninput="applyFacets()" autocomplete="off" spellcheck="false">
+    {% if summary_available %}
     <input type="text" id="facet-dx" class="facet-input" placeholder="主诊关键词 (如 甲状腺)…" oninput="applyFacets()">
+    {% else %}
+    <p class="muted">主诊和费用请在患者详情查看。</p>
+    {% endif %}
     <div class="facet-row">
+      {% if summary_available %}
       <select id="facet-fee" class="facet-select" onchange="applyFacets()" title="费用区间">
         <option value="all">费用 · 全部</option>
         <option value="lt1">&lt; 1 万</option>
         <option value="1to5">1 – 5 万</option>
         <option value="gt5">&gt; 5 万</option>
       </select>
+      {% endif %}
       <select id="facet-time" class="facet-select" onchange="applyFacets()" title="审计更新时间">
         <option value="all">时间 · 全部</option>
         <option value="today">今天</option>
@@ -35,8 +42,10 @@
     <div class="facet-row">
       <select id="facet-sort" class="facet-select" onchange="applyFacets()" title="按金额或生成时间排序">
         <option value="default">排序 · 默认</option>
+        {% if summary_available %}
         <option value="fee_desc">金额 ↓ (高→低)</option>
         <option value="fee_asc">金额 ↑ (低→高)</option>
+        {% endif %}
         <option value="time_desc">生成时间 ↓ (新→旧)</option>
         <option value="time_asc">生成时间 ↑ (旧→新)</option>
       </select>
@@ -69,7 +78,7 @@
         <span>{% if p.fully_reviewed %}<span class="check-icon"></span>{% endif %}{{ p.patient_id }}</span>
         {% if p.batch_tag %}<span class="batch-badge batch-{{ p.batch_tag }}">{{ p.batch_tag }}</span>{% endif %}
       </div>
-      {% if p.primary_dx %}
+      {% if summary_available and p.primary_dx %}
       <div class="row-dx" title="{{ p.primary_dx }}">{{ p.primary_dx }}</div>
       {% endif %}
       <div class="row2">
@@ -81,7 +90,7 @@
         </span>
       </div>
       <div class="row-meta">
-        {% if p.fees_sum %}<span class="fee-chip">¥{{ "{:,.0f}".format(p.fees_sum) }}</span>{% endif %}
+        {% if summary_available and p.fees_sum %}<span class="fee-chip">¥{{ "{:,.0f}".format(p.fees_sum) }}</span>{% endif %}
         {% if p.updated_at %}<span class="updated-chip" title="最近审计时间">{{ p.updated_at | humanize_since }}</span>{% endif %}
       </div>
     </a>

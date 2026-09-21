@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from javert.config import get_config
-from javert.data.hub_source import connect
+from javert.data.hub_source import connect, validate_settlement_source, SETTLEMENT_FEE_TABLE
 from javert.store.sqlserver_store import SqlServerStore
 
 
@@ -27,7 +27,9 @@ def main():
     with closing(connect(cfg, timeout=10)) as cn:
         cn.timeout = 30
         cn.cursor().execute("SELECT 1").fetchone()
+        validate_settlement_source(cn, cfg.hub_hospital_code)
     print("SQL源连接：通过")
+    print(f"费用源：{SETTLEMENT_FEE_TABLE}；STFSJ收退费时间；本院有效费用可读")
     if cfg.sql_enabled:
         store = SqlServerStore(config=cfg)
         try:

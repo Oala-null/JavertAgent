@@ -120,12 +120,13 @@
   }
 
   // ---------- 原始数据 fetch (modal + 对照面板共用缓存) + table builders ----------
-  var _rawCache = {};
+  var _rawCache = Object.create(null);
+  var _rawCacheAt = Object.create(null);
   function fetchRaw(pid) {
-    if (_rawCache[pid]) return Promise.resolve(_rawCache[pid]);
+    if (_rawCache[pid] && Date.now() - _rawCacheAt[pid] < 30000) return Promise.resolve(_rawCache[pid]);
     return fetch("/api/patient/" + encodeURIComponent(pid) + "/raw", {credentials: "same-origin"})
       .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
-      .then(function (data) { _rawCache[pid] = data; return data; });
+      .then(function (data) { _rawCache[pid] = data; _rawCacheAt[pid] = Date.now(); return data; });
   }
 
   function _notesPanelHtml(data) {
@@ -179,27 +180,37 @@
   }
   // 检验记录 panel — 检验(化验) + 检查(影像/超声) 合并一个 tab, 各一段; 项名作 data-name
   // 供命中跳转高亮 (search 引擎在 active tabpanel 内按文本匹配项名).
+  function _labTableHtml(labs, pending) {
+    var abnormal = ["", "正常", "N"];
+    var rows = labs.map(function (l) {
+      var abn = l.flag && abnormal.indexOf(l.flag) < 0;
+      return '<tr' + (pending ? ' data-lab-scope="unverified"' : ' data-name="' + _esc(l.item) + '"') + (abn ? ' class="lab-abnormal"' : '') + '>' +
+        '<td>' + _esc(l.date) + '</td><td>' + _esc(l.item) +
+        (l.inspection ? '<span class="lab-sub"> · ' + _esc(l.inspection) + '</span>' : '') + '</td>' +
+        '<td>' + _esc(l.result) + (l.unit ? ' ' + _esc(l.unit) : '') + '</td>' +
+        '<td>' + _esc(l.ref) + '</td><td>' + _esc(l.flag) + '</td><td>' + _esc(l.department) + '</td>' +
+        (pending ? '<td>' + _esc(l.linkage_note || '归属待核对') + '</td>' : '') + '</tr>';
+    }).join('');
+    return '<table class="data-table"><thead><tr><th>时间</th><th>项目</th><th>结果</th><th>参考</th>' +
+      '<th>标志</th><th>科室</th>' + (pending ? '<th>未纳入原因</th>' : '') +
+      '</tr></thead><tbody>' + rows + '</tbody></table>';
+  }
   function _labsPanelHtml(data, hidden) {
-    var labs = data.labs || [], exams = data.exams || [];
+    var labs = data.labs || [], exams = data.exams || [], pending = data.pending_labs || [];
     var sections = "";
+    if (data.lab_linkage && data.lab_linkage.source) {
+      sections += '<p class="muted">本次住院已匹配 ' + _esc(data.lab_linkage.assigned_reports || 0) +
+        ' 份检验报告；另有 ' + _esc(data.lab_linkage.pending_reports || 0) +
+        ' 份关联报告未纳入本次审计。页面刷新不会重新计算历史审计结果。</p>';
+    }
     if (labs.length) {
-      var abnormal = ["", "正常", "N"];
-      var lrows = labs.map(function (l) {
-        var abn = l.flag && abnormal.indexOf(l.flag) < 0;
-        return '<tr data-name="' + _esc(l.item) + '"' + (abn ? ' class="lab-abnormal"' : '') + '>' +
-          "<td>" + _esc(l.date) + "</td>" +
-          "<td>" + _esc(l.item) +
-            (l.inspection ? '<span class="lab-sub"> · ' + _esc(l.inspection) + '</span>' : '') + "</td>" +
-          "<td>" + _esc(l.result) + (l.unit ? " " + _esc(l.unit) : "") + "</td>" +
-          "<td>" + _esc(l.ref) + "</td>" +
-          "<td>" + _esc(l.flag) + "</td>" +
-          "<td>" + _esc(l.department) + "</td>" +
-        "</tr>";
-      }).join("");
-      sections += '<div class="lab-section-head">检验 · 化验 (' + labs.length + ')</div>' +
-        '<table class="data-table"><thead><tr>' +
-          '<th>时间</th><th>项目</th><th>结果</th><th>参考</th><th>标志</th><th>科室</th>' +
-        '</tr></thead><tbody>' + lrows + '</tbody></table>';
+      sections += '<div class="lab-section-head">本次住院 · 检验化验 (' + labs.length + ')</div>' + _labTableHtml(labs, false);
+    }
+    if (pending.length) {
+      sections += '<details class="note-bucket"><summary class="note-bucket-head">关联检验 · 归属待核对或其他次住院 (' +
+        pending.length + '，未用于本次审计)</summary>' +
+        '<p class="muted">以下仅为关联候选，请核对住院归属；不能据此认定属于当前这次住院。</p>' +
+        _labTableHtml(pending, true) + '</details>';
     }
     if (exams.length) {
       var erows = exams.map(function (e) {
@@ -240,7 +251,7 @@
             '<button type="button" class="tab" data-tab="fees" onclick="switchTab(this,\'fees\')">' +
               '费用 (' + (data.n_fees || 0) + ')</button>' +
             '<button type="button" class="tab" data-tab="labs" onclick="switchTab(this,\'labs\')">' +
-              '检验记录 (' + ((data.n_labs || 0) + (data.n_exams || 0)) + ')</button>' +
+              '检验记录 (' + ((data.n_labs || 0) + (data.n_exams || 0) + (data.n_pending_labs || 0)) + ')</button>' +
           '</div>' +
           '<div class="modal-search src-search">' +
             '<input type="text" class="src-search-input" placeholder="搜索 (Ctrl+F / ⌘F) — 当前 tab 内高亮跳转" ' +
@@ -295,7 +306,7 @@
         '<div class="modal-tabs" role="tablist">' +
           '<button type="button" class="tab" data-tab="notes" onclick="switchTab(this,\'notes\')">文书 (' + (data.n_notes || 0) + ')</button>' +
           '<button type="button" class="tab" data-tab="fees" onclick="switchTab(this,\'fees\')">费用 (' + (data.n_fees || 0) + ')</button>' +
-          '<button type="button" class="tab" data-tab="labs" onclick="switchTab(this,\'labs\')">检验记录 (' + ((data.n_labs || 0) + (data.n_exams || 0)) + ')</button>' +
+          '<button type="button" class="tab" data-tab="labs" onclick="switchTab(this,\'labs\')">检验记录 (' + ((data.n_labs || 0) + (data.n_exams || 0) + (data.n_pending_labs || 0)) + ')</button>' +
         '</div>' +
         '<div class="modal-search src-search">' +
           '<input type="text" class="src-search-input" placeholder="搜索当前 tab" oninput="onSearchInput(this)" onkeydown="onSearchKey(event)">' +

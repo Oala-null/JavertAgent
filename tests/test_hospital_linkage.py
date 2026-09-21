@@ -102,7 +102,7 @@ def test_fees_use_visit_key_standard_category_and_detect_join_expansion(monkeypa
         assert "f.YLJGYQDM=? AND f.JZLSH=?" in sql
         assert params == ("TESTHOSP", "VISIT_A")
         row = dict(YLJGYQDM="TESTHOSP", SFMXID="FEE_A", STFBZ="1", JZLSH="VISIT_A",
-                   MXFYLB="09", FYFSSJ="2026-08-08 07:33:17", MXXMBM="LOCAL_TEST",
+                   MXFYLB="09", FYFSSJ="2026-08-08 07:33:17", XGBZ="1", MXXMBM="LOCAL_TEST",
                    MXXMBMYB="NATIONAL_TEST", MXXMMC="人工药品", MXXMDJ="2",
                    MXXMSL="3", MXXMJE="6", KH="CARD_TEST", KLX="0")
         return pd.DataFrame([row] * (2 if duplicate else 1))

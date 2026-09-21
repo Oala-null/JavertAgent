@@ -10,6 +10,10 @@
 from __future__ import annotations
 
 import re
+import hashlib
+import json
+import csv
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -28,7 +32,7 @@ SENT = "1900-01-01 00:00:00"
 # 病案首页三表 (TB_BA_SYJBK/SYZDK/SYSSK) 为 ground truth 的院区.
 # szx(0003): IH_DIAGNOSIS_DETAIL 的 CYZDBZ 不是主诊语义 (与首页主诊几乎零一致, 2026-07-06 实measured),
 # 主诊断锚 = SYJBK.ZYZD (与 IH 主诊 83% 同码), 诊断列表 = SYZDK, 手术 = SYSSK⋈OPRATION_DETAIL (v2.2).
-# sy(0001): 首页库回填不全 (J66252 仅 1 行且主诊错), 维持 IH/OPRATION 现状.
+# sy(0001): 首页库回填不全 (CASE_DEMO 仅 1 行且主诊错), 维持 IH/OPRATION 现状.
 BA_HOSPS = ("0003",)
 
 # 上海接口1.3.1费用类别；旧测试表的自造类别仅用于legacy。
@@ -41,6 +45,80 @@ SHANGHAI_FEE_CATEGORIES = {
 
 class HospitalLinkageError(ValueError):
     """稳定的预检错误码；不包含患者号、卡号、SQL或凭据。"""
+
+
+SETTLEMENT_FEE_TABLE = "TB_HIS_ZY_FEE_DETAIL"
+SETTLEMENT_FEE_COLUMNS = (
+    "YLJGYQDM", "SFMXID", "STFBZ", "JZLSH", "KH", "KLX", "MXFYLB", "STFSJ",
+    "MXXMBM", "MXXMBMYB", "MXXMMC", "MXXMDJ", "MXXMSL", "MXXMJE", "XGBZ",
+)
+LIS_SOURCE_VERSION = "medical-record-v1"
+LIS_REQUIRED_COLUMNS = {
+    "TB_BA_SYJBK": "YLJGYQDM SYXH BAH KH KLX RYRQ CYRQ".split(),
+    "TB_YL_ZY_MEDICAL_RECORD": "YLJGYQDM JZLSH BAH KH KLX RYSJ CYSJ XGBZ".split(),
+    "TB_LIS_REPORT": "YLJGYQDM JZLSH BGDH BGRQ KH KLX SQKS BGSJ BBMC BGDLB BRNL BRXB BGYHRYXM SHYHRYXM".split(),
+    "TB_LIS_INDICATORS": "YLJGYQDM BGDH BGRQ JYZBMC JYZBDM JYZBJG JLDW CKZ YCTS".split(),
+}
+
+
+def validate_settlement_source(cn, hospital: str) -> None:
+    """只读验证结算核心字段和本院有效费用，缺失不回退FS。"""
+    try:
+        q(cn, f"SELECT TOP (0) {', '.join(SETTLEMENT_FEE_COLUMNS)} FROM dbo.{SETTLEMENT_FEE_TABLE}")
+        found = q(cn, f"SELECT TOP (1) 1 AS present FROM dbo.{SETTLEMENT_FEE_TABLE} "
+                     "WHERE YLJGYQDM=? AND XGBZ='1'", (hospital,))
+    except Exception:
+        raise HospitalLinkageError("SETTLEMENT_SCHEMA_OR_QUERY_FAILED") from None
+    if found.empty:
+        raise HospitalLinkageError("SETTLEMENT_SOURCE_EMPTY")
+
+
+def settlement_fee_snapshot(path) -> dict:
+    return {"table": SETTLEMENT_FEE_TABLE, "time_field": "STFSJ", "version": 1,
+            "file": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+
+
+def validate_settlement_snapshot(cfg) -> None:
+    """审计开始前阻止复用旧FS快照或错配费用文件。"""
+    try:
+        source = json.loads((cfg.fees_path.parent / "preflight.json").read_text())["fee_source"]
+        if source != settlement_fee_snapshot(cfg.fees_path):
+            raise ValueError("snapshot mismatch")
+    except (OSError, ValueError, TypeError, KeyError):
+        raise HospitalLinkageError("SETTLEMENT_SNAPSHOT_REQUIRED_OR_MISMATCH") from None
+
+
+def lis_snapshot(path) -> dict:
+    return {"source": LIS_SOURCE_VERSION, "version": 1, "file": path.name,
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+
+
+def validate_lis_snapshot(cfg, patient_id=None) -> None:
+    try:
+        report = json.loads((cfg.labs_path.parent / "preflight.json").read_text())
+        source = report["lab_source"]
+        if source != lis_snapshot(cfg.labs_path):
+            raise ValueError("snapshot mismatch")
+        if patient_id is not None:
+            if report["patient_scope"] != {"hospital": cfg.hub_hospital_code, "syxh": str(patient_id)}:
+                raise ValueError("patient mismatch")
+            with cfg.labs_path.open(encoding="utf-8-sig", newline="") as stream:
+                reader = csv.DictReader(stream)
+                if not {"zyh","rpt_itemname","result"} <= set(reader.fieldnames or []):
+                    raise ValueError("columns mismatch")
+                rows = list(reader)
+            if len(rows) != report["rows"]["labs"] or any(r.get("zyh") != str(patient_id) for r in rows):
+                raise ValueError("row mismatch")
+            if report["lab_linkage"].get("source") != LIS_SOURCE_VERSION:
+                raise ValueError("linkage mismatch")
+            linkage=report["lab_linkage"]
+            counts=[linkage[name] for name in ("candidate_reports","assigned_reports","pending_reports")]
+            if (any(type(n) is not int or n<0 for n in counts)
+                    or counts[0]!=counts[1]+counts[2] or counts[1]>len(rows)):
+                raise ValueError("linkage counts mismatch")
+        return report
+    except (OSError, ValueError, TypeError, KeyError, csv.Error):
+        raise HospitalLinkageError("LIS_SNAPSHOT_REQUIRED_OR_MISMATCH") from None
 
 
 @dataclass(frozen=True, repr=False)
@@ -173,7 +251,10 @@ def fetch_hospital_bundle(cn, syxh: str, hospital: str) -> dict:
         "NOTE_TIME_MISSING": int(bundle["notes"]["事件时间"].map(lambda v: not _valid(v)).sum()),
         "LABS_EMPTY": int(bundle["labs"].empty),
         "EXAMS_EMPTY": int(bundle["exams"].empty),
+        "LIS_PENDING_REPORTS": bundle["labs"].attrs.get("lab_linkage", {}).get("pending_reports", 0),
     }
+    bundle["lab_linkage"] = bundle["labs"].attrs.get("lab_linkage", {})
+    bundle["pending_labs"] = bundle["labs"].attrs.get("pending_labs", [])
     return bundle
 
 
@@ -230,21 +311,29 @@ _FEE_EXT_COLS = [
 
 
 def fetch_fees(cn, pids: list[str] | None, yq2org: dict[str, str], *, patient=None) -> pd.DataFrame:
-    """费用: FS (⋈ EXT 若存在) → shi_fee (36 列契约).
+    """费用: 上海DETAIL结算明细 / legacy FS → shi_fee (36 列契约).
 
     v3: 编码两列直取 FS 原生列 (MXXMBMYB 国家码 / MXXMBM 院内码); EXT 只装原始补充字段
     (通用名/规格/科室医生/原始类别/自付比例)。EXT 缺表容忍 (医院数据未就绪时 FS 单表可跑);
     已剔除列 (医保分解死列/剂型等) 契约位置保留、恒空。"""
-    has_ext = len(q(cn, "SELECT 1 x FROM sys.tables WHERE name='TB_HIS_ZY_FEE_DETAIL_EXT'")) > 0
+    # EXT明确归属于FS；结算明细不能未经验证地借用其规格和科室等字段。
+    fee_table = SETTLEMENT_FEE_TABLE if patient is not None else "TB_HIS_ZY_FEE_DETAIL_FS"
+    time_column = "STFSJ" if patient is not None else "FYFSSJ"
+    has_ext = patient is None and len(q(cn, "SELECT 1 x FROM sys.tables WHERE name='TB_HIS_ZY_FEE_DETAIL_EXT'")) > 0
     ext_sel = ", ".join(f"e.{c}" for c in _FEE_EXT_COLS)
     where, params = _scope(pids, "f.JZLSH", patient, hospital_column="f.YLJGYQDM")
     fee = q(cn, f"""
-        SELECT f.YLJGYQDM, f.SFMXID, f.STFBZ, f.JZLSH, f.MXFYLB, f.FYFSSJ, f.MXXMBM, f.MXXMBMYB,
-               f.MXXMMC, f.MXXMDJ, f.MXXMSL, f.MXXMJE{', f.KH, f.KLX' if patient else ''}{', ' + ext_sel if has_ext else ''}
-        FROM TB_HIS_ZY_FEE_DETAIL_FS f
+        SELECT f.YLJGYQDM, f.SFMXID, f.STFBZ, f.JZLSH, f.MXFYLB, f.{time_column} AS FYFSSJ, f.MXXMBM, f.MXXMBMYB,
+               f.MXXMMC, f.MXXMDJ, f.MXXMSL, f.MXXMJE{', f.KH, f.KLX, f.XGBZ' if patient else ''}{', ' + ext_sel if has_ext else ''}
+        FROM {fee_table} f
         {'LEFT JOIN TB_HIS_ZY_FEE_DETAIL_EXT e ON f.YLJGYQDM=e.YLJGYQDM AND f.SFMXID=e.SFMXID' if has_ext else ''}
         WHERE {where}""", params)
     if patient is not None:
+        if not fee["XGBZ"].isin(["1", "2"]).all():
+            raise HospitalLinkageError("LINK_FEE_MODIFICATION_FLAG_INVALID")
+        fee = fee.loc[fee["XGBZ"] == "1"].copy()
+        if not fee["STFBZ"].isin(["1", "2"]).all():
+            raise HospitalLinkageError("LINK_FEE_REFUND_FLAG_INVALID")
         if not ((fee["KH"] == patient.kh) & (fee["KLX"] == patient.klx)).all():
             raise HospitalLinkageError("LINK_FEE_CARD_CONFLICT")
         if fee.duplicated(["YLJGYQDM", "SFMXID", "STFBZ"]).any():
@@ -255,6 +344,19 @@ def fetch_fees(cn, pids: list[str] | None, yq2org: dict[str, str], *, patient=No
         for c in _FEE_EXT_COLS:
             fee[c] = ""
     sign = fee["STFBZ"].map(lambda v: -1 if v == "2" else 1)
+    quantity = pd.to_numeric(fee["MXXMSL"], errors="coerce")
+    amount = pd.to_numeric(fee["MXXMJE"], errors="coerce")
+    if patient is not None:
+        if quantity.isna().any() or amount.isna().any():
+            raise HospitalLinkageError("LINK_FEE_NUMERIC_INVALID")
+        dates = pd.to_datetime(fee["FYFSSJ"], errors="coerce")
+        if dates.isna().any() or (dates.dt.year <= 1900).any():
+            raise HospitalLinkageError("LINK_FEE_SETTLEMENT_TIME_INVALID")
+        # 收费行保留实际负数冲销；退费已为负时不得再次翻为正。
+        quantity = quantity.where(fee["STFBZ"] != "2", -quantity.abs())
+        amount = amount.where(fee["STFBZ"] != "2", -amount.abs())
+    else:
+        quantity, amount = quantity.fillna(0) * sign, amount.fillna(0) * sign
     empty = pd.Series("", index=fee.index)
     cat = fee["MEDINS_CHRGITM_TYPE"].where(fee["MEDINS_CHRGITM_TYPE"] != "",
                                            fee["MXFYLB"].map(MXFYLB2CN).fillna("其他"))
@@ -264,9 +366,9 @@ def fetch_fees(cn, pids: list[str] | None, yq2org: dict[str, str], *, patient=No
         "bah": fee["YLJGYQDM"].map(yq2org).fillna("") + "-" + fee["JZLSH"],
         "feedetl_sn": fee["SFMXID"],
         "fee_ocur_time": fee["FYFSSJ"],
-        "cnt": pd.to_numeric(fee["MXXMSL"], errors="coerce").fillna(0) * sign,
+        "cnt": quantity,
         "pric": fee["MXXMDJ"],
-        "det_item_fee_sumamt": pd.to_numeric(fee["MXXMJE"], errors="coerce").fillna(0) * sign,
+        "det_item_fee_sumamt": amount,
         "pric_uplmt_amt": empty, "selfpay_prop": fee["SELFPAY_PROP"],
         "fulamt_ownpay_amt": empty, "overlmt_amt": empty,
         "preselfpay_amt": empty, "inscp_scp_amt": empty,
@@ -558,8 +660,164 @@ def fetch_ss(cn, pids: list[str] | None, yq2org: dict[str, str], *, patient=None
     return pd.concat([op, syssk], ignore_index=True).reset_index(drop=True)
 
 
+def list_lis_homes(cn, hospital: str) -> pd.DataFrame:
+    """原E项全量首页名单：只接四表，不加小结/费用/住院时间筛选。"""
+    return q(cn, """
+        WITH Matched AS (
+            SELECT DISTINCT r.YLJGYQDM, r.BGDH, r.BGRQ, b.SYXH
+            FROM dbo.TB_BA_SYJBK b
+            JOIN dbo.TB_YL_ZY_MEDICAL_RECORD m ON b.KH=m.KH
+            JOIN dbo.TB_LIS_REPORT r ON r.JZLSH=m.JZLSH AND r.KH=m.KH
+            WHERE b.YLJGYQDM=? AND r.YLJGYQDM=?
+              AND EXISTS (SELECT 1 FROM dbo.TB_LIS_INDICATORS i
+                          WHERE i.YLJGYQDM=r.YLJGYQDM AND i.BGDH=r.BGDH AND i.BGRQ=r.BGRQ)
+        ), Owners AS (
+            SELECT YLJGYQDM,BGDH,BGRQ,COUNT(DISTINCT SYXH) AS home_count
+            FROM Matched GROUP BY YLJGYQDM,BGDH,BGRQ
+        )
+        SELECT m.SYXH, COUNT(*) AS report_count,
+               SUM(CASE WHEN o.home_count>1 THEN 1 ELSE 0 END) AS multiple_home_reports
+        FROM Matched m JOIN Owners o
+          ON o.YLJGYQDM=m.YLJGYQDM AND o.BGDH=m.BGDH AND o.BGRQ=m.BGRQ
+        GROUP BY m.SYXH ORDER BY m.SYXH
+    """, (hospital, hospital))
+
+
+def validate_lis_source(cn):
+    for table, columns in LIS_REQUIRED_COLUMNS.items():
+        try:
+            q(cn, f"SELECT TOP (0) {','.join(columns)} FROM dbo.{table}")
+        except Exception:
+            raise HospitalLinkageError("LIS_SCHEMA_"+table+"_FAILED") from None
+
+
+def fetch_lis_for_home(cn, syxh: str, hospital: str):
+    """独立LIS只读预览，不让费用/小结缺失遮蔽化验候选。"""
+    if (not re.fullmatch(r"[A-Za-z0-9_]{1,64}",hospital or "")
+            or hospital in {"0001","0003"}
+            or not re.fullmatch(r"[A-Za-z0-9._-]{1,64}",syxh or "")):
+        raise HospitalLinkageError("LINK_SCOPE_INVALID")
+    home=_one(q(cn,"""SELECT TOP (2) SYXH,BAH,KH,KLX,RYRQ,CYRQ FROM dbo.TB_BA_SYJBK
+        WHERE YLJGYQDM=? AND SYXH=?""",(hospital,syxh)),"HOME")
+    if not all(_valid(home[c]) for c in ("KH","KLX")):
+        raise HospitalLinkageError("LINK_IDENTITY_MISSING")
+    return _fetch_medical_labs(cn,HospitalPatient(hospital,str(home.SYXH),str(home.BAH),"",
+                                                str(home.KH),str(home.KLX)))
+
+
+def _lis_day(value):
+    if not _valid(value):
+        return None
+    text = str(value).strip()
+    for fmt in ("%Y%m%d%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f",
+                "%Y-%m-%d", "%Y%m%d"):
+        try:
+            value = datetime.strptime(text, fmt)
+            return value.date() if value.year > 1900 else None
+        except ValueError:
+            pass
+    return None
+
+
+def _lis_id(value):
+    return str(value).strip().upper() if _valid(value) else ""
+
+
+def _medical_owner(m, homes):
+    start, end = _lis_day(m.RYSJ), _lis_day(m.CYSJ)
+    if start is None or end is None or end < start:
+        return set(), "MEDICAL_TIME_MISSING"
+    peers = [h for h in homes if _lis_id(h.KH)==_lis_id(m.KH) and _lis_id(h.KLX)==_lis_id(m.KLX)]
+    chart_peers = [h for h in peers if _lis_id(m.BAH) not in {"", "0"} and _lis_id(h.BAH)==_lis_id(m.BAH)]
+    if chart_peers:
+        peers = chart_peers
+    owners = {_lis_id(h.SYXH) for h in peers
+              if _lis_day(h.RYRQ)==start and _lis_day(h.CYRQ)==end and _lis_id(h.SYXH)}
+    if not owners:
+        return set(), "MEDICAL_ADMISSION_NOT_FOUND"
+    return owners, ""
+
+
+def _lis_report_reason(group, medical, homes, patient):
+    if not _lis_id(group.iloc[0].REPORT_NUMBER) or _lis_id(group.iloc[0].REPORT_NUMBER)=="0" or _lis_day(group.iloc[0].REPORT_DATE) is None:
+        return "REPORT_KEY_MISSING"
+    if (group["REPORT_HEADER_COUNT"].astype(int)!=1).any():
+        return "REPORT_HEADER_AMBIGUOUS"
+    headers = group[["JZLSH", "REPORT_KH", "REPORT_KLX", "SQKS", "BGSJ", "BBMC", "BGDLB",
+                     "BRNL", "BRXB", "BGYHRYXM", "SHYHRYXM"]].drop_duplicates()
+    if len(headers)!=1:
+        return "REPORT_HEADER_AMBIGUOUS"
+    report = headers.iloc[0]
+    visit = _lis_id(report.JZLSH)
+    if not visit or visit=="0":
+        return "REPORT_VISIT_MISSING"
+    if (_lis_id(report.REPORT_KH), _lis_id(report.REPORT_KLX)) != (_lis_id(patient.kh), _lis_id(patient.klx)):
+        return "REPORT_CARD_CONFLICT"
+    records = [m for m in medical if _lis_id(m.JZLSH)==visit]
+    if not records:
+        return "MEDICAL_VISIT_MISSING"
+    owners = set()
+    for m in records:
+        if (_lis_id(m.KH),_lis_id(m.KLX)) != (_lis_id(patient.kh),_lis_id(patient.klx)):
+            return "MEDICAL_CARD_CONFLICT"
+        found, reason = _medical_owner(m, homes)
+        if reason:
+            return reason
+        owners.update(found)
+    if len(owners)!=1:
+        return "ADMISSION_AMBIGUOUS"
+    return "" if owners=={_lis_id(patient.syxh)} else "OTHER_ADMISSION"
+
+
+def _fetch_medical_labs(cn, patient):
+    # EXISTS避免多份医疗记录把每条指标重复展开；仅对相同报告头去重。
+    lab = q(cn, """
+        SELECT r.YLJGYQDM AS REPORT_HOSPITAL,r.BGDH AS REPORT_NUMBER,r.BGRQ AS REPORT_DATE,
+               r.KH AS REPORT_KH,r.KLX AS REPORT_KLX,r.JZLSH,r.REPORT_HEADER_COUNT,
+               i.JYZBMC,i.JYZBDM,i.JYZBJG,i.JLDW,i.CKZ,i.YCTS,
+               r.SQKS,r.BGSJ,r.BBMC,r.BGDLB,r.BRNL,r.BRXB,r.BGYHRYXM,r.SHYHRYXM
+        FROM dbo.TB_LIS_INDICATORS i
+        JOIN (SELECT d.*,COUNT(*) OVER (PARTITION BY YLJGYQDM,BGDH,BGRQ) AS REPORT_HEADER_COUNT
+              FROM (SELECT DISTINCT YLJGYQDM,BGDH,BGRQ,KH,KLX,JZLSH,SQKS,BGSJ,BBMC,BGDLB,
+                    BRNL,BRXB,BGYHRYXM,SHYHRYXM FROM dbo.TB_LIS_REPORT) d) r
+          ON i.YLJGYQDM=r.YLJGYQDM AND i.BGDH=r.BGDH AND i.BGRQ=r.BGRQ
+        WHERE r.YLJGYQDM=? AND EXISTS (
+            SELECT 1 FROM dbo.TB_BA_SYJBK b
+            JOIN dbo.TB_YL_ZY_MEDICAL_RECORD m ON b.KH=m.KH
+            WHERE b.YLJGYQDM=? AND b.SYXH=? AND r.JZLSH=m.JZLSH AND r.KH=m.KH
+        )
+    """, (patient.hospital, patient.hospital, patient.syxh))
+    medical = q(cn, """SELECT DISTINCT JZLSH,BAH,KH,KLX,RYSJ,CYSJ
+        FROM dbo.TB_YL_ZY_MEDICAL_RECORD WHERE YLJGYQDM=? AND KH=? AND XGBZ='1'""",
+        (patient.hospital, patient.kh)) if not lab.empty else pd.DataFrame()
+    homes = q(cn, """SELECT DISTINCT SYXH,BAH,KH,KLX,RYRQ,CYRQ
+        FROM dbo.TB_BA_SYJBK WHERE YLJGYQDM=? AND KH=?""",
+        (patient.hospital, patient.kh)) if not lab.empty else pd.DataFrame()
+    medical_rows, home_rows = list(medical.itertuples(index=False)), list(homes.itertuples(index=False))
+    accepted, pending, reasons = [], [], Counter()
+    for _, group in lab.groupby(["REPORT_HOSPITAL","REPORT_NUMBER","REPORT_DATE"], sort=False, dropna=False):
+        reason = _lis_report_reason(group, medical_rows, home_rows, patient)
+        if reason:
+            reasons[reason] += 1
+            rows = _lab_frame(group.copy(), patient).to_dict("records")
+            if reason in {"REPORT_KEY_MISSING","REPORT_HEADER_AMBIGUOUS","REPORT_CARD_CONFLICT","MEDICAL_CARD_CONFLICT"}:
+                rows = [{key:"" for key in rows[0]}]
+                rows[0].update(zyh=patient.syxh,rpt_itemname="报告关联待核对（未展示明细）")
+            pending.extend(dict(row, linkage_reason=reason) for row in rows)
+        else:
+            accepted.append(group)
+    result = _lab_frame(pd.concat(accepted, ignore_index=True) if accepted else lab.iloc[:0].copy(), patient)
+    result.attrs["lab_linkage"] = {"source": LIS_SOURCE_VERSION, "version": 1,
+        "candidate_reports": len(accepted)+sum(reasons.values()), "assigned_reports": len(accepted),
+        "pending_reports": sum(reasons.values()), "reasons": dict(reasons)}
+    result.attrs["pending_labs"] = pending
+    return result
+
+
 def fetch_labs(cn, pids: list[str] | None, *, patient=None) -> pd.DataFrame:
-    """检验: INDICATORS ⋈ REPORT → lab_results (16 列契约)."""
+    """上海：医疗记录路径并核对住院归属；legacy保持原16列契约。"""
+    if patient is not None:
+        return _fetch_medical_labs(cn, patient)
     where, params = _scope(pids, "r.JZLSH", patient, hospital_column="r.YLJGYQDM")
     lab = q(cn, f"""
         SELECT r.JZLSH, i.JYZBMC, i.JYZBDM, i.JYZBJG, i.JLDW, i.CKZ, i.YCTS,
@@ -567,6 +825,10 @@ def fetch_labs(cn, pids: list[str] | None, *, patient=None) -> pd.DataFrame:
         FROM TB_LIS_INDICATORS i
         JOIN TB_LIS_REPORT r ON i.YLJGYQDM=r.YLJGYQDM AND i.BGDH=r.BGDH AND i.BGRQ=r.BGRQ
         WHERE {where}""", params)
+    return _lab_frame(lab, patient)
+
+
+def _lab_frame(lab, patient):
     _internal_id(lab, "JZLSH", patient)
     return pd.DataFrame({
         "zyh": lab["JZLSH"],

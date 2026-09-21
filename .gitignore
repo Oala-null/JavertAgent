@@ -32,6 +32,7 @@ docs/javert_vio_review.csv
 # ============================================================
 .env
 .env.*
+243_config.env
 configs/llm.local.yaml
 *.local.yaml
 

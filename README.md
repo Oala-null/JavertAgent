@@ -1,6 +1,14 @@
 # Javert
 
-> 243医院真实数据单例与完整发布包：见 [243最小修复Cookbook](docs/243_release_cookbook.md)。
+当前院内维护分支为 **gnome-243**。243是历史名称，已确认院内地址为249。费用使用DETAIL/STFSJ，LIS使用住院医疗记录路径；原8645a2d基线已叠加结算、侧栏和LIS补丁。**不从FP8分支覆盖院内。**
+
+- [当前运维入口](docs/deployment_243_gnome.md)：启动、续跑、核验和统计。
+- [LIS安装/回滚](docs/deployment_249_lis_medical.md) · [代码核验事实](docs/243_249_hotfix_qa.md) · [维护发布](docs/243_release_cookbook.md)。
+- [下班EDA统计](delivery/audit_eda/README_zh.md) · [只改SYXH查指标](scripts/sql/249_lis_by_syxh.sql)。
+
+本地受控文件已与交付摘要对齐，现场实时一致性仍待只读核验；不能把工作树恢复、提交、推送、部署视作同一步。下文带日期的性能/数据/历史部署数是历史快照，实时规则状态使用 `.venv/bin/javert list`。
+
+> 243/249维护与发布约束：见[当前Cookbook](docs/243_release_cookbook.md)。
 > 本次不合并fp8；显式shanghai模式解析SYXH/BAH/JZLSH，现场env和数据不随代码包覆盖。院内验收状态单独记录。
 > 只需要打包、覆盖和回滚命令：[最简TXT](docs/243_overlay_rollback.txt)。
 

@@ -4,7 +4,7 @@
 CSV (base+overlay) 双 miss 的患者按患者号实时查 142 hub 库 (cfg.hub_database),
 返回与 CsvLoader / LabLoader 消费方同形的结构 — routes 下游零改动.
 
-- 逐患者 LRU (maxsize 32, 无 TTL — 出院数据静态); 空结果也缓存 (防 404 反复查库),
+- 逐患者 LRU (maxsize 32，上海模式TTL 30秒); 空结果短期缓存，
   异常结果不缓存 (下次重试).
 - 任何 SQL 异常 → warning 日志 + 空结果 (D6: 降级为 miss, 不是 500).
 - pyodbc 连接非线程安全, 单锁串行化 (工作台低并发, 够用).
@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from collections import OrderedDict
 
 import pandas as pd
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 _LRU_MAX = 32
 _QUERY_TIMEOUT = 15  # 秒; 单患者索引查询实测 <1s, 网络异常时不拖死请求线程
+_CACHE_TTL = 30
 
 
 def _empty_bundle() -> dict:
@@ -36,6 +38,7 @@ class HubRawSource:
         self._cn = None
         self._yq2org: dict[str, str] | None = None
         self._cache: OrderedDict[str, dict] = OrderedDict()
+        self._cache_at: dict[str, float] = {}
         self._lock = threading.Lock()
 
     def _conn(self):
@@ -50,8 +53,12 @@ class HubRawSource:
             return _empty_bundle()
         with self._lock:
             if pid in self._cache:
-                self._cache.move_to_end(pid)
-                return self._cache[pid]
+                expired = self.cfg.hub_linkage_mode == "shanghai" and time.monotonic()-self._cache_at.get(pid,0)>=_CACHE_TTL
+                if not expired:
+                    self._cache.move_to_end(pid)
+                    return self._cache[pid]
+                del self._cache[pid]
+                self._cache_at.pop(pid,None)
             try:
                 cn = self._conn()
                 if self.cfg.hub_linkage_mode == "shanghai":
@@ -81,8 +88,10 @@ class HubRawSource:
                     raise HTTPException(503, "医院取数预检未通过，请检查源数据关联和服务日志") from None
                 return _empty_bundle()
             self._cache[pid] = bundle
+            self._cache_at[pid] = time.monotonic()
             while len(self._cache) > _LRU_MAX:
-                self._cache.popitem(last=False)
+                removed, _ = self._cache.popitem(last=False)
+                self._cache_at.pop(removed,None)
             return bundle
 
     # ── 消费方接口 (与 CsvLoader / LabLoader 结果同形) ──
@@ -114,6 +123,12 @@ class HubRawSource:
         if df is None or len(df) == 0:
             return []
         return df.sort_values("report_dt").to_dict("records")
+
+    def get_lab_linkage(self, patient_id: str) -> dict:
+        return self._bundle(patient_id).get("lab_linkage", {})
+
+    def get_pending_labs(self, patient_id: str) -> list[dict]:
+        return self._bundle(patient_id).get("pending_labs", [])
 
     def get_exams(self, patient_id: str) -> list[dict]:
         df = self._bundle(patient_id)["exams"]

@@ -1,5 +1,9 @@
 # 试点医院数据对接表单 — 国标 TB_* 版
 
+**243/249现场口径优先（结算补丁+LIS补丁）**：下面FS表定义是通用legacy接入格式；本院实际费用来源为 `TB_HIS_ZY_FEE_DETAIL`，使用 `STFSJ`，不能用FS/FYFSSJ替代。当前所需字段：YLJGYQDM、SFMXID、STFBZ、JZLSH、KH、KLX、MXFYLB、STFSJ、MXXMBM、MXXMBMYB、MXXMMC、MXXMDJ、MXXMSL、MXXMJE、XGBZ。
+
+LIS还需首页和住院医疗记录的KH/KLX、入出院时间、BAH，以及正常医疗记录XGBZ和JZLSH；REPORT需KH/KLX/JZLSH，指标按院区+BGDH+BGRQ连接。同卡多次住院不能直接混合；不可确认归属的数据单独待核。执行映射以hub_source为准，见[当前院内流程](deployment_243_gnome.md)。
+
 > 版本 v1.0 | 2026-07-05 | 适用系统: Javert (医保自查自纠 LLM 审计) + zadig_agent (DRG 重确认)
 >
 > 本表单供院方信息科 / 数据工程团队对照勾选与准备数据。数据按国家医保局数据中台标准

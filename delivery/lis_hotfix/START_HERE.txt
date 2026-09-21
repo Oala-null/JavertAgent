@@ -1,0 +1,36 @@
+﻿249 LIS热补丁 — 从这里开始
+
+1. 把整个 Javert-249-LIS-hotfix-v1 文件夹上传到249：
+   /home/admin2/releases/Javert-249-LIS-hotfix-v1
+
+2. 在249 SSH终端检查并安装：
+   cd /home/admin2/releases/Javert-249-LIS-hotfix-v1
+   sha256sum -c SHA256SUMS
+   bash install.sh check
+   bash install.sh install
+
+   先关闭Workbench浏览器页面并等批跑结束。
+   记录安装输出的BACKUP目录。
+
+3. 安装后检查名单：
+   cd /home/admin2/Javert
+   .venv/bin/python scripts/check_243_lis.py
+
+4. 全名单先试跑1个患者审计：
+   bash /home/admin2/Javert/scripts/lis_batch.sh start 1
+   bash /home/admin2/Javert/scripts/lis_batch.sh status
+
+5. 确认新TAG下单例审计、SQL双写和页面化验后，继续同一批全部候选：
+   bash /home/admin2/Javert/scripts/lis_batch.sh resume latest
+
+   有多个未完成批次时，latest会停止；用status显示的明确批次目录恢复。
+   再次start会建新名单、新TAG；继续原批必须resume。
+
+6. 回滚：
+   cd /home/admin2/releases/Javert-249-LIS-hotfix-v1
+   bash install.sh rollback /home/admin2/Javert/output/lis-backup.本次实际目录
+
+详细操作、Windows中转、校验、状态说明、Web启动脚本位置及故障处理见 README_zh.md。
+
+全量=处理所有查询到的首页候选。无法确认报告归属或缺少其他审计输入的，会明确记录并跳过；不冒充成功。
+历史截图的3054份报告/633个首页是数据快照，实际数量以现场查询为准。

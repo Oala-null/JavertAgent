@@ -1,5 +1,7 @@
 # Javert Web 审核工作台 — 192.168.31.62 部署 runbook
 
+环境边界：本文仅描述62，不能复制其地址、systemd路径或发布授权到院内243/249。院内维护线gnome-243使用独立保存配置、DETAIL/STFSJ及LIS医疗记录路径；请使用[243/249运维入口](deployment_243_gnome.md)。
+
 **状态**: 🟢 已上线. systemd `javert-web.service` 运行中.
 
 部署日: 2026-05-21. 当前数据: 106 病人 / 5016 audit_runs 行 / 529 V 待审 (142 累计 13880 行含历史).

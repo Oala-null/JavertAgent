@@ -1,0 +1,20 @@
+﻿先继续原批次全部候选（249 SSH终端）：
+cd /home/admin2/Javert
+bash scripts/lis_batch.sh resume latest
+bash scripts/lis_batch.sh status
+
+把本文件夹上传至：
+/home/admin2/releases/Javert-249-EDA-v1
+
+下班前手动统计（不会重启服务或影响跑批）：
+cd /home/admin2/releases/Javert-249-EDA-v1
+sha256sum -c SHA256SUMS
+bash eda.sh
+
+若暂不查费用，用：bash eda.sh --no-fees
+
+看EDA_REPORT=PASS和最后的统计目录。
+report.txt是中文汇总，CSV可用Microsoft 365 Excel打开。
+工作台全量已包含本批和存量，不可与本批相加。
+违规金额没有结构化记录，标记待核定；另列命中患者当前整次住院结算净费用参考及覆盖人数，不能当成违规额。
+完整教程：README_zh.md。
