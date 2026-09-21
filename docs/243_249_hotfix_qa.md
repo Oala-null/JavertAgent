@@ -1,4 +1,4 @@
-# 243/249热补丁同步核验（2026-09-20）
+# 243/249热补丁同步核验（本地2026-09-20，现场截图2026-09-21）
 
 ## 结论与证据边界
 
@@ -12,12 +12,24 @@
 | 本地直接相关测试 | 41 passed，0 failed，0 skipped |
 | 本地相关模块组合 | 108 collected / 108 passed / 0 failed / 0 skipped / 0 error |
 | 分支与用户资料 | FP8引用保持7572a006ee7b0eea22a9a0536a6995a7261a5857；既有未跟踪文件保留 |
-| 现场只读SSH | 历史t243超时，院内249 SSH未成功；本次未取得现场文件摘要 |
-| 实时院内一致性 | UNKNOWN，须现场执行检查包并回传结果 |
+| 直接SSH核验 | 2026-09-20历史t243超时、249 SSH未成功；后续由用户在院内运行检查包并回传截图 |
+| 现场磁盘文件 | 2026-09-21截图：disk_match=true、hotfix_match=true、differences=[]；376个运行文件及14个补丁文件全部匹配 |
+| 现场基线戳 | deploy_stamp_match=true，DEPLOY_STAMP=MATCH |
+| 现场Web进程 | 已观察到同目录Web；started_after_code_mtime=false，尚未验证进程内存代码 |
 
-本报告中的“一致”指**已知发行范围内的本地文件**，不是已提交/推送，也不是本次已重新部署。新维护工具、测试、文档不要求与院内文件完全相同；现场配置、患者数据、模型文件、额外文件及进程内存不在此摘要证明范围。
+本报告中的“一致”现已包含**本地文件与用户回传的现场磁盘核验**，限定在已知发行范围；不等于本次重新部署或验证了进程内存。新维护工具、测试、文档不要求与院内文件完全相同；现场配置、患者数据、模型文件、额外文件及进程内存不在此摘要证明范围。
 
-此前用户截图曾显示PATCH_INSTALLED=PASS、WEB_HTTP_200=PASS、LIS_SOURCE=medical-record-v1，随后反馈首例完成；这证明当时操作有成功反馈，不能代替2026-09-20的现场实时文件核验。
+此前安装成功及首例反馈之外，已取得以下独立现场文件核验结果。
+
+## 2026-09-21现场回传
+
+依据用户提供的IMG_3708.JPG，核验时间为`2026-09-21T02:48:46.323989+00:00`（北京时间10:48:46）；主机gnome26，应用目录`/home/admin2/Javert`。检查包的三个文件SHA校验均为OK，随后显示HOTFIX_FILES=PASS、KNOWN_RELEASE_FILES=PASS、DEPLOY_STAMP=MATCH。
+
+Web进程启动时间为`2026-09-17T06:06:47.350000+00:00`。`started_after_code_mtime=false`仅表示其启动早于376个受控文件中的最新mtime；非Web脚本的更新、原字节重传等也可能触发，不能直接推断正在运行旧版。
+
+`loaded_code_verified=false`是此只读工具固定表达的“没有验证进程内存代码”，不是检测到代码不一致；即使重启，工具也不会把此字段自动改成true。不能为了让它变绿而反复重启。若需进一步确认运行态，先核对哪些文件时间较新及受控启动记录，再在任务空闲时决定是否重启。
+
+该截图确认的是上述时刻的磁盘内容，不证明临床数据齐全、所有候选完成审计或后续磁盘永远不变。
 
 ## 恢复了什么
 
@@ -52,7 +64,7 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:delivery/audit_eda .venv/bin/python -m 
 - 原包仍是`Javert-249-LIS-delivery-20260916.zip`，SHA256为`735da7552a4da6cce8a4c4f46d71a63d8c11d6ade1480b4e1f35b3cb528e7a1e`。
 - 修改v1业务源码后构建器会拒绝继续使用v1；新逻辑需要新版本和新的验证，不改现有清单让失败“变绿”。
 
-## 现场如何补齐最后的证据
+## 重复现场检查的方法
 
 上传`Javert-249-code-check`文件夹到`/home/admin2/releases/`，运行：
 
@@ -62,7 +74,7 @@ sha256sum -c SHA256SUMS
 python3 check_249_hotfix.py --root /home/admin2/Javert --manifest known-release.json
 ```
 
-预期文件核验两项PASS、differences为空、deploy_stamp_match=true。工具只读，不改服务或数据库。进程观察只能看到同目录Web的启动时间，不能逐字读取其已加载Python代码；若启动早于代码修改，需在任务空闲且明确维护窗口时按受控流程重启再验收，不能仅运行“启动助手”冒充重启。
+本次回传已达到文件核验两项PASS、differences为空、deploy_stamp_match=true。工具只读，不改服务或数据库。进程时间仅提供线索；应先确定较新文件是否影响Web，再决定是否在空闲维护窗口重启，不能仅运行“启动助手”冒充重启。
 
 ## 文档口径
 
