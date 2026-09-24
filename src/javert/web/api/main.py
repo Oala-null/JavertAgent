@@ -21,6 +21,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from javert.config import get_config
@@ -152,6 +153,11 @@ def create_app(with_mssql: bool | None = None) -> FastAPI:
         same_site=cfg.session_same_site,
         https_only=cfg.session_https_only,
     )
+    # workbench 页面 HTML 体积很大 (患者 sidebar 869 张卡片 ≈ 653KB, 见 routes_workbench),
+    # gzip 后约 1/8. minimum_size 取 1KB, 小响应 (JSON 探针等) 不压, 免白付 CPU.
+    # SSE 安全: starlette 的 DEFAULT_EXCLUDED_CONTENT_TYPES 含 "text/event-stream",
+    # /sse/reviews 不会被压缩或缓冲.
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],

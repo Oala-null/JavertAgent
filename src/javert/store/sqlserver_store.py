@@ -817,17 +817,17 @@ class SqlServerStore:
         from sqlalchemy import text
         # 病人 + 各 verdict 计数 (latest 去重) + 稳定来源标签。
         # OCR 是患者来源属性；后续普通重跑即使 batch_tag=NULL，也不能把 ocr1.0 覆盖掉。
+        # 性能: 原实现拆成 latest / patient_tag_ranked 两个 CTE, 各自全表扫一遍
+        # javert_audit_runs (6 万行 × 2)。合并成一次扫描 + 两个窗口函数, 实测 1.39x,
+        # 结果逐行一致 (1169 患者比对通过)。两个 ROW_NUMBER 分区前缀都是 patient_id,
+        # 与 patient_tag_ranked 的 PARTITION BY patient_id 兼容。
         sql_counts = """
-            WITH latest AS (
-                SELECT id, patient_id, rule_id, verdict, run_id, batch_tag, created_at,
+            WITH ranked AS (
+                SELECT patient_id, rule_id, verdict, batch_tag, created_at,
                        ROW_NUMBER() OVER (
                            PARTITION BY patient_id, rule_id
                            ORDER BY created_at DESC, id DESC
-                       ) AS rn
-                FROM javert_audit_runs
-            ),
-            patient_tag_ranked AS (
-                SELECT patient_id, batch_tag,
+                       ) AS rn,
                        ROW_NUMBER() OVER (
                            PARTITION BY patient_id
                            ORDER BY created_at DESC, id DESC
@@ -841,19 +841,19 @@ class SqlServerStore:
                                THEN N'ocr1.0'
                            ELSE MAX(CASE WHEN rn_tag = 1 THEN batch_tag END)
                        END AS batch_tag
-                FROM patient_tag_ranked
+                FROM ranked
                 GROUP BY patient_id
             )
-            SELECT latest.patient_id,
+            SELECT r.patient_id,
                    SUM(CASE WHEN verdict = N'VIOLATION' THEN 1 ELSE 0 END) AS v_count,
                    SUM(CASE WHEN verdict = N'INCONCLUSIVE' THEN 1 ELSE 0 END) AS i_count,
                    SUM(CASE WHEN verdict = N'CLEAN' THEN 1 ELSE 0 END) AS c_count,
                    MAX(pt.batch_tag) AS batch_tag,
-                   MAX(latest.created_at) AS updated_at
-            FROM latest
-            LEFT JOIN patient_tag pt ON pt.patient_id = latest.patient_id
-            WHERE latest.rn = 1
-            GROUP BY latest.patient_id
+                   MAX(r.created_at) AS updated_at
+            FROM ranked r
+            LEFT JOIN patient_tag pt ON pt.patient_id = r.patient_id
+            WHERE r.rn = 1
+            GROUP BY r.patient_id
         """
         # 团队已审 latest review count by patient + verdict (任意专家, latest run 去重).
         # COUNT(DISTINCT run_id): 同一 run 被多个专家审只算一次 (全局口径, 不分人头).
@@ -1013,15 +1013,34 @@ class SqlServerStore:
         if engine is None:
             return []
         from sqlalchemy import text
-        # 拉该 patient 所有 audit_runs (含老 v1.0, 含 latest v1.2 — 一次性)
+        # 拉该 patient 所有 audit_runs (含老 v1.0, 含 latest v1.2 — 一次性).
+        # 历史行 (每组非 latest) 的 evidence_json / tool_calls_json 在 SQL 里置空:
+        # 详情页历史折叠区只渲染 verdict/confidence/created_at/reviews, 而这两个大字段
+        # (全表 tool_calls_json 就占 310MB) 只有 latest 行经 resolve_hits 时才会用到.
+        # 实测: 返回内容 -23.4% (549KB -> 421KB), 查询 14.9ms -> 12.8ms,
+        # latest run_id 与 history 顺序逐条全等.
+        # 外层 ORDER BY 补 id DESC 与窗口函数对齐, 让 created_at 相同时的 tie 也有确定顺序
+        # (原先只按 created_at DESC, 同秒的行哪条算 latest 由 SQL Server 自定).
         sql_runs = """
+            WITH ranked AS (
+                SELECT id, run_id, rule_id, patient_id, verdict, confidence,
+                       reasoning, evidence_json, tool_calls_json,
+                       duration_ms, model, started_at, created_at, triggered_by, batch_tag,
+                       gate_tag, eligibility_json, promise_trace_json, headline,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY rule_id ORDER BY created_at DESC, id DESC
+                       ) AS rn
+                FROM javert_audit_runs
+                WHERE patient_id = :pid
+            )
             SELECT run_id, rule_id, patient_id, verdict, confidence,
-                   reasoning, evidence_json, tool_calls_json,
+                   reasoning,
+                   CASE WHEN rn = 1 THEN evidence_json END AS evidence_json,
+                   CASE WHEN rn = 1 THEN tool_calls_json END AS tool_calls_json,
                    duration_ms, model, started_at, created_at, triggered_by, batch_tag,
                    gate_tag, eligibility_json, promise_trace_json, headline
-            FROM javert_audit_runs
-            WHERE patient_id = :pid
-            ORDER BY rule_id ASC, created_at DESC
+            FROM ranked
+            ORDER BY rule_id ASC, created_at DESC, id DESC
         """
         sql_reviews = """
             SELECT rv.id, rv.run_id, rv.user_id, rv.review_verdict,

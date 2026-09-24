@@ -11,6 +11,7 @@ import csv
 import io
 import json
 import logging
+import os
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -53,6 +54,52 @@ router = APIRouter(tags=["workbench"])
 FILTER_VALID = ("v_and_i", "v_only", "i_only", "all")
 
 
+def _env_float(name: str, default: float) -> float:
+    """环境变量 → float; 缺失/非法回退 default (不抛, 不阻断渲染)."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning("%s=%r 非法, 回退默认 %s", name, raw, default)
+        return default
+
+
+# 阶段计时开关 (默认关): 设 JAVERT_WEB_TIMING=1 后, 每次页面渲染输出一条分段耗时日志.
+_WEB_TIMING_ENABLED = os.environ.get("JAVERT_WEB_TIMING", "").strip().lower() in {
+    "1", "true", "yes", "on",
+}
+
+
+class _StageTimer:
+    """请求内阶段计时 — 关闭时所有方法退化为空操作, 零额外开销.
+
+    用途: 定位 workbench 页面耗时分布. 开启:
+        JAVERT_WEB_TIMING=1 javert web --with-mssql
+    日志形如:
+        timing[patient:J12345] total=10342ms sidebar=4210ms runs=180ms ...
+    """
+
+    __slots__ = ("_enabled", "_marks")
+
+    def __init__(self, enabled: bool = _WEB_TIMING_ENABLED):
+        self._enabled = enabled
+        self._marks: list[tuple[str, float]] = []
+
+    def mark(self, name: str, t0: float) -> None:
+        """记录自 t0 起的一段耗时 (毫秒)."""
+        if self._enabled:
+            self._marks.append((name, (time.perf_counter() - t0) * 1000.0))
+
+    def log(self, label: str) -> None:
+        if not self._enabled:
+            return
+        total = sum(ms for _, ms in self._marks)
+        parts = " ".join(f"{n}={ms:.0f}ms" for n, ms in self._marks)
+        logger.info("timing[%s] total=%.0fms %s", label, total, parts)
+
+
 def _filter_from(request: Request, query_filter: str | None) -> str:
     f = query_filter or request.cookies.get("javert_filter")
     return f if f in FILTER_VALID else "v_and_i"
@@ -78,9 +125,11 @@ def _enrich_sidebar(patients: list) -> list:
 
 
 # boost-llm-efficiency (design D5): 点开病人 detail 不再复跑两遍全表 ROW_NUMBER CTE.
-# sidebar 需要全患者列表 (按 pid 窄查询会砍掉侧栏导航), 故用短 TTL 进程缓存:
-# detail 页允许秒级陈旧 (计数由 SSE 客户端增量更新), 列表页始终现查并刷新缓存.
-_SIDEBAR_TTL_SECONDS = 10.0
+# sidebar 需要全患者列表 (按 pid 窄查询会砍掉侧栏导航), 故用 TTL 进程缓存:
+# detail 页允许陈旧 (计数由 SSE 客户端增量更新), 列表页始终现查并刷新缓存.
+# 原 10s 太短 — 在详情页停留超过 10s 再点下一个病人就会重跑全表 CTE + 百卡主诊断,
+# 表现为「每次点开都要等几秒」. 提到 60s; 设 JAVERT_WEB_SIDEBAR_TTL=0 可关掉 detail 页缓存.
+_SIDEBAR_TTL_SECONDS = _env_float("JAVERT_WEB_SIDEBAR_TTL", 60.0)
 _sidebar_cache: dict[str, tuple[float, list]] = {}
 
 
@@ -249,7 +298,10 @@ def workbench_index(request: Request, filter: str | None = None):
 
     f = _filter_from(request, filter)
     store = get_sqlserver_store()
+    tm = _StageTimer()
+    t0 = time.perf_counter()
     patients = _sidebar_patients(store, f, allow_cached=False)
+    tm.mark("sidebar", t0)
 
     # 欢迎 banner — 跳过条件: cookie welcome_dismissed == 当次 session login_ts
     prev_iso = request.session.get("prev_last_login")
@@ -261,10 +313,13 @@ def workbench_index(request: Request, filter: str | None = None):
                 since = since.replace(tzinfo=timezone.utc)
         except ValueError:
             since = None
+    t0 = time.perf_counter()
     stats = store.get_since_last_login_stats(user_id=user.id, since=since)
+    tm.mark("banner_stats", t0)
     dismissed = request.cookies.get("welcome_dismissed") == (prev_iso or "")
     show_banner = not dismissed
 
+    t0 = time.perf_counter()
     html = render(
         "workbench.html",
         title="工作台",
@@ -279,6 +334,8 @@ def workbench_index(request: Request, filter: str | None = None):
         banner_first_login=(prev_iso == "first_login"),
         prev_last_login=since,
     )
+    tm.mark("render", t0)
+    tm.log("index")
     resp = HTMLResponse(html)
     # filter 状态写 cookie (跨会话保持)
     if filter and filter in FILTER_VALID:
@@ -302,19 +359,27 @@ def workbench_patient(
         )
     f = _filter_from(request, filter)
     store = get_sqlserver_store()
+    tm = _StageTimer()
+    t0 = time.perf_counter()
     patients = _sidebar_patients(store, f, allow_cached=True)
+    tm.mark("sidebar", t0)
+    t0 = time.perf_counter()
     runs = store.list_runs_for_patient(patient_id=patient_id, filter_mode=f)
+    tm.mark("runs", t0)
     if not runs:
+        t0 = time.perf_counter()
         # 不报 404 — patient 可能存在但 filter 下空
         # 但若全工作区都没这 pid 任何行, 走 404
         if not store.has_other_runs(patient_id, exclude_run_id="__no_such__"):
             # has_other_runs 用 exclude='__no_such__', 等价 "patient 有任何 row 吗"
             # 没有 → 404
             raise HTTPException(status_code=404, detail=f"未找到患者 {patient_id}")
+        tm.mark("has_other_runs", t0)
     # 概览数据 (basics + fees + dx + 手术); 失败不阻断违规渲染.
     # CSV 双 miss 且 hub 开启 → 概览改喂 HubRawSource (get_notes/get_fees 与 CsvLoader 同形,
     # 病案基本信息/费用分类对 hub 患者才有数据; add-workbench-sql-raw-source 补遗)
     overview = None
+    t0 = time.perf_counter()
     try:
         profile_source = _get_profile_hub_source_for_patient(patient_id)
         if profile_source is not None:
@@ -329,12 +394,20 @@ def workbench_patient(
         overview = build_overview(patient_id, ov_loader)
     except Exception as e:  # noqa: BLE001
         logger.warning("build_overview 失败 patient=%s: %s", patient_id, e)
+    tm.mark("overview", t0)
 
     # 命中项目 + 锚点 (evidence-anchoring) — 优先读 anchors_json 缓存, miss 则现算
     # (老数据立即生效, 零重跑). 一次切 fee df + 一次载 KB, 供所有 run 复用.
+    t0 = time.perf_counter()
     meta_map = load_rule_meta()
+    tm.mark("rule_meta", t0)
+    t0 = time.perf_counter()
     anchors_map = store.fetch_anchors_for_patient(patient_id)
+    tm.mark("anchors", t0)
+    t0 = time.perf_counter()
     hits_by_run = _resolve_hits_for_runs(patient_id, runs, meta_map, anchors_map)
+    tm.mark("hits", t0)
+    t0 = time.perf_counter()
     public_explanations = {}
     for run in runs:
         public = present_public_explanation(
@@ -342,10 +415,12 @@ def workbench_patient(
         )
         run.headline = public["headline"]
         public_explanations[run.run_id] = public
+    tm.mark("public_explain", t0)
     # 按细类分组 + 组内 V 前 I 后 (D5) — 模板按 run_groups 渲染可折叠 section + 顶部 chip
     run_groups = _group_runs_by_violation_type(runs, meta_map)
 
-    return HTMLResponse(render(
+    t0 = time.perf_counter()
+    html = render(
         "patient_detail.html",
         title=f"{patient_id} · 工作台",
         current_user=user,
@@ -359,7 +434,10 @@ def workbench_patient(
         overview=overview,
         hits_by_run=hits_by_run,
         public_explanations=public_explanations,
-    ))
+    )
+    tm.mark("render", t0)
+    tm.log(f"patient:{patient_id}")
+    return HTMLResponse(html)
 
 
 def _log_model_compare_access(
@@ -565,6 +643,7 @@ def reset_loader() -> None:
     _exam_loader_singleton = None
     _hub_source_singleton = None
     _hub_profile_source_singletons = {}
+    _batch_tag_cache.clear()  # 数据变了, 患者来源标签缓存同步失效
 
 
 # hub 原文源单例 (add-workbench-sql-raw-source: CSV 双 miss 时按患者号查 hub, 开关默认关)
@@ -602,11 +681,32 @@ def _get_hub_profile_source(batch_tag: str):
     return source
 
 
+# 患者 → latest batch_tag 的短 TTL 缓存. batch_tag 是患者来源属性、基本不变, 而详情页
+# 一次渲染会调 _get_profile_hub_source_for_patient 1~2 次 (overview 选源 + 取 fee),
+# 每次都触发一次 latest_batch_tag_for_patient (实测 465ms 冷 / ~60ms 热).
+_BATCH_TAG_TTL_SECONDS = 30.0
+_BATCH_TAG_CACHE_MAX = 4096
+_batch_tag_cache: dict[str, tuple[float, str | None]] = {}
+
+
+def _latest_batch_tag_cached(patient_id: str) -> str | None:
+    """latest_batch_tag_for_patient 的短 TTL 进程缓存 — 30s 内同患者不重复查 142."""
+    now = time.monotonic()
+    hit = _batch_tag_cache.get(patient_id)
+    if hit is not None and (now - hit[0]) < _BATCH_TAG_TTL_SECONDS:
+        return hit[1]
+    tag = get_sqlserver_store().latest_batch_tag_for_patient(patient_id)
+    if len(_batch_tag_cache) >= _BATCH_TAG_CACHE_MAX:
+        _batch_tag_cache.clear()  # 简单封顶: 满了整体清空, 避免无界增长
+    _batch_tag_cache[patient_id] = (now, tag)
+    return tag
+
+
 def _get_profile_hub_source_for_patient(patient_id: str):
     """返回患者显式 batch profile；命中后调用方不得回退到 CSV/默认 Hub。"""
     cfg = get_config()
     if cfg.hub_raw_profiles:
-        tag = get_sqlserver_store().latest_batch_tag_for_patient(patient_id)
+        tag = _latest_batch_tag_cached(patient_id)
         if tag:
             profile_source = _get_hub_profile_source(tag)
             if profile_source is not None:
