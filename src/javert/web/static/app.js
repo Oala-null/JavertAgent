@@ -121,11 +121,13 @@
 
   // ---------- 原始数据 fetch (modal + 对照面板共用缓存) + table builders ----------
   var _rawCache = {};
+  var _rawPending = {};
   function fetchRaw(pid, tab, force) {
     var key = pid + ":" + tab;
     if (!force && _rawCache[key]) return Promise.resolve(_rawCache[key]);
+    if (!force && _rawPending[key]) return _rawPending[key];
     var url = "/api/patient/" + encodeURIComponent(pid) + "/raw?tab=" + encodeURIComponent(tab);
-    return fetch(url, {credentials: "same-origin"})
+    var pending = fetch(url, {credentials: "same-origin"})
       .then(function (r) {
         return r.json().catch(function () { return {}; }).then(function (body) {
           if (r.ok) return body;
@@ -137,7 +139,10 @@
           throw err;
         });
       })
-      .then(function (data) { _rawCache[key] = data; return data; });
+      .then(function (data) { _rawCache[key] = data; return data; })
+      .finally(function () { if (_rawPending[key] === pending) delete _rawPending[key]; });
+    _rawPending[key] = pending;
+    return pending;
   }
 
   function _rawErrorMessage(err) {
@@ -754,130 +759,121 @@
     };
   }
 
-  // 病人列表排序 — 纯前端重排 DOM 节点 (金额 / 生成时间, 顺逆序); 与 facet 筛选叠加.
-  // data-fees / data-updated 已由 sidebar 渲染; "默认" 用首次记录的服务端原始序回退.
-  function applySort() {
-    var list = document.getElementById("patient-list");
-    if (!list) return;
-    var cards = $$(".patient-card", list);
-    if (!cards.length) return;
-    if (!cards[0].hasAttribute("data-orig-idx")) {
-      cards.forEach(function (c, i) { c.setAttribute("data-orig-idx", i); });
-    }
-    var mode = (document.getElementById("facet-sort") || {}).value || "default";
-    var cmp;
-    if (mode === "fee_desc" || mode === "fee_asc") {
-      cmp = function (a, b) {
-        var d = (parseFloat(a.getAttribute("data-fees") || "0") || 0) -
-                (parseFloat(b.getAttribute("data-fees") || "0") || 0);
-        return mode === "fee_desc" ? -d : d;
-      };
-    } else if (mode === "time_desc" || mode === "time_asc") {
-      cmp = function (a, b) {
-        var d = (Date.parse(a.getAttribute("data-updated") || "") || 0) -
-                (Date.parse(b.getAttribute("data-updated") || "") || 0);
-        return mode === "time_desc" ? -d : d;
-      };
-    } else {
-      cmp = function (a, b) {
-        return (+a.getAttribute("data-orig-idx")) - (+b.getAttribute("data-orig-idx"));
-      };
-    }
-    cards.sort(cmp);
-    cards.forEach(function (c) { list.appendChild(c); });
-  }
+  var _sidebarPage = 1, _sidebarPages = 1, _sidebarTimer = null;
+  var _sidebarAbort = null, _sidebarSequence = 0, _sidebarTags = [];
 
   function _saveFacets(st) {
+    st.page = _sidebarPage;
     try { sessionStorage.setItem(FACET_KEY, JSON.stringify(st)); } catch (_) {}
   }
 
-  function _inTimeWindow(d, preset, now) {
-    if (!d || isNaN(d.getTime())) return false;
-    if (preset === "today") {
-      var start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      return d >= start;
+  function loadPatientSidebar() {
+    var list = document.getElementById("patient-list");
+    if (!list) return;
+    if (_sidebarAbort) _sidebarAbort.abort();
+    _sidebarAbort = new AbortController();
+    var sequence = ++_sidebarSequence;
+    var st = _facetState();
+    st.tags = _sidebarTags.slice();
+    _saveFacets(st);
+    var params = new URLSearchParams({filter: _activeFilterMode(), page: _sidebarPage,
+      pid: st.pid, dx: st.dx, fee: st.fee, sort: st.sort,
+      active_patient: window.JAVERT_PATIENT || ""});
+    st.tags.forEach(function (tag) { params.append("tag", tag); });
+    if (st.time !== "all") {
+      var now = new Date();
+      var since = st.time === "today" ? new Date(now.getFullYear(), now.getMonth(), now.getDate()) :
+        new Date(now.getTime() - (st.time === "week" ? 7 : 30) * 864e5);
+      params.set("updated_since", since.toISOString());
     }
-    if (preset === "week") return (now - d) <= 7 * 864e5;   // 近 7 天
-    if (preset === "month") return (now - d) <= 30 * 864e5; // 近 30 天
-    return true;
+    var status = document.getElementById("sidebar-status");
+    var retry = document.getElementById("sidebar-retry");
+    status.textContent = "正在加载…";
+    retry.hidden = true;
+    list.setAttribute("aria-busy", "true");
+    var prev = document.getElementById("sidebar-prev");
+    var next = document.getElementById("sidebar-next");
+    prev.disabled = next.disabled = true;
+    var clear = document.getElementById("facet-clear");
+    if (clear) clear.hidden = !(st.pid || st.dx || st.fee !== "all" || st.time !== "all" || st.tags.length || st.sort !== "default");
+    fetch("/api/workbench/patients?" + params, {credentials: "same-origin", signal: _sidebarAbort.signal})
+      .then(function (r) {
+        if (!r.ok) throw new Error(r.status === 401 ? "登录已失效，请重新登录。" : "患者列表加载失败，请重试。");
+        return r.json();
+      }).then(function (data) {
+        if (sequence !== _sidebarSequence) return;
+        list.innerHTML = data.html;
+        _sidebarPage = data.page; _sidebarPages = data.pages;
+        _saveFacets(st);
+        document.getElementById("patient-count").textContent = data.total === data.unfiltered_total ? data.total : data.total + "/" + data.unfiltered_total;
+        document.getElementById("sidebar-page").textContent = data.page + " / " + data.pages;
+        prev.disabled = data.page <= 1; next.disabled = data.page >= data.pages;
+        var tags = document.getElementById("facet-tags");
+        tags.replaceChildren();
+        data.tags.forEach(function (tag) {
+          var btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "facet-chip" + (_sidebarTags.indexOf(tag) >= 0 ? " active" : "");
+          btn.setAttribute("data-tag", tag);
+          btn.textContent = tag;
+          btn.onclick = function () { window.toggleTagChip(btn); };
+          tags.appendChild(btn);
+        });
+        status.textContent = data.total ? "每页最多 50 人" : "没有符合筛选条件的患者";
+        list.scrollTop = 0;
+      }).catch(function (err) {
+        if (sequence !== _sidebarSequence || err.name === "AbortError") return;
+        status.textContent = err.message || "患者列表加载失败，请重试。";
+        // 保留已加载卡片供导航；首次失败移除“正在加载”占位。
+        if (!list.querySelector(".patient-card")) list.replaceChildren();
+        retry.hidden = false;
+      }).finally(function () {
+        if (sequence === _sidebarSequence) list.setAttribute("aria-busy", "false");
+      });
   }
 
   window.applyFacets = function () {
-    var st = _facetState();
-    _saveFacets(st);
-    var active = (st.pid || st.dx || st.fee !== "all" || st.time !== "all" || st.tags.length > 0);
-    var clearBtn = document.getElementById("facet-clear");
-    if (clearBtn) clearBtn.hidden = !active;
-
-    var pidq = st.pid.toLowerCase();
-    var dxq = st.dx.toLowerCase();
-    var now = new Date();
-    var cards = $$(".patient-card");
-    var shown = 0;
-    cards.forEach(function (card) {
-      var ok = true;
-      if (pidq) {
-        var pid = (card.getAttribute("data-patient-id") || "").toLowerCase();
-        if (pid.indexOf(pidq) < 0) ok = false;
-      }
-      if (ok && dxq) {
-        var dx = (card.getAttribute("data-dx") || "").toLowerCase();
-        if (dx.indexOf(dxq) < 0) ok = false;
-      }
-      if (ok && st.fee !== "all") {
-        var fee = parseFloat(card.getAttribute("data-fees") || "0") || 0;
-        if (st.fee === "lt1") ok = fee < 10000;
-        else if (st.fee === "1to5") ok = (fee >= 10000 && fee <= 50000);
-        else if (st.fee === "gt5") ok = fee > 50000;
-      }
-      if (ok && st.tags.length) {
-        ok = st.tags.indexOf(card.getAttribute("data-tag") || "") >= 0;
-      }
-      if (ok && st.time !== "all") {
-        var u = card.getAttribute("data-updated") || "";
-        ok = _inTimeWindow(u ? new Date(u) : null, st.time, now);
-      }
-      card.style.display = ok ? "" : "none";
-      if (ok) shown++;
-    });
-    var pc = document.getElementById("patient-count");
-    if (pc) pc.textContent = shown === cards.length ? cards.length : (shown + "/" + cards.length);
-    var empty = document.getElementById("facet-empty");
-    if (empty) empty.hidden = !(cards.length > 0 && shown === 0);
-    applySort();  // 筛完重排 (排序与筛选正交叠加)
+    _sidebarPage = 1;
+    // 输入发生即失效旧响应；防抖期间也不能被旧筛选结果覆盖。
+    ++_sidebarSequence;
+    if (_sidebarAbort) _sidebarAbort.abort();
+    clearTimeout(_sidebarTimer);
+    _sidebarTimer = setTimeout(loadPatientSidebar, 250);
   };
-
+  window.changePatientPage = function (delta) {
+    _sidebarPage = Math.max(1, Math.min(_sidebarPages, _sidebarPage + delta));
+    clearTimeout(_sidebarTimer);
+    loadPatientSidebar();
+  };
+  window.reloadPatientSidebar = function () {
+    clearTimeout(_sidebarTimer);
+    loadPatientSidebar();
+  };
   window.toggleTagChip = function (btn) {
     btn.classList.toggle("active");
+    _sidebarTags = $$(".facet-chip.active").map(function (c) { return c.getAttribute("data-tag"); });
     applyFacets();
   };
-
   window.clearFacets = function () {
-    var pid = document.getElementById("facet-pid"); if (pid) pid.value = "";
-    var dx = document.getElementById("facet-dx"); if (dx) dx.value = "";
-    var fee = document.getElementById("facet-fee"); if (fee) fee.value = "all";
-    var time = document.getElementById("facet-time"); if (time) time.value = "all";
+    ["pid", "dx"].forEach(function (key) { var el = document.getElementById("facet-" + key); if (el) el.value = ""; });
+    ["fee", "time", "sort"].forEach(function (key) { var el = document.getElementById("facet-" + key); if (el) el.value = key === "sort" ? "default" : "all"; });
+    _sidebarTags = [];
     $$(".facet-chip.active").forEach(function (c) { c.classList.remove("active"); });
-    try { sessionStorage.removeItem(FACET_KEY); } catch (_) {}
     applyFacets();
   };
-
   function restoreFacets() {
     if (!document.getElementById("facet-bar")) return;
     var st = null;
     try { st = JSON.parse(sessionStorage.getItem(FACET_KEY) || "null"); } catch (_) {}
     if (st) {
-      var pid = document.getElementById("facet-pid"); if (pid && st.pid) pid.value = st.pid;
-      var dx = document.getElementById("facet-dx"); if (dx && st.dx) dx.value = st.dx;
-      var fee = document.getElementById("facet-fee"); if (fee && st.fee) fee.value = st.fee;
-      var time = document.getElementById("facet-time"); if (time && st.time) time.value = st.time;
-      var sort = document.getElementById("facet-sort"); if (sort && st.sort) sort.value = st.sort;
-      (st.tags || []).forEach(function (t) {
-        var chip = document.querySelector('.facet-chip[data-tag="' + t + '"]');
-        if (chip) chip.classList.add("active");
+      ["pid", "dx", "fee", "time", "sort"].forEach(function (key) {
+        var el = document.getElementById("facet-" + key);
+        if (el && typeof st[key] === "string") el.value = st[key];
       });
+      _sidebarTags = Array.isArray(st.tags) ? st.tags.filter(function (t) { return typeof t === "string"; }) : [];
+      _sidebarPage = Number.isInteger(st.page) && st.page > 0 ? st.page : 1;
     }
-    applyFacets();
+    loadPatientSidebar();
   }
 
   // =========================================================
@@ -948,47 +944,9 @@
       try {
         var data = JSON.parse(e.data);
         showToast("新增审计: " + data.patient_id + " " + data.rule_id + " → " + verdictLabel(data.verdict));
-        var list = document.getElementById("patient-list");
-        if (!list) return;
-        var existing = list.querySelector('[data-patient-id="' + data.patient_id + '"]');
-        if (existing) {
-          // 更新 badge
-          var vKey = verdictColor(data.verdict);
-          var attr = vKey === "v" ? "data-v-count" : vKey === "i" ? "data-i-count" : "data-c-count";
-          var cur = parseInt(existing.getAttribute(attr) || "0", 10);
-          existing.setAttribute(attr, cur + 1);
-          var rel = parseInt(existing.getAttribute("data-relevant") || "0", 10);
-          existing.setAttribute("data-relevant", rel + 1);
-          // 重渲染 badges + progress 略简: 刷新 row2 innerHTML
-          var row2 = existing.querySelector(".row2");
-          if (row2) {
-            var vC = parseInt(existing.getAttribute("data-v-count"), 10);
-            var iC = parseInt(existing.getAttribute("data-i-count"), 10);
-            var cC = parseInt(existing.getAttribute("data-c-count"), 10);
-            var rev = existing.getAttribute("data-reviewed");
-            row2.innerHTML =
-              (vC > 0 ? '<span class="badge badge-v">' + vC + 'V</span>' : '') +
-              (iC > 0 ? '<span class="badge badge-i">' + iC + 'I</span>' : '') +
-              '<span class="progress-text">已审 ' + rev + '/' + (vC + iC) + '</span>';
-          }
-        } else if (data.is_new_patient) {
-          // prepend 新卡片
-          var a = document.createElement("a");
-          a.className = "patient-card";
-          a.setAttribute("data-patient-id", data.patient_id);
-          a.setAttribute("data-v-count", verdictColor(data.verdict) === "v" ? 1 : 0);
-          a.setAttribute("data-i-count", verdictColor(data.verdict) === "i" ? 1 : 0);
-          a.setAttribute("data-c-count", verdictColor(data.verdict) === "c" ? 1 : 0);
-          a.setAttribute("data-reviewed", 0);
-          a.setAttribute("data-relevant", 1);
-          a.href = "/workbench/" + data.patient_id;
-          a.innerHTML =
-            '<div class="row1"><span>' + data.patient_id + '</span></div>' +
-            '<div class="row2"><span class="badge badge-' + verdictColor(data.verdict) + '">1' +
-            (verdictColor(data.verdict).toUpperCase()) +
-            '</span><span class="progress-text">已审 0/1</span></div>';
-          list.insertBefore(a, list.firstChild);
-        }
+        // 重跑会替换旧 verdict；由服务器重算当前页，禁止无限插卡或盲加计数。
+        clearTimeout(_sidebarTimer);
+        _sidebarTimer = setTimeout(loadPatientSidebar, 11000);
       } catch (_) {}
     });
 
@@ -1012,11 +970,10 @@
   }
 
   // ── 列表自动刷新兜底 (不靠 SSE/AuditWatcher) ──
-  // 仅在病人列表页 (/workbench) 生效, 详情页不刷 (不打断看病人). 轮询 142 max run id;
-  // 值变 = 有新裁决 → 防抖等结果稳定再整页刷一次 (facet 走 sessionStorage 会恢复).
+  // 轮询 max run id；值变后只刷新当前侧栏页，保留详情和未提交批注。
   // 142 抖时 sig=None → 不动, 绝不误刷. 跑批时 sig 连变 → 计时器不断重置 → 跑完才刷一次.
   function initAutoRefresh() {
-    if (location.pathname.replace(/\/$/, "") !== "/workbench") return;  // 只列表页
+    // 列表与详情都仅更新独立侧栏，保留当前阅读和未提交批注。
     if (!document.getElementById("patient-list")) return;
     var baseSig = null, settleTimer = null;
     function idle() {
@@ -1025,10 +982,11 @@
       return true;
     }
     function doReload() {
-      if (idle()) location.reload();
+      if (idle()) loadPatientSidebar();
       else settleTimer = setTimeout(doReload, 8000);  // 用户在操作 → 稍后再试
     }
     function poll() {
+      if (document.hidden) return;
       fetch("/api/workbench/sig", { credentials: "same-origin" })
         .then(function (r) { return r.json(); })
         .then(function (j) {
