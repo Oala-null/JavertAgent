@@ -169,3 +169,21 @@ def test_index_first_response_does_not_load_sidebar(synthetic_workbench):
     response = client.get("/workbench")
     assert response.status_code == 200 and not calls
     assert 'class="patient-card' not in response.text
+
+
+def test_sidebar_cache_ttl_starts_after_slow_query_finishes(monkeypatch):
+    clock = [0.0]
+    calls = []
+    def slow_query(filter_mode):
+        calls.append(filter_mode)
+        clock[0] += 15.0
+        return []
+    monkeypatch.setattr(rw.time, 'monotonic', lambda: clock[0])
+    store = SimpleNamespace(list_patients_with_violations=slow_query)
+    rw._sidebar_cache.clear()
+    try:
+        rw._sidebar_patients(store, 'all', allow_cached=True)
+        rw._sidebar_patients(store, 'all', allow_cached=True)
+        assert calls == ['all'], '慢查询完成后应享有完整 TTL，不能刚填充就过期'
+    finally:
+        rw._sidebar_cache.clear()

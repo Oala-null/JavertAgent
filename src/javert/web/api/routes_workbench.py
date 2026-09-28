@@ -91,7 +91,7 @@ def _sidebar_patients(store, filter_mode: str, *, allow_cached: bool) -> list:
         if hit is not None and (now - hit[0]) < _SIDEBAR_TTL_SECONDS:
             return hit[1]
     patients = _enrich_sidebar(store.list_patients_with_violations(filter_mode=filter_mode))
-    _sidebar_cache[filter_mode] = (now, patients)
+    _sidebar_cache[filter_mode] = (time.monotonic(), patients)
     return patients
 
 
