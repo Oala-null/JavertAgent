@@ -1,29 +1,29 @@
 {
   "version": "1.0",
-  "generated_at": "2026-06-02T16:44:31+00:00",
+  "generated_at": "2026-08-18T08:43:04+00:00",
   "summary": {
-    "total_javert_rules": 156,
-    "overlapping_rules": 148,
-    "javert_only_rules": 82,
+    "total_javert_rules": 163,
+    "overlapping_rules": 162,
+    "javert_only_rules": 83,
     "by_template": {
       "_no_template": {
         "javert_only": 13
       },
       "M8": {
-        "javert_only": 32
+        "javert_only": 33
       },
       "M7": {
         "javert_only": 20
       },
       "M5": {
-        "RULE36": 7,
+        "RULE36": 10,
         "RULE2": 1
       },
       "M1": {
         "RULE19": 22
       },
       "M4": {
-        "RULE5": 11,
+        "RULE5": 13,
         "RULE4": 2
       },
       "M6": {
@@ -31,7 +31,7 @@
         "RULE17": 3
       },
       "M2": {
-        "RULE17": 22
+        "RULE17": 23
       },
       "M3": {
         "javert_only": 17
@@ -49,9 +49,12 @@
         "R105",
         "R134",
         "R203",
-        "R224"
+        "R224",
+        "R317",
+        "R318",
+        "R320"
       ],
-      "javert_count": 8,
+      "javert_count": 11,
       "routing": "deterministic — javert rules execute ONLY if this java rule triggers"
     },
     "RULE3": {
@@ -69,9 +72,11 @@
         "R250",
         "R291",
         "R292",
-        "R293"
+        "R293",
+        "R319",
+        "R321"
       ],
-      "javert_count": 13,
+      "javert_count": 15,
       "routing": "deterministic — javert rules execute ONLY if this java rule triggers"
     },
     "RULE4": {
@@ -89,9 +94,11 @@
         "R250",
         "R291",
         "R292",
-        "R293"
+        "R293",
+        "R319",
+        "R321"
       ],
-      "javert_count": 13,
+      "javert_count": 15,
       "routing": "deterministic — javert rules execute ONLY if this java rule triggers"
     },
     "RULE5": {
@@ -109,9 +116,11 @@
         "R250",
         "R291",
         "R292",
-        "R293"
+        "R293",
+        "R319",
+        "R321"
       ],
-      "javert_count": 13,
+      "javert_count": 15,
       "routing": "deterministic — javert rules execute ONLY if this java rule triggers"
     },
     "RULE7": {
@@ -147,9 +156,10 @@
         "R310",
         "R311",
         "R312",
-        "R313"
+        "R313",
+        "R322"
       ],
-      "javert_count": 31,
+      "javert_count": 32,
       "routing": "deterministic — javert rules execute ONLY if this java rule triggers"
     },
     "RULE9": {
@@ -197,9 +207,10 @@
         "R310",
         "R311",
         "R312",
-        "R313"
+        "R313",
+        "R322"
       ],
-      "javert_count": 31,
+      "javert_count": 32,
       "routing": "deterministic — javert rules execute ONLY if this java rule triggers"
     },
     "RULE19": {
@@ -257,9 +268,12 @@
         "R105",
         "R134",
         "R203",
-        "R224"
+        "R224",
+        "R317",
+        "R318",
+        "R320"
       ],
-      "javert_count": 8,
+      "javert_count": 11,
       "routing": "deterministic — javert rules execute ONLY if this java rule triggers"
     }
   },
@@ -320,6 +334,7 @@
       "RD01",
       "RD02",
       "RD03",
+      "RD04",
       "RD10",
       "RD11",
       "RD12",
@@ -349,7 +364,7 @@
       "RD36",
       "RD37"
     ],
-    "count": 82
+    "count": 83
   },
   "reverse_index_javert_to_java": {
     "R003": [],
@@ -699,9 +714,36 @@
       "RULE17",
       "RULE7"
     ],
+    "R317": [
+      "RULE36",
+      "RULE2"
+    ],
+    "R318": [
+      "RULE36",
+      "RULE2"
+    ],
+    "R319": [
+      "RULE5",
+      "RULE3",
+      "RULE4"
+    ],
+    "R320": [
+      "RULE36",
+      "RULE2"
+    ],
+    "R321": [
+      "RULE5",
+      "RULE3",
+      "RULE4"
+    ],
+    "R322": [
+      "RULE17",
+      "RULE7"
+    ],
     "RD01": [],
     "RD02": [],
     "RD03": [],
+    "RD04": [],
     "RD10": [],
     "RD11": [],
     "RD12": [],

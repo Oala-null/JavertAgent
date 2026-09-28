@@ -22,9 +22,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
-from javert.audit.result import AuditResult
+from javert.audit.result import AuditResult, Evidence, ToolCall
 from javert.audit.rule import Rule
 from javert.config import PROJECT_ROOT, JavertConfig, get_config
+from javert.oncology.contracts import EligibilityEvaluation
+from javert.promises.models import PromiseTrace
 
 from .models import (
     AuditLogRecord,
@@ -78,6 +80,7 @@ class SqlServerStore:
             f"UID={self.config.sql_user};"
             f"PWD={self.config.sql_password};"
             f"TrustServerCertificate=yes;"
+            f"Encrypt=no;"  # 142 老 TLS: Driver18 默认强制加密会 Login timeout (data-hub 实测)
             f"Connection Timeout=10;"
         )
         return f"mssql+pyodbc:///?odbc_connect={params}"
@@ -89,6 +92,14 @@ class SqlServerStore:
 
         if not self.config.sql_enabled:
             logger.info("142 双写已被 sql_enabled=false 关闭")
+            self._engine_initialized = True
+            return None
+
+        if not self.config.sql_password:
+            logger.warning(
+                "JAVERT_SQL_PASSWORD 未设置 (凭证已移出源码) — 142 双写降级不可用; "
+                "source .env 后重启可恢复"
+            )
             self._engine_initialized = True
             return None
 
@@ -208,7 +219,7 @@ class SqlServerStore:
             return False
 
     # =========================================================
-    # 写入: AuditResult → Javert_audit_runs
+    # 写入: AuditResult → javert_audit_runs
     # =========================================================
     def write_audit(
         self,
@@ -218,6 +229,7 @@ class SqlServerStore:
         rule_yaml_text: str | None = None,
         triggered_by: str = "cli",
         batch_tag: str | None = None,
+        replay_key: str | None = None,
     ) -> bool:
         """单次 AuditResult 写入 142. 失败只 warn 不抛.
 
@@ -242,6 +254,25 @@ class SqlServerStore:
             [tc.model_dump() for tc in result.tool_calls],
             ensure_ascii=False,
         )
+        eligibility_json = (
+            json.dumps(
+                result.eligibility_evaluation.model_dump(mode="json"),
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+            if result.eligibility_evaluation is not None
+            else None
+        )
+        promise_trace_json = (
+            json.dumps(
+                result.promise_trace.model_dump(mode="json"),
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+            if result.promise_trace is not None
+            else None
+        )
+        AuditResult.model_validate(result.model_dump())
 
         # rule yaml snapshot: 优先用显式 text, 其次从 rules_dir 读, 退路 model_dump
         snapshot_text: Optional[str] = rule_yaml_text
@@ -276,26 +307,42 @@ class SqlServerStore:
             with engine.connect() as conn:
                 # 业务唯一键 run_id 去重 (避免重写)
                 existing = conn.execute(
-                    text("SELECT 1 FROM Javert_audit_runs WHERE run_id = :rid"),
+                    text("SELECT 1 FROM javert_audit_runs WHERE run_id = :rid"),
                     {"rid": result.run_id},
                 ).fetchone()
                 if existing:
                     logger.info("142 已有 run_id=%s, 跳过 INSERT", result.run_id)
                     return True
+                if replay_key:
+                    replay_existing = conn.execute(
+                        text(
+                            "SELECT TOP (1) run_id FROM javert_audit_runs "
+                            "WHERE replay_key=:replay_key AND rule_id=:rule_id"
+                        ),
+                        {"replay_key": replay_key, "rule_id": result.rule_id},
+                    ).fetchone()
+                    if replay_existing:
+                        logger.info(
+                            "142 已有 replay_key/rule_id，跳过重复 INSERT rule=%s",
+                            result.rule_id,
+                        )
+                        return True
 
                 conn.execute(
                     text(
                         """
-                        INSERT INTO Javert_audit_runs (
+                        INSERT INTO javert_audit_runs (
                             run_id, rule_id, patient_id, verdict, confidence,
-                            reasoning, evidence_json, tool_calls_json,
+                            headline, reasoning, evidence_json, tool_calls_json,
+                            eligibility_json, promise_trace_json, anchors_json,
                             duration_ms, model, rule_yaml_snapshot, rule_status,
-                            triggered_by, started_at, batch_tag, gate_tag
+                            triggered_by, started_at, batch_tag, gate_tag, replay_key
                         ) VALUES (
                             :run_id, :rule_id, :patient_id, :verdict, :confidence,
-                            :reasoning, :evidence_json, :tool_calls_json,
+                            :headline, :reasoning, :evidence_json, :tool_calls_json,
+                            :eligibility_json, :promise_trace_json, :anchors_json,
                             :duration_ms, :model, :rule_yaml_snapshot, :rule_status,
-                            :triggered_by, :started_at, :batch_tag, :gate_tag
+                            :triggered_by, :started_at, :batch_tag, :gate_tag, :replay_key
                         )
                         """
                     ),
@@ -305,9 +352,13 @@ class SqlServerStore:
                         "patient_id": result.patient_id,
                         "verdict": result.verdict,
                         "confidence": float(result.confidence),
+                        "headline": result.headline or None,
                         "reasoning": result.reasoning or "",
                         "evidence_json": evidence_json,
                         "tool_calls_json": tool_calls_json,
+                        "eligibility_json": eligibility_json,
+                        "promise_trace_json": promise_trace_json,
+                        "anchors_json": result.anchors_json,
                         "duration_ms": int(result.duration_ms),
                         "model": result.model or "",
                         "rule_yaml_snapshot": snapshot_text,
@@ -316,16 +367,19 @@ class SqlServerStore:
                         "started_at": result.started_at,
                         "batch_tag": batch_tag,
                         "gate_tag": getattr(result, "gate_tag", "") or "",
+                        "replay_key": replay_key,
                     },
                 )
                 conn.commit()
             logger.info(
-                "142 已归档: run_id=%s rule=%s patient=%s verdict=%s",
-                result.run_id, result.rule_id, result.patient_id, result.verdict,
+                "142 已归档: rule=%s verdict=%s promise=%s",
+                result.rule_id,
+                result.verdict,
+                int(result.promise_trace is not None),
             )
             return True
         except Exception as e:
-            logger.warning("142 写入失败 run_id=%s: %s", result.run_id, e)
+            logger.warning("142 写入失败 error_type=%s", type(e).__name__)
             return False
 
     # =========================================================
@@ -359,7 +413,7 @@ class SqlServerStore:
                 f"SELECT TOP ({limit_int}) "
                 "id, run_id, rule_id, patient_id, verdict, confidence, "
                 "duration_ms, model, triggered_by, started_at, created_at "
-                "FROM Javert_audit_runs"
+                "FROM javert_audit_runs"
                 + where_clause
                 + " ORDER BY created_at DESC"
             )
@@ -371,6 +425,63 @@ class SqlServerStore:
         except Exception as e:
             logger.warning("142 查询失败: %s", e)
             return []
+
+    def find_audit_by_run_id(self, run_id: str) -> AuditResult | None:
+        """读取完整 SQL Server 归档结果；旧行扩展 JSON 为 NULL 时向后兼容."""
+        engine = self.get_engine()
+        if engine is None:
+            return None
+        try:
+            from sqlalchemy import text
+            with engine.connect() as conn:
+                row = conn.execute(
+                    text(
+                        "SELECT run_id, rule_id, patient_id, verdict, confidence, "
+                        "reasoning, evidence_json, tool_calls_json, duration_ms, model, "
+                        "started_at, gate_tag, eligibility_json, promise_trace_json, anchors_json, headline "
+                        "FROM javert_audit_runs WHERE run_id = :rid"
+                    ),
+                    {"rid": run_id},
+                ).fetchone()
+            if row is None:
+                return None
+            eligibility = (
+                EligibilityEvaluation.model_validate_json(row[12])
+                if row[12]
+                else None
+            )
+            promise_trace = (
+                PromiseTrace.model_validate_json(row[13])
+                if len(row) > 13 and row[13]
+                else None
+            )
+            return AuditResult(
+                run_id=row[0],
+                rule_id=row[1],
+                patient_id=row[2],
+                verdict=row[3],
+                confidence=float(row[4] or 0.0),
+                headline=(row[15] or "") if len(row) > 15 else "",
+                reasoning=row[5] or "",
+                evidence=[
+                    Evidence.model_validate(item)
+                    for item in json.loads(row[6] or "[]")
+                ],
+                tool_calls=[
+                    ToolCall.model_validate(item)
+                    for item in json.loads(row[7] or "[]")
+                ],
+                duration_ms=int(row[8] or 0),
+                model=row[9] or "",
+                started_at=row[10],
+                gate_tag=row[11] or "",
+                eligibility_evaluation=eligibility,
+                promise_trace=promise_trace,
+                anchors_json=(row[14] if len(row) > 14 else None),
+            )
+        except Exception as e:
+            logger.warning("find_audit_by_run_id 失败 run_id=%s: %s", run_id, e)
+            return None
 
 
     # =========================================================
@@ -580,7 +691,7 @@ class SqlServerStore:
             # 1. run_id 必须存在 + 顺便取 patient_id + rule_id (denormalize 进 vio_review)
             #    + verdict (AI 裁决, SSE 增量计数判定是否落在当前 filter 命中集)
             run_row = conn.execute(
-                text("SELECT patient_id, rule_id, verdict FROM Javert_audit_runs WHERE run_id = :rid"),
+                text("SELECT patient_id, rule_id, verdict FROM javert_audit_runs WHERE run_id = :rid"),
                 {"rid": run_id},
             ).fetchone()
             if not run_row:
@@ -704,27 +815,43 @@ class SqlServerStore:
         if engine is None:
             return []
         from sqlalchemy import text
-        # 病人 + 各 verdict 计数 (latest 去重) + 该 patient 的最新 batch_tag
+        # 病人 + 各 verdict 计数 (latest 去重) + 稳定来源标签。
+        # OCR 是患者来源属性；后续普通重跑即使 batch_tag=NULL，也不能把 ocr1.0 覆盖掉。
         sql_counts = """
             WITH latest AS (
-                SELECT patient_id, rule_id, verdict, run_id, batch_tag, created_at,
-                       ROW_NUMBER() OVER (PARTITION BY patient_id, rule_id ORDER BY created_at DESC) AS rn
-                FROM Javert_audit_runs
+                SELECT id, patient_id, rule_id, verdict, run_id, batch_tag, created_at,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY patient_id, rule_id
+                           ORDER BY created_at DESC, id DESC
+                       ) AS rn
+                FROM javert_audit_runs
+            ),
+            patient_tag_ranked AS (
+                SELECT patient_id, batch_tag,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY patient_id
+                           ORDER BY created_at DESC, id DESC
+                       ) AS rn_tag
+                FROM javert_audit_runs
             ),
             patient_tag AS (
-                SELECT patient_id, batch_tag,
-                       ROW_NUMBER() OVER (PARTITION BY patient_id ORDER BY created_at DESC) AS rn_tag
-                FROM Javert_audit_runs
+                SELECT patient_id,
+                       CASE
+                           WHEN MAX(CASE WHEN batch_tag = N'ocr1.0' THEN 1 ELSE 0 END) = 1
+                               THEN N'ocr1.0'
+                           ELSE MAX(CASE WHEN rn_tag = 1 THEN batch_tag END)
+                       END AS batch_tag
+                FROM patient_tag_ranked
+                GROUP BY patient_id
             )
             SELECT latest.patient_id,
                    SUM(CASE WHEN verdict = N'VIOLATION' THEN 1 ELSE 0 END) AS v_count,
                    SUM(CASE WHEN verdict = N'INCONCLUSIVE' THEN 1 ELSE 0 END) AS i_count,
                    SUM(CASE WHEN verdict = N'CLEAN' THEN 1 ELSE 0 END) AS c_count,
-                   MAX(CASE WHEN pt.rn_tag = 1 THEN pt.batch_tag ELSE NULL END) AS batch_tag,
+                   MAX(pt.batch_tag) AS batch_tag,
                    MAX(latest.created_at) AS updated_at
             FROM latest
-            LEFT JOIN patient_tag pt
-                   ON pt.patient_id = latest.patient_id AND pt.rn_tag = 1
+            LEFT JOIN patient_tag pt ON pt.patient_id = latest.patient_id
             WHERE latest.rn = 1
             GROUP BY latest.patient_id
         """
@@ -734,7 +861,7 @@ class SqlServerStore:
             WITH latest AS (
                 SELECT patient_id, rule_id, verdict, run_id,
                        ROW_NUMBER() OVER (PARTITION BY patient_id, rule_id ORDER BY created_at DESC) AS rn
-                FROM Javert_audit_runs
+                FROM javert_audit_runs
             )
             SELECT l.patient_id, l.verdict, COUNT(DISTINCT l.run_id) AS n
             FROM latest l
@@ -773,7 +900,8 @@ class SqlServerStore:
                 relevant = i
             else:  # 'all'
                 relevant = v + i + c
-            if filter_mode != "all" and relevant == 0:
+            # OCR 患者即使全部 CLEAN 也必须可发现；详情链接会自动切到 all。
+            if filter_mode != "all" and relevant == 0 and batch_tag != "ocr1.0":
                 continue
             rmap = reviewed.get(pid, {})
             if filter_mode == "v_and_i":
@@ -812,6 +940,64 @@ class SqlServerStore:
         out.sort(key=lambda x: (-(1 if x.batch_tag else 0), -x.v_count, -x.i_count, x.patient_id))
         return out
 
+    def latest_verdict_rows(self, batch_tag: str | None = None) -> list[tuple[str, str, str]]:
+        """每 (rule_id, patient_id) 取最新一条 → (rule_id, patient_id, verdict).
+
+        跨患者统计 (add-cross-patient-stats) 的 latest 去重源. 复用与
+        list_patients_with_violations / dashboard_stats 完全一致的 ROW_NUMBER CTE 口径,
+        不另立 verdict filter. batch_tag 非空则只算该批次. 142 不可达 → 空列表.
+        """
+        engine = self.get_engine()
+        if engine is None:
+            return []
+        from sqlalchemy import text
+        tag_filter = "WHERE batch_tag = :tag" if batch_tag is not None else ""
+        sql = f"""
+            WITH latest AS (
+                SELECT rule_id, patient_id, verdict,
+                       ROW_NUMBER() OVER (PARTITION BY patient_id, rule_id ORDER BY created_at DESC) AS rn
+                FROM javert_audit_runs
+                {tag_filter}
+            )
+            SELECT rule_id, patient_id, verdict FROM latest WHERE rn = 1
+        """
+        params = {"tag": batch_tag} if batch_tag is not None else {}
+        try:
+            with engine.connect() as conn:
+                rows = conn.execute(text(sql), params).fetchall()
+        except Exception as e:
+            logger.warning("latest_verdict_rows 失败: %s", e)
+            return []
+        return [(r[0], r[1], r[2]) for r in rows]
+
+    def latest_batch_tag_for_patient(self, patient_id: str) -> str | None:
+        """返回稳定患者来源标签；历史含 OCR 时始终返回 ocr1.0。"""
+        engine = self.get_engine()
+        if engine is None:
+            return None
+        from sqlalchemy import text
+        try:
+            with engine.connect() as conn:
+                row = conn.execute(
+                    text(
+                        "SELECT CASE "
+                        "WHEN EXISTS (SELECT 1 FROM javert_audit_runs "
+                        "             WHERE patient_id = :pid AND batch_tag = N'ocr1.0') "
+                        "THEN N'ocr1.0' "
+                        "ELSE (SELECT TOP (1) batch_tag FROM javert_audit_runs "
+                        "      WHERE patient_id = :pid ORDER BY created_at DESC, run_id DESC) END"
+                    ),
+                    {"pid": patient_id},
+                ).fetchone()
+            return str(row[0]) if row is not None and row[0] else None
+        except Exception as exc:  # noqa: BLE001 — 原文 profile 是可选回退，不阻断默认源
+            logger.warning(
+                "latest_batch_tag_for_patient 失败 patient=%s error_type=%s",
+                patient_id,
+                type(exc).__name__,
+            )
+            return None
+
     def list_runs_for_patient(
         self,
         patient_id: str,
@@ -819,7 +1005,7 @@ class SqlServerStore:
     ) -> list[RunWithReviews]:
         """patient_detail — 当前 patient 的 runs (按 filter), JOIN reviews + history.
 
-        v0.7: 拉所有 audit_runs (含老 v1.0), Python 端按 rule_id 分组,
+        SQL 按患者/规则定位最新记录，仅主卡取完整大字段；Python 按 rule_id 分组,
         每组 latest 作主显示, 其他作 history (v1.0 verdict + 当时的批注).
         filter 仍以 latest verdict 为准.
         """
@@ -827,22 +1013,42 @@ class SqlServerStore:
         if engine is None:
             return []
         from sqlalchemy import text
-        # 拉该 patient 所有 audit_runs (含老 v1.0, 含 latest v1.2 — 一次性)
-        sql_runs = """
-            SELECT run_id, rule_id, patient_id, verdict, confidence,
-                   reasoning, evidence_json, tool_calls_json,
-                   duration_ms, model, started_at, created_at, triggered_by, batch_tag,
-                   gate_tag
-            FROM Javert_audit_runs
-            WHERE patient_id = :pid
-            ORDER BY rule_id ASC, created_at DESC
+        # 仅在患者范围内排序标识；历史行不取未展示的大字段。
+        verdicts = {
+            "v_and_i": "N'VIOLATION', N'INCONCLUSIVE'",
+            "v_only": "N'VIOLATION'", "i_only": "N'INCONCLUSIVE'",
+            "all": "N'VIOLATION', N'INCONCLUSIVE', N'CLEAN'",
+        }.get(filter_mode, "N'VIOLATION', N'INCONCLUSIVE'")
+        sql_runs = f"""
+            WITH ranked AS (
+                SELECT id, rule_id, verdict,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY rule_id ORDER BY created_at DESC, id DESC
+                       ) AS rn
+                FROM javert_audit_runs WHERE patient_id = :pid
+            ), visible AS (
+                SELECT rule_id FROM ranked WHERE rn = 1 AND verdict IN ({verdicts})
+            )
+            SELECT r.run_id, r.rule_id, r.patient_id, r.verdict, r.confidence,
+                   CASE WHEN n.rn = 1 THEN r.reasoning END AS reasoning,
+                   CASE WHEN n.rn = 1 THEN r.evidence_json END AS evidence_json,
+                   CASE WHEN n.rn = 1 THEN r.tool_calls_json END AS tool_calls_json,
+                   r.duration_ms, r.model, r.started_at, r.created_at, r.triggered_by, r.batch_tag,
+                   r.gate_tag,
+                   CASE WHEN n.rn = 1 THEN r.eligibility_json END AS eligibility_json,
+                   CASE WHEN n.rn = 1 THEN r.promise_trace_json END AS promise_trace_json,
+                   CASE WHEN n.rn = 1 THEN r.headline END AS headline
+            FROM ranked n
+            INNER JOIN javert_audit_runs r ON r.id = n.id
+            INNER JOIN visible v ON v.rule_id = n.rule_id
+            ORDER BY r.rule_id ASC, r.created_at DESC, r.id DESC
         """
         sql_reviews = """
             SELECT rv.id, rv.run_id, rv.user_id, rv.review_verdict,
                    rv.comment, rv.created_at, rv.is_latest,
                    u.username, u.display_name
             FROM javert_vio_review rv
-            INNER JOIN Javert_audit_runs r ON r.run_id = rv.run_id
+            INNER JOIN javert_audit_runs r ON r.run_id = rv.run_id
             INNER JOIN javert_users u ON u.id = rv.user_id
             WHERE r.patient_id = :pid AND rv.is_latest = 1
             ORDER BY rv.created_at DESC
@@ -898,10 +1104,21 @@ class SqlServerStore:
                         run_id=h[0],
                         verdict=h[3],
                         confidence=float(h[4] or 0.0),
+                        headline=(h[17] or "") if len(h) > 17 else "",
                         reasoning=h[5] or "",
                         batch_tag=h[13],
                         created_at=h[11],
                         reviews=reviews_by_run.get(h[0], []),
+                        eligibility_evaluation=(
+                            EligibilityEvaluation.model_validate_json(h[15])
+                            if len(h) > 15 and h[15]
+                            else None
+                        ),
+                        promise_trace=(
+                            PromiseTrace.model_validate_json(h[16])
+                            if len(h) > 16 and h[16]
+                            else None
+                        ),
                     )
                 )
             out.append(
@@ -911,6 +1128,7 @@ class SqlServerStore:
                     patient_id=latest[2],
                     verdict=latest[3],
                     confidence=float(latest[4] or 0.0),
+                    headline=(latest[17] or "") if len(latest) > 17 else "",
                     reasoning=latest[5] or "",
                     evidence_json=latest[6],
                     tool_calls_json=latest[7],
@@ -921,6 +1139,16 @@ class SqlServerStore:
                     triggered_by=latest[12],
                     batch_tag=latest[13],
                     gate_tag=(latest[14] or "") if len(latest) > 14 else "",
+                    eligibility_evaluation=(
+                        EligibilityEvaluation.model_validate_json(latest[15])
+                        if len(latest) > 15 and latest[15]
+                        else None
+                    ),
+                    promise_trace=(
+                        PromiseTrace.model_validate_json(latest[16])
+                        if len(latest) > 16 and latest[16]
+                        else None
+                    ),
                     reviews=reviews_by_run.get(latest[0], []),
                     history=history_runs,
                 )
@@ -946,8 +1174,12 @@ class SqlServerStore:
             with engine.connect() as conn:
                 rows = conn.execute(
                     text(
-                        "SELECT run_id, anchors_json FROM Javert_audit_runs "
-                        "WHERE patient_id = :pid AND anchors_json IS NOT NULL"
+                        "WITH ranked AS (SELECT id, ROW_NUMBER() OVER ("
+                        "PARTITION BY rule_id ORDER BY created_at DESC, id DESC) AS rn "
+                        "FROM javert_audit_runs WHERE patient_id = :pid) "
+                        "SELECT r.run_id, r.anchors_json FROM ranked n "
+                        "INNER JOIN javert_audit_runs r ON r.id = n.id "
+                        "WHERE n.rn = 1 AND r.anchors_json IS NOT NULL"
                     ),
                     {"pid": patient_id},
                 ).fetchall()
@@ -955,6 +1187,76 @@ class SqlServerStore:
         except Exception as e:  # noqa: BLE001 — 列缺失等; 静默回退现算
             logger.debug("fetch_anchors_for_patient miss patient=%s: %s", patient_id, e)
             return {}
+
+    def list_model_comparison_runs(
+        self,
+        patient_id: str,
+        batch_tag: str,
+    ) -> list[dict[str, Any]]:
+        """同患者/批次按 rule+model 取最新一条，供登录后的专家 A/B HTML。"""
+        engine = self.get_engine()
+        if engine is None:
+            return []
+        from sqlalchemy import text
+
+        sql = """
+            WITH ranked AS (
+                SELECT run_id, rule_id, patient_id, verdict, confidence,
+                       reasoning, evidence_json, tool_calls_json, duration_ms,
+                       model, created_at, batch_tag, gate_tag, headline,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY rule_id, model
+                           ORDER BY created_at DESC, id DESC
+                       ) AS rn
+                FROM javert_audit_runs
+                WHERE patient_id = :pid AND batch_tag = :tag AND model IS NOT NULL
+            )
+            SELECT run_id, rule_id, patient_id, verdict, confidence,
+                   reasoning, evidence_json, tool_calls_json, duration_ms,
+                   model, created_at, batch_tag, gate_tag, headline
+            FROM ranked WHERE rn = 1
+            ORDER BY rule_id ASC, model ASC
+        """
+
+        def parse_list(raw: str | None) -> list:
+            try:
+                value = json.loads(raw) if raw else []
+                return value if isinstance(value, list) else []
+            except (TypeError, json.JSONDecodeError):
+                return []
+
+        try:
+            with engine.connect() as conn:
+                rows = conn.execute(
+                    text(sql), {"pid": patient_id, "tag": batch_tag}
+                ).fetchall()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "list_model_comparison_runs 失败 patient=%s tag=%s: %s",
+                patient_id,
+                batch_tag,
+                exc,
+            )
+            return []
+        return [
+            {
+                "run_id": row[0],
+                "rule_id": row[1],
+                "patient_id": row[2],
+                "verdict": row[3],
+                "confidence": float(row[4] or 0.0),
+                "reasoning": row[5] or "",
+                "evidence": parse_list(row[6]),
+                "tool_calls": parse_list(row[7]),
+                "duration_ms": int(row[8] or 0),
+                "model": row[9] or "",
+                "created_at": row[10],
+                "batch_tag": row[11],
+                "gate_tag": row[12] or "",
+                "headline": row[13] or "",
+            }
+            for row in rows
+        ]
 
     def list_reviews_for_run(self, run_id: str) -> list[ReviewRecord]:
         """单 run 的全部历史 review (含 is_latest=0)."""
@@ -1012,7 +1314,7 @@ class SqlServerStore:
                             "SELECT COUNT(DISTINCT patient_id), "
                             "SUM(CASE WHEN verdict = N'VIOLATION' THEN 1 ELSE 0 END), "
                             "SUM(CASE WHEN verdict = N'INCONCLUSIVE' THEN 1 ELSE 0 END) "
-                            "FROM Javert_audit_runs"
+                            "FROM javert_audit_runs"
                         )
                     ).fetchone()
                 else:
@@ -1021,7 +1323,7 @@ class SqlServerStore:
                             "SELECT COUNT(DISTINCT patient_id), "
                             "SUM(CASE WHEN verdict = N'VIOLATION' THEN 1 ELSE 0 END), "
                             "SUM(CASE WHEN verdict = N'INCONCLUSIVE' THEN 1 ELSE 0 END) "
-                            "FROM Javert_audit_runs WHERE created_at > :since"
+                            "FROM javert_audit_runs WHERE created_at > :since"
                         ),
                         {"since": since},
                     ).fetchone()
@@ -1067,8 +1369,8 @@ class SqlServerStore:
                 rows = conn.execute(
                     text(
                         f"SELECT TOP ({limit_int}) run_id, patient_id, rule_id, verdict, "
-                        "confidence, created_at "
-                        "FROM Javert_audit_runs "
+                        "confidence, created_at, eligibility_json, promise_trace_json, headline "
+                        "FROM javert_audit_runs "
                         "WHERE created_at > :last_seen "
                         "ORDER BY created_at ASC"
                     ),
@@ -1082,6 +1384,13 @@ class SqlServerStore:
                         "verdict": r[3],
                         "confidence": float(r[4] or 0.0),
                         "created_at": r[5],
+                        "eligibility_evaluation": (
+                            json.loads(r[6]) if len(r) > 6 and r[6] else None
+                        ),
+                        "promise_trace": (
+                            json.loads(r[7]) if len(r) > 7 and r[7] else None
+                        ),
+                        "headline": (r[8] or "") if len(r) > 8 else "",
                     }
                     for r in rows
                 ]
@@ -1097,7 +1406,7 @@ class SqlServerStore:
         try:
             with engine.connect() as conn:
                 row = conn.execute(
-                    text("SELECT MAX(created_at) FROM Javert_audit_runs")
+                    text("SELECT MAX(created_at) FROM javert_audit_runs")
                 ).fetchone()
                 return row[0] if row and row[0] else None
         except Exception as e:
@@ -1113,7 +1422,7 @@ class SqlServerStore:
         try:
             with engine.connect() as conn:
                 row = conn.execute(
-                    text("SELECT ISNULL(MAX(id), 0) FROM Javert_audit_runs")
+                    text("SELECT ISNULL(MAX(id), 0) FROM javert_audit_runs")
                 ).fetchone()
                 return int(row[0]) if row and row[0] is not None else 0
         except Exception as e:
@@ -1137,8 +1446,8 @@ class SqlServerStore:
                 rows = conn.execute(
                     text(
                         f"SELECT TOP ({limit_int}) id, run_id, patient_id, rule_id, "
-                        "verdict, confidence, created_at "
-                        "FROM Javert_audit_runs "
+                        "verdict, confidence, created_at, eligibility_json, promise_trace_json, headline "
+                        "FROM javert_audit_runs "
                         "WHERE id > :last_id "
                         "ORDER BY id ASC"
                     ),
@@ -1153,6 +1462,13 @@ class SqlServerStore:
                         "verdict": r[4],
                         "confidence": float(r[5] or 0.0),
                         "created_at": r[6],
+                        "eligibility_evaluation": (
+                            json.loads(r[7]) if len(r) > 7 and r[7] else None
+                        ),
+                        "promise_trace": (
+                            json.loads(r[8]) if len(r) > 8 and r[8] else None
+                        ),
+                        "headline": (r[9] or "") if len(r) > 9 else "",
                     }
                     for r in rows
                 ]
@@ -1169,7 +1485,7 @@ class SqlServerStore:
             with engine.connect() as conn:
                 row = conn.execute(
                     text(
-                        "SELECT TOP 1 1 FROM Javert_audit_runs "
+                        "SELECT TOP 1 1 FROM javert_audit_runs "
                         "WHERE patient_id = :pid AND run_id <> :exc"
                     ),
                     {"pid": patient_id, "exc": exclude_run_id},
@@ -1192,7 +1508,7 @@ class SqlServerStore:
             WITH latest AS (
                 SELECT run_id, rule_id, patient_id, verdict, gate_tag,
                        ROW_NUMBER() OVER (PARTITION BY patient_id, rule_id ORDER BY created_at DESC) AS rn
-                FROM Javert_audit_runs
+                FROM javert_audit_runs
             )
         """
         try:
@@ -1313,7 +1629,7 @@ class SqlServerStore:
                    rv.review_verdict, rv.comment, rv.created_at,
                    ar.verdict, ar.confidence
             FROM javert_vio_review rv
-            INNER JOIN Javert_audit_runs ar ON ar.run_id = rv.run_id
+            INNER JOIN javert_audit_runs ar ON ar.run_id = rv.run_id
             WHERE rv.user_id = :uid AND rv.is_latest = 1
             ORDER BY rv.created_at DESC
         """
@@ -1364,7 +1680,7 @@ class SqlServerStore:
             "WITH latest AS ("
             "  SELECT *, ROW_NUMBER() OVER ("
             "    PARTITION BY patient_id, rule_id ORDER BY created_at DESC) AS rn "
-            "  FROM Javert_audit_runs"
+            "  FROM javert_audit_runs"
             "), r AS (SELECT * FROM latest WHERE rn = 1) "
         )
         out: dict[str, list[dict]] = {}
@@ -1464,6 +1780,31 @@ class SqlServerStore:
                     ]
         except Exception as e:
             logger.warning("fetch_export_rows 失败: %s", e)
+        # 系统性违规 sheet (add-cross-patient-stats) — 全量 latest 聚合;
+        # V 率需完整分母 (含 CLEAN), 故不受 scope 影响, 独立算.
+        try:
+            from javert.stats.cross_patient import (
+                aggregate,
+                compute_rule_stats,
+                load_thresholds,
+            )
+            sys_stats = compute_rule_stats(
+                aggregate(self.latest_verdict_rows()), load_thresholds(),
+            )
+            out["系统性违规"] = [
+                {
+                    "rule_id": s.rule_id,
+                    "被审计患者数": s.n_patients,
+                    "V": s.v,
+                    "I": s.i,
+                    "V率": f"{s.v_rate * 100:.0f}%",
+                    "金额": "不可计" if s.amount is None else s.amount,
+                    "系统性": s.systemic,
+                }
+                for s in sys_stats
+            ]
+        except Exception as e:  # noqa: BLE001
+            logger.warning("系统性违规 sheet 生成失败: %s", e)
         return out
 
 

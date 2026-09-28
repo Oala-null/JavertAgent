@@ -13,6 +13,8 @@ from __future__ import annotations
 from typing import Callable
 
 from javert.data.lab_loader import LabLoader
+from javert.data.loader import DataLoader
+from javert.tools import search_notes
 
 REQUIRES_PATIENT_ID = True
 
@@ -88,7 +90,7 @@ def _format_row(idx: int, row: dict) -> str:
     return "\n".join(lines)
 
 
-def create_executor(loader: LabLoader) -> Callable[..., str]:
+def create_executor(loader: LabLoader, notes_loader: DataLoader | None = None) -> Callable[..., str]:
     """绑定 LabLoader, 返回 search_lab_results(patient_id, ...) 函数."""
 
     def execute(
@@ -99,6 +101,14 @@ def create_executor(loader: LabLoader) -> Callable[..., str]:
     ) -> str:
         all_rows = loader.get_lab_results(patient_id)
         if not all_rows:
+            if notes_loader is not None:
+                query = item_keyword or "检验报告"
+                note_result = search_notes.create_executor(notes_loader)(patient_id, keyword=query)
+                if "未找到" not in note_result and "无文书记录" not in note_result:
+                    return (
+                        "非结构化报告候选（病历全文，不能替代结构化检验报告表）:\n"
+                        + note_result
+                    )
             return f"该患者无检验/化验报告记录 (sy_检验 索引中无 zyh={patient_id})"
 
         filtered = loader.get_lab_results(

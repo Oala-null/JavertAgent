@@ -5,6 +5,7 @@ question: 患者实际未在院（挂床住院）、冒用他人信息虚构住�
 example: 示例：某医院将门诊患者登记为住院，实际患者未在院，仍收取住院费用。
 status: drafting
 priority: P2
+handling_level: 提醒（引导）
 prompt_addon: ''
 trigger_keywords: []
 suggested_tools: []

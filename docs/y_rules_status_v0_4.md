@@ -1,5 +1,9 @@
 # Y 标注规则装载现状 · v0.4 (m7-rollout 后)
 
+> **历史冻结快照**：本文只描述 2026-05-17 的专家 Y 标注覆盖率，不是当前规则清单。
+> 实时规则状态以 `javert list` 为准；RD10-RD37 的本地 authoring 状态另见
+> `docs/oncology/operations.md`，不应反推本页的 M1-M7 历史覆盖率。
+
 **日期**: 2026-05-17
 **触发**: m7-rollout 完成 (20 条 M7 串换规则装 prompt_addon)
 **对照基准**: `docs/y_rules_analysis.md` (v0.3, Y ready = 81/109 = 74.3%)

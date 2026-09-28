@@ -13,6 +13,12 @@
         ⬇ 导出此病人 (xlsx)
       </a>
       <button class="btn-secondary" type="button" onclick="showRawData('{{ active_patient }}')">查看原始病历</button>
+      {% if runs | selectattr('batch_tag', 'equalto', 'ab3.8') | list %}
+      <a class="btn-primary"
+         href="/workbench/{{ active_patient }}/model-compare?batch_tag=ab3.8">
+        ↔ Qwen3.6 / 3.8 对比
+      </a>
+      {% endif %}
     </div>
 
     {% if overview %}
@@ -55,8 +61,11 @@
         <label class="only-i-toggle" title="只看 AI 判为「不明」的卡片 (前端过滤, 不刷新)">
           <input type="checkbox" onchange="toggleInconclusiveOnly(this)"> 只看不明
         </label>
-        <label class="hide-missing-toggle" title="默认隐藏被 gate 判为「缺文书」的待线下核查项 (前端过滤, 可翻看)">
-          <input type="checkbox" id="hide-missing-doc" checked onchange="toggleHideMissingDoc(this)"> 隐藏缺文书
+        <label class="hide-missing-toggle" title="默认隐藏资料不足、需线下核查的项目">
+          <input type="checkbox" id="hide-missing-doc" checked onchange="toggleHideMissingDoc(this)"> 隐藏待补资料
+        </label>
+        <label class="gated-only-toggle" title="只看由系统调整为需复核或未发现违规的项目">
+          <input type="checkbox" id="gated-only" onchange="toggleGatedOnly(this)"> 只看系统调整项
         </label>
       </div>
 
@@ -69,18 +78,18 @@
 
       {% for run in g.runs %}
       {% set meta = _rule_meta.get(run.rule_id) %}
+      {% set public = (public_explanations | default({}, true)).get(run.run_id, {}) %}
       <article id="run_{{ run.run_id }}" class="violation-card verdict-{{ run.verdict | verdict_color }}" data-run-id="{{ run.run_id }}" data-verdict="{{ run.verdict | verdict_color }}" data-gate-tag="{{ run.gate_tag or '' }}">
         <div class="violation-head">
-          <span class="rule-id">{{ run.rule_id }}</span>
-          <span class="rule-subtitle-alias" title="{% if meta %}{{ meta.subtitle }}{% endif %}">{{ g.alias }}</span>
+          <span class="rule-id">{% if meta %}{{ meta.behavior_name }}{% else %}未分类{% endif %}</span>
           <span class="badge badge-{{ run.verdict | verdict_color }}">{{ run.verdict | verdict_label }}</span>
           <span class="confidence">置信 {{ '%.2f' % (run.confidence or 0.0) }}</span>
-          {% if run.gate_tag %}<span class="gate-badge gate-{{ run.gate_tag }}" title="该裁决被确定性 gate 降级 ({{ run.gate_tag }}) — 详见下方推理">⚙ {{ run.gate_tag }}</span>{% endif %}
-          {% if run.batch_tag %}<span class="batch-badge batch-{{ run.batch_tag }}">{{ run.batch_tag }}</span>{% endif %}
-          {% if run.history %}<span class="history-hint" title="该规则之前跑过 {{ run.history|length }} 次, 末尾可展开看老 verdict + 当时批注">📜 +{{ run.history|length }}</span>{% endif %}
+          {% if run.history %}<span class="history-hint" title="该项目之前审核过 {{ run.history|length }} 次，末尾可展开查看">📜 +{{ run.history|length }}</span>{% endif %}
         </div>
-        {% if meta %}
-        <div class="rule-question">{{ meta.question }}</div>
+        {% if public.get('audit_items') %}
+        <div class="rule-question">{{ public.audit_items[0] }}</div>
+        {% elif meta %}
+        <div class="rule-question">{{ meta.behavior_name }}</div>
         {% endif %}
 
         {# 命中项目 (evidence-anchoring) — 仅 fee/drug; note 类收敛成「查阅文书原文」按钮 #}
@@ -100,7 +109,7 @@
               {% if h.matched_fee_name and h.matched_fee_name != h.name %}<span class="hit-fee-name">· {{ h.matched_fee_name }}</span>{% endif %}
             </div>
             {% if h.restriction %}
-            <div class="hit-restriction">限定: {{ h.restriction }}{% if h.review_note %} <span class="hit-review">⚠ {{ h.review_note }}</span>{% endif %}</div>
+            <div class="hit-restriction">{{ '说明书适应证' if meta and meta.drug_rule_type == '超说明书' else '限定' }}: {{ h.restriction }}{% if h.review_note %} <span class="hit-review">⚠ {{ h.review_note }}</span>{% endif %}</div>
             {% endif %}
           </div>
           {% endfor %}
@@ -132,12 +141,145 @@
           <button type="button" class="btn-source" onclick="openSourcePanel({tab:'notes'})">📄 查阅文书原文</button>
         </div>
 
-        {# AI 推理 + 证据裸 dump → 默认展开 (专家逐条审核时直接可见, 不用每张卡片点开) #}
-        <details class="evidence-block" open>
-          <summary>🔎 AI 推理过程 + 证据</summary>
-          <div class="reasoning">{{ run.reasoning or '(无 reasoning)' }}</div>
-          {% if run.evidence_json %}<pre>{{ run.evidence_json }}</pre>{% endif %}
+        {# 单一公共 presenter 的结构化输出；不渲染内部 reasoning/evidence JSON。 #}
+        <section class="public-explanation">
+          {% set conclusion = public.get('conclusion', {}) %}
+          <h3>{{ conclusion.get('label', '待人工复核') }}</h3>
+          <p>{{ conclusion.get('summary', '现有资料不足以自动定性。') }}</p>
+          {% if public.get('narrative') %}
+          <div class="public-section public-narrative"><strong>审核说明</strong><div class="reasoning">{{ public.narrative }}</div></div>
+          {% endif %}
+          {% if public.get('audit_items') %}
+          <div class="public-section"><strong>核查事项</strong><ul>{% for item in public.audit_items %}<li>{{ item }}</li>{% endfor %}</ul></div>
+          {% endif %}
+          {% if public.get('charge_facts') %}
+          <div class="public-section"><strong>收费事实</strong><ul>
+            {% for fact in public.charge_facts %}
+            <li>
+              {% if fact.get('fact') %}{{ fact.fact }}：{{ fact.value }}{{ fact.unit }}{% if fact.get('refund_count') is not none %}（含 {{ fact.refund_count }} 次退费）{% endif %}
+              {% else %}{{ fact.get('name') or fact.get('matched_charge_name') }}{% if fact.get('code') %}（编码 {{ fact.code }}）{% endif %}{% endif %}
+            </li>
+            {% endfor %}
+          </ul></div>
+          {% endif %}
+          {% if public.get('basis') %}
+          <div class="public-section"><strong>核查依据</strong><ul>{% for item in public.basis %}<li>{{ item }}</li>{% endfor %}</ul></div>
+          {% endif %}
+          {% if public.get('clinical_evidence') %}
+          <div class="public-section"><strong>临床资料</strong><ul>{% for item in public.clinical_evidence %}<li>{{ item.type }}：{{ item.name }}</li>{% endfor %}</ul></div>
+          {% endif %}
+          {% if public.get('review_needs') %}
+          <div class="public-section public-review-needs"><strong>需人工核对</strong><ul>{% for item in public.review_needs %}<li>{{ item }}</li>{% endfor %}</ul></div>
+          {% endif %}
+        </section>
+
+        {# 肿瘤靶向药用药方案合理性 — 绑在 reasoning 之后的 follow-up, 默认折叠, 点开看逐条医保限定核对 #}
+        {% if run.eligibility_evaluation %}
+        {% set ee = run.eligibility_evaluation %}
+        {% set _st = ee.eligibility_status.value %}
+        {% set _draft_preview = 'DRAFT_RULE_PREVIEW_ONLY' in ee.data_quality_flags %}
+        {% set _ta = ee.temporal_applicability if ee.temporal_applicability else none %}
+        <details class="onco-followup" data-eligibility-status="{{ _st }}">
+          <summary>
+            🎯 肿瘤靶向药用药方案合理性
+            <span class="onco-pill onco-pill-{{ _st | lower }}">
+              {% if _draft_preview %}📝 草稿待人工复核
+              {% elif ee.scope_evaluations and _st == 'SATISFIED' %}✓ 总体符合
+              {% elif ee.scope_evaluations and _st == 'NOT_SATISFIED' %}✗ 存在不符合
+              {% elif ee.scope_evaluations and _st == 'CONFLICT' %}⚠ 证据冲突
+              {% elif ee.scope_evaluations %}？ 待补或复核
+              {% elif _st == 'SATISFIED' %}✓ 符合医保限定
+              {% elif _st == 'NOT_SATISFIED' %}✗ 不符合医保限定
+              {% elif _st == 'CONFLICT' %}⚠ 证据冲突
+              {% else %}？ 待补文书{% endif %}
+            </span>
+            <span class="onco-hint">点击展开逐条核对</span>
+          </summary>
+          <div class="onco-body">
+            {% set display_evaluations = ee.scope_evaluations if ee.scope_evaluations else [ee] %}
+            {% for scope_ee in display_evaluations %}
+            {% set _scope_st = scope_ee.eligibility_status.value %}
+            {% set _scope_draft = 'DRAFT_RULE_PREVIEW_ONLY' in scope_ee.data_quality_flags %}
+            {% set _ta = scope_ee.temporal_applicability if scope_ee.temporal_applicability else none %}
+            {% if ee.scope_evaluations %}
+            <section class="onco-scope" data-policy-scope="{{ scope_ee.policy_scope }}">
+              <h4>
+                {{ scope_ee.policy_scope_display_label }}
+                <span class="onco-pill onco-pill-{{ _scope_st | lower }}">
+                  {% if _scope_draft %}📝 草稿待人工复核
+                  {% elif _scope_st == 'SATISFIED' %}✓ 符合
+                  {% elif _scope_st == 'NOT_SATISFIED' %}✗ 不符合
+                  {% elif _scope_st == 'CONFLICT' %}⚠ 证据冲突
+                  {% else %}？ 待补或复核{% endif %}
+                </span>
+              </h4>
+            {% elif scope_ee.policy_scope_display_label %}
+              <h4>{{ scope_ee.policy_scope_display_label }}</h4>
+            {% endif %}
+            {% if scope_ee.temporal_warning %}
+            <div class="onco-date-warn">
+              ⚠ {{ scope_ee.temporal_warning }}
+              {% if scope_ee.evaluated_service_date %}
+              本次就诊/收费日期为 <strong>{{ scope_ee.evaluated_service_date }}</strong>。
+              {% endif %}
+              {% if scope_ee.rule_effective_from %}
+              当前知识窗口为
+              <strong>{{ scope_ee.rule_effective_from }} ~ {{ scope_ee.rule_effective_to or '长期' }}</strong>。
+              {% endif %}
+              {% if _ta == 'AFTER_EFFECTIVE_WINDOW' %}
+              本次已按时间边界 fail-closed 转人工复核，未沿用过期知识自动裁决。
+              {% elif _ta == 'BEFORE_EFFECTIVE_WINDOW' %}
+              本次按回溯规则应用当前 release 中最早已批准版本，请人工核查当期依据。
+              {% endif %}
+            </div>
+            {% elif scope_ee | onco_needs_date_check %}
+            <div class="onco-date-warn">
+              ⚠ 核查生效时间：本次就诊/收费日期
+              <strong>{{ scope_ee.evaluated_service_date }}</strong>
+              在该{{ scope_ee.policy_scope_display_label or '医保限定' }}声明生效期
+              <strong>{{ scope_ee.rule_effective_from }} ~ {{ scope_ee.rule_effective_to or '长期' }}</strong>
+              之外，结果<strong>未按生效期过滤</strong>（默认全部生效）。请人工核查该依据在就诊时是否已生效后再最终定性。
+            </div>
+            {% endif %}
+            {% if scope_ee.criterion_assessments %}
+            <div class="onco-checklist">
+              {% for item in scope_ee.criterion_assessments %}
+              {% set _s = item.state.value %}
+              {% set _jump = item | onco_evidence_anchor %}
+              <div class="onco-crit onco-crit-{{ _s | lower }}">
+                <span class="onco-mark">{{ _s | state_mark }}</span>
+                <span class="onco-crit-label">{{ item.criterion_type | criterion_label }}</span>
+                <span class="onco-crit-state">{{ _s | state_zh }}</span>
+                <span class="onco-crit-reason">
+                  {{ item.reason }}
+                  {% if _jump %}<span class="hit-item onco-jump" tabindex="0" role="button"
+                       data-anchor='{{ _jump | tojson }}'
+                       title="定位到文书原文并高亮该记录">🔗 定位原文「{{ _jump.label }}」</span>{% endif %}
+                </span>
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+            {% if scope_ee.documentation_suggestions %}
+            <div class="documentation-suggestions">
+              <div class="documentation-suggestions-title">💡 病历完善建议（前瞻性，不代表条件已被证实）</div>
+              {% for suggestion in scope_ee.documentation_suggestions %}
+              <article class="documentation-suggestion">
+                <strong>{{ suggestion.title }}</strong>
+                <p>{{ suggestion.suggested_content }}</p>
+                <small>{{ suggestion.safety_note }}</small>
+              </article>
+              {% endfor %}
+            </div>
+            {% endif %}
+            {% if scope_ee.data_quality_flags %}
+            <div class="onco-flags">{% for flag in scope_ee.data_quality_flags %}<span>⚠ {{ flag | quality_flag_zh }}</span>{% endfor %}</div>
+            {% endif %}
+            {% if ee.scope_evaluations %}</section>{% endif %}
+            {% endfor %}
+          </div>
         </details>
+        {% endif %}
 
         {# 当前 user 是否已审 — selectattr 走 Jinja2 selectattr → first | default(none) 避免 set 在 for 内的 scope 问题 #}
         {% set my_reviews = run.reviews | selectattr('user_id', 'equalto', current_user.id) | list %}
@@ -191,15 +333,14 @@
         {# v0.7: 历史 (老 v1.0 verdict + 当时批注) #}
         {% if run.history %}
         <details class="history-runs">
-          <summary>📜 历史 {{ run.history|length }} 次 (含老 verdict + 当时专家批注 — latest 是上方的 {{ run.batch_tag or 'v1.0' }} 那条)</summary>
+          <summary>📜 历史 {{ run.history|length }} 次审核记录</summary>
           {% for h in run.history %}
           <div class="history-run">
             <div class="history-head">
               <span class="badge badge-{{ h.verdict | verdict_color }}">{{ h.verdict | verdict_label }}</span>
-              <span class="confidence">conf {{ '%.2f' % h.confidence }}</span>
-              <span class="muted">{{ h.batch_tag or 'v1.0' }} · {{ h.created_at | humanize_since }}</span>
+              <span class="confidence">置信 {{ '%.2f' % h.confidence }}</span>
+              <span class="muted">{{ h.created_at | humanize_since }}</span>
             </div>
-            <div class="history-reasoning">{{ (h.reasoning or '(无 reasoning)')[:400] }}{% if h.reasoning and h.reasoning|length > 400 %}…{% endif %}</div>
             {% if h.reviews %}
             <div class="history-reviews">
               <div style="font-weight:600; color:var(--text); margin:4px 0;">当时的专家批注:</div>

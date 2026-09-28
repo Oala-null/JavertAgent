@@ -1,0 +1,16 @@
+asset_type: promise_case
+case_id: CASE-D001-POSITIVE-REFUND
+promise_id: PR-D001
+promise_version: 1
+case_type: positive
+rule_id: R151
+source_case_id: DRIFT-REFUND-NET-SINGLE
+facts:
+  fee_items:
+    - {name: 乙肝表面抗原测定, code: SYNTH-AB, net_qty: 1, has_refund: true, refund_count: 1, quantity_parseable: true}
+expected:
+  outcome: MATCH
+  verdict: CLEAN
+  finality: LOCKED
+  reason_code: REFUND_NET_SINGLE_CLEAN
+  facts: {net_qty: 1, refund_count: 1}

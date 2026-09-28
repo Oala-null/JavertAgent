@@ -1,0 +1,28 @@
+{
+  "fixture_id": "golden-urothelial-her2-low",
+  "deidentified": true,
+  "service_date": "2026-06-18",
+  "drug_candidate": {
+    "generic_name": "注射用维迪西妥单抗",
+    "insurance_code": "GOLDEN-DISITAMAB-CODE",
+    "net_quantity": 1
+  },
+  "cancer_context": [
+    "尿路上皮癌",
+    "转移性"
+  ],
+  "pathology_observations": [
+    {
+      "text": "免疫组化：CerbB2(1+)",
+      "document_type": "病理报告",
+      "specimen_site": "膀胱",
+      "specimen_date": "2026-06-01",
+      "report_date": "2026-06-03",
+      "anchor": "pathology:golden-urothelial-her2-low:1"
+    }
+  ],
+  "prior_treatment_observations": [],
+  "negative_assertions": [
+    "不得把本次治疗后的耐受性描述当作既往含铂治疗"
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "fixture_id": "golden-pola-transplant-gap",
+  "deidentified": true,
+  "service_date": "2026-05-09",
+  "patient_context": {
+    "age": 74
+  },
+  "drug_candidate": {
+    "generic_name": "注射用维泊妥珠单抗",
+    "trade_name": "优罗华",
+    "insurance_code": "XL01FXW129B001010181735",
+    "net_quantity": 1
+  },
+  "cancer_context": [
+    "弥漫大B细胞淋巴瘤"
+  ],
+  "clinical_facts": [
+    {
+      "fact_type": "prior_therapy",
+      "value": "既往多线治疗",
+      "anchor": "note:golden-pola-transplant-gap:1"
+    },
+    {
+      "fact_type": "progression",
+      "value": "治疗后疾病进展",
+      "anchor": "note:golden-pola-transplant-gap:2"
+    }
+  ],
+  "missing_documentation": [
+    "不适合造血干细胞移植的临床评估及简要原因"
+  ],
+  "expected_suggestion": "患者74岁且已多线治疗；如拟使用该药，建议病程中补充“不适合造血干细胞移植”及简要原因，避免因文书缺项影响医保报销。"
+}

@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
-from javert.web.api.routes_sse import EventBus
+from javert.web.api.routes_sse import AuditWatcher, EventBus, _eligibility_sse_fields
 
 
 @pytest.mark.asyncio
@@ -81,3 +83,93 @@ async def test_slow_subscriber_dropped_on_queue_full():
     # 第 201 条触发 QueueFull → 该订阅被踢出
     await bus.publish("evt", {"i": 200})
     assert bus.subscriber_count == 0
+
+
+def test_eligibility_sse_summary_is_additive_and_old_rows_remain_nullable():
+    old = _eligibility_sse_fields(None)
+    assert old["release_id"] is None
+    assert old["policy_scope"] is None
+    assert old["temporal_warning"] is None
+    assert old["scope_evaluations"] is None
+
+    summary = _eligibility_sse_fields(
+        {
+            "audit_disposition": "NO_VIOLATION_FOUND",
+            "eligibility_status": "SATISFIED",
+            "release_id": "release-synthetic",
+            "rule_revision_id": "revision-synthetic",
+            "policy_scope": "INSURANCE_PAYMENT",
+            "rule_effective_from": "2026-01-01",
+            "rule_effective_to": "2027-12-31",
+            "evaluated_service_date": "2025-12-31",
+            "effective_date_enforced": False,
+            "temporal_applicability": "BEFORE_EFFECTIVE_WINDOW",
+            "temporal_warning": "核查当期指南/医保限定是否适用",
+            "scope_evaluations": [
+                {
+                    "drug_concept_id": "drug-synthetic",
+                    "policy_scope": "INSURANCE_PAYMENT",
+                    "legacy_verdict": "CLEAN",
+                },
+                {
+                    "drug_concept_id": "drug-synthetic",
+                    "policy_scope": "GUIDELINE_INDICATION",
+                    "legacy_verdict": "INCONCLUSIVE",
+                },
+            ],
+            "future_consumer_field": "ignored-at-summary",
+        }
+    )
+    assert summary["audit_disposition"] == "NO_VIOLATION_FOUND"
+    assert summary["release_id"] == "release-synthetic"
+    assert summary["policy_scope"] == "INSURANCE_PAYMENT"
+    assert summary["temporal_applicability"] == "BEFORE_EFFECTIVE_WINDOW"
+    assert summary["effective_date_enforced"] is False
+    assert [item["policy_scope"] for item in summary["scope_evaluations"]] == [
+        "INSURANCE_PAYMENT",
+        "GUIDELINE_INDICATION",
+    ]
+    assert "future_consumer_field" not in summary
+
+
+@pytest.mark.asyncio
+async def test_audit_watcher_adds_top_level_and_public_headline(monkeypatch):
+    watcher = AuditWatcher(poll_interval_s=0.001, error_backoff_s=0.001)
+    rows = [{
+        "id": 11,
+        "run_id": "aud_SSEHEADLINE1",
+        "patient_id": "CASE-DEID-SSE",
+        "rule_id": "R191",
+        "verdict": "INCONCLUSIVE",
+        "confidence": 0.5,
+        "headline": "重复收费核查依据不足，相关收费事实待人工复核",
+        "eligibility_evaluation": None,
+        "promise_trace": None,
+    }]
+    calls = 0
+
+    def fetch_runs_since_id(_last_id, _limit):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return rows
+        watcher._stop.set()
+        return []
+
+    fake_store = SimpleNamespace(
+        fetch_runs_since_id=fetch_runs_since_id,
+        has_other_runs=lambda *_args: False,
+    )
+    publish = AsyncMock()
+    monkeypatch.setattr(
+        "javert.web.api.routes_sse.get_sqlserver_store", lambda: fake_store
+    )
+    monkeypatch.setattr("javert.web.api.routes_sse.event_bus.publish", publish)
+
+    await watcher._loop()
+
+    event, payload = publish.await_args.args
+    assert event == "new_audit_run"
+    assert payload["headline"] == rows[0]["headline"]
+    assert payload["public_explanation"]["headline"] == rows[0]["headline"]
+    assert payload["verdict"] == "INCONCLUSIVE"

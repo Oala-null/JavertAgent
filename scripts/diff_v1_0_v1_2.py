@@ -13,7 +13,7 @@
 - C → V (退化, 红): 之前认为合理现在判违规 — 需人工复核
 - 其余: 不变
 
-数据源: 142 SQL Server Javert_audit_runs (或本地 sqlite). 推荐部署后从 142 读.
+数据源: 142 SQL Server javert_audit_runs (或本地 sqlite). 推荐部署后从 142 读.
 
 输出: output/v1_2_oldset/diff_v1_0_v1_2.html
 """

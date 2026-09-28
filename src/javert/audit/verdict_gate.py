@@ -9,10 +9,11 @@
                 → V→INCONCLUSIVE + tag「缺文书」(待线下核查)
   ② 单次闸: M2 派生 ∧ 按 exam 关键词重算净不同收费次数 ≤1 ∧ 不在例外集
                 → V→CLEAN + tag「单次放过」; net 不可用 → fail-open (不降级)
-  ③ conf 底线闸: [conf_floor, conf_ceiling) 的 V → V→INCONCLUSIVE + tag「低置信降级」
+  ③ conf 底线闸: conf < conf_ceiling 的 V → V→INCONCLUSIVE + tag「低置信降级」
+                 (含 confidence 缺失/非法归 0; conf_floor 已弃用)
 
 配置来自 `configs/verdict_gate.yaml` (file_dependent_rules / single_instance_violation
-/ conf_floor / conf_ceiling), 不改 Rule schema.
+/ conf_ceiling; conf_floor 保留读取但不再参与判断), 不改 Rule schema.
 
 Source: 本项目原创 (add-verdict-gate-layer).
 """
@@ -30,7 +31,8 @@ import yaml
 
 from javert.config import get_config
 from javert.data.clinical_context import PatientClinicalContext
-from javert.data.fee_netting import NetItem
+from javert.data.fee_netting import NetItem, max_same_day_distinct_items
+from javert.promises.models import PromiseDefinition, PromiseTrace
 
 logger = logging.getLogger("javert.audit.verdict_gate")
 
@@ -45,6 +47,9 @@ class GateConfig:
 
     file_dependent_rules: set[str] = field(default_factory=set)
     single_instance_violation: set[str] = field(default_factory=set)
+    # 套餐类规则 (recover-deterministic-recall) — {rule_id: min_distinct_items}
+    panel_rules: dict[str, int] = field(default_factory=dict)
+    panel_downgrade_to: str = INCONCLUSIVE
     # 临床事实闸 (fix-anesthesia-false-positive, 判据来自 shi_ss/shi_zd 病案首页)
     anesthesia_reality_rules: set[str] = field(default_factory=set)
     preop_cardiopulmonary_rules: set[str] = field(default_factory=set)
@@ -53,7 +58,7 @@ class GateConfig:
     unconfirmable_doc_rules: set[str] = field(default_factory=set)
     progress_sections: list[str] = field(default_factory=list)
     default_symptom_keywords: list[str] = field(default_factory=list)
-    conf_floor: float = 0.70
+    conf_floor: float = 0.70  # 弃用 (fix-drug-audit-precision 1c): ③闸改为 conf < ceiling, 不再用 floor
     conf_ceiling: float = 0.85
 
 
@@ -78,9 +83,16 @@ def load_gate_config(path: Path | None = None) -> GateConfig:
         raw = yaml.safe_load(f) or {}
     if not isinstance(raw, dict):
         return GateConfig()
+    panel_raw = raw.get("panel_rules") or {}
+    panel_rules = {
+        str(rid): int((spec or {}).get("min_distinct_items", 3))
+        for rid, spec in panel_raw.items()
+    }
     return GateConfig(
         file_dependent_rules=set(raw.get("file_dependent_rules") or []),
         single_instance_violation=set(raw.get("single_instance_violation") or []),
+        panel_rules=panel_rules,
+        panel_downgrade_to=str(raw.get("panel_downgrade_to") or INCONCLUSIVE),
         anesthesia_reality_rules=set(raw.get("anesthesia_reality_rules") or []),
         preop_cardiopulmonary_rules=set(raw.get("preop_cardiopulmonary_rules") or []),
         tumor_marker_rules=set(raw.get("tumor_marker_rules") or []),
@@ -132,10 +144,13 @@ _QUOTED_KW_RE = re.compile(r"[\"“]([^\"”]{2,30})[\"”]")
 def extract_exam_keywords(rule) -> list[str]:
     """从规则取该检查的 exam 关键词 (单次闸按它匹配 fee 行).
 
-    优先解析 prompt_addon 里 M2 模板渲染的「检索关键词: "A" / "B" / "C"」行
-    (= exam_kw_primary_list); 解析不到时回退 trigger_keywords (含指征词, 但 fee 名
-    通常不含指征词, 多匹配只会更保守 = 更不易误降).
+    优先读 rule.exam_keywords 显式字段 (make-rules-code-portable, 不再依赖模板措辞);
+    缺省时回退旧链: 解析 prompt_addon 里 M2 模板渲染的「检索关键词: "A" / "B" / "C"」行,
+    再解析不到时回退 trigger_keywords (含指征词, 但 fee 名通常不含指征词, 多匹配只会更保守).
     """
+    explicit = [k for k in (getattr(rule, "exam_keywords", []) or []) if k]
+    if explicit:
+        return explicit
     addon = getattr(rule, "prompt_addon", "") or ""
     for line in addon.splitlines():
         if "检索关键词" in line:
@@ -178,6 +193,9 @@ def apply_gate(
     net_fee_ctx: dict[str, NetItem] | None,
     gate_cfg: GateConfig,
     clinical_ctx: PatientClinicalContext | None = None,
+    fee_df: Any = None,
+    promise_trace: PromiseTrace | dict[str, Any] | None = None,
+    promise_definitions: list[PromiseDefinition] | tuple[PromiseDefinition, ...] = (),
 ) -> GateOutcome:
     """对一条已解析的 verdict 应用确定性闸. 纯函数, 不写库.
 
@@ -197,6 +215,27 @@ def apply_gate(
       ① 旧『仅缺失』兜底 → ② 单次 → ③ conf 底线.
     """
     verdict = str(verdict_data.get("verdict") or "")
+    # 只有能与当前唯一 active 定义逐字段对上的 LOCKED trace 才可绕过普通闸。
+    # 伪造、过期、不完整 trace 全部忽略并继续旧 gate。
+    if promise_trace is not None:
+        try:
+            trace = PromiseTrace.model_validate(promise_trace)
+        except Exception:  # noqa: BLE001 - 非法外部 trace 必须 fail closed
+            trace = None
+        if trace is not None:
+            matches = [
+                definition
+                for definition in promise_definitions
+                if definition.status == "active"
+                and definition.promise_id == trace.promise_id
+                and definition.version == trace.version
+                and definition.kind == trace.kind
+                and definition.finality == trace.finality == "LOCKED"
+                and definition.reason_code == trace.reason_code
+                and definition.guarantee == verdict
+            ]
+            if len(matches) == 1:
+                return GateOutcome(verdict=verdict, changed=False)
     # gate 只作用 VIOLATION (绝不升级 C/I)
     if verdict != VIOLATION:
         return GateOutcome(verdict=verdict, changed=False)
@@ -293,8 +332,30 @@ def apply_gate(
             changed=True,
         )
 
-    # ② 单次闸 (M2 派生, 非例外集)
-    if (
+    # ② 单次闸 — 套餐口径 (panel) 优先 (recover-deterministic-recall 2.1)
+    # 套餐类规则按「同日不同项目名数」计数: ≥阈值 → 保留 V (多项目单日打包正是违规形态);
+    # 不足阈值 → 降 INCONCLUSIVE (进专家队列, 不落 CLEAN 黑洞); 费用不可得 → fail-open 保留 V.
+    panel_min = gate_cfg.panel_rules.get(rule_id)
+    if panel_min is not None:
+        if rule_id in gate_cfg.single_instance_violation:
+            pass  # 例外集穿透, 保留 V
+        else:
+            n = max_same_day_distinct_items(fee_df, extract_exam_keywords(rule))
+            if n is None:
+                logger.debug("套餐闸 fail-open: 费用不可得 rule=%s", rule_id)
+            elif n < panel_min:
+                return GateOutcome(
+                    verdict=gate_cfg.panel_downgrade_to,
+                    tag="单次放过",
+                    reason=(
+                        f"②单次(套餐口径): 同日不同项目数={n} (<{panel_min}), "
+                        f"非多项目单日打包形态, 降{gate_cfg.panel_downgrade_to}待核"
+                    ),
+                    changed=True,
+                )
+            # n >= panel_min → 保留 V (不落普通 M2 单次闸)
+    # ② 单次闸 (M2 派生, 非例外集, 非套餐)
+    elif (
         getattr(rule, "derived_from_template", None) == "M2"
         and rule_id not in gate_cfg.single_instance_violation
     ):
@@ -311,16 +372,18 @@ def apply_gate(
                     changed=True,
                 )
 
-    # ③ conf 底线闸
+    # ③ conf 底线闸: conf < ceiling 的 V 一律降 I (含 confidence 缺失/非法归 0).
+    # 原 [conf_floor, ceiling) 区间放过了 floor 以下的低置信 V (fix-drug-audit-precision 1c):
+    # floor 以下更该降不是更不该降. conf_floor 字段已弃用 (保留只为 yaml schema 兼容).
     try:
         conf = float(verdict_data.get("confidence", 0.0))
     except (TypeError, ValueError):
         conf = 0.0
-    if gate_cfg.conf_floor <= conf < gate_cfg.conf_ceiling:
+    if conf < gate_cfg.conf_ceiling:
         return GateOutcome(
             verdict=INCONCLUSIVE,
             tag="低置信降级",
-            reason=f"③低置信: conf={conf:.2f} 落在 [{gate_cfg.conf_floor}, {gate_cfg.conf_ceiling}), 强制改判不明",
+            reason=f"③低置信: conf={conf:.2f} < ceiling {gate_cfg.conf_ceiling}, 强制改判不明",
             changed=True,
         )
 

@@ -5,9 +5,10 @@ question: 以免费体检、免除费用、上门接送、提供返利、转诊�
 example: 示例：某医院与养老院合作，以免费治疗、管吃管住、车接车送等形式，给销售人员发放“佣金”“人头费”，拉拢老人住院，多数老人无住院指征。
 status: drafting
 priority: P2
+handling_level: 提醒（引导）
 prompt_addon: ''
 trigger_keywords: []
 suggested_tools: []
 expected_signal: ''
-notes: 诱导住院 (拉拢轻症), 行为审计, 工具不可见. 留 audit-behavior change.
+notes: 诱导住院 (拉拢轻症), 行为审计, 工具不可见. 与 add-cross-patient-stats 无关 (行为信号非跨患者裁决聚合). 留 audit-behavior change.
 derived_from_template: null

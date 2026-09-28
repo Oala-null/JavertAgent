@@ -103,6 +103,16 @@ def get_rule(rule_id: str) -> RuleDetail:
                 duration_ms=r.duration_ms,
                 model=r.model,
                 started_at=r.started_at,
+                audit_disposition=(
+                    r.eligibility_evaluation.audit_disposition.value
+                    if r.eligibility_evaluation is not None
+                    else None
+                ),
+                eligibility_status=(
+                    r.eligibility_evaluation.eligibility_status.value
+                    if r.eligibility_evaluation is not None
+                    else None
+                ),
             )
             for r in runs
         ],

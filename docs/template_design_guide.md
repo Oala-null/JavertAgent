@@ -109,7 +109,8 @@ $ javert prompt-fit <rule_id> --template <M*> [--vars X.json | --interactive | -
 
 ### `--auto` 注意
 
-- 用本地 sglang Qwen3.5 (`http://192.168.31.62:30000/v1`), 非 Claude
+- 用 62 当前本地 sglang 模型（2026-07-17 为 Qwen3.6-35B-A3B-FP8，
+  `http://192.168.31.62:30000/v1`），非 Claude
 - Qwen 中文起草偏机械, 关键字段可能空泛 — **写盘前永远人审一遍**
 - 默认拒绝 (输入非 `y` 都视为 abort)
 - LLM 起草 vars 通过 `validate_vars` 校验后才进 render
@@ -184,7 +185,7 @@ diff <(uv run python -c "import yaml; print(yaml.safe_load(open('configs/rules/R
 9. 满意 → `javert mark` 推 ready
 10. 不满意 → 改 master_prompt → 重跑 prompt-fit (`derived_from_template: MX` 在, 复套不会有歧义)
 
-### 当前模板状态 (2026-05-29)
+### 当前模板状态 (2026-07-17)
 
 | 模板 | name | rollout 状态 | ready 数 | reference |
 |------|------|------------|---------|-----------|
@@ -192,10 +193,13 @@ diff <(uv run python -c "import yaml; print(yaml.safe_load(open('configs/rules/R
 | M2 | 过度检查 | ✅ 完成 | 22 | R151 |
 | M3 | 串换项目 (含口腔) | ✅ 完成 | 17 | R245 |
 | M4 | 超标准收费 | ✅ 完成 | 13 | R193 (体表肿物切除) |
-| M5 | 虚构医药服务 | ✅ 完成 | 8 | (无单独 reference) |
+| M5 | 虚构医药服务 | ✅ 完成 | 10 | R203 / R317 / R318 |
 | M6 | 过度诊疗 | ✅ 完成 | 9 | R310 (精神科住院) |
 | M7 | 项目身份串换收费 | ✅ 完成 | 20 | R083 (冰袋 vs 冷疗) |
-| **M8** | **药品适应症/限定审计** | ✅ **完成 (v0.8)** | 33 (R007+RD01-03 类型级+RD10-37 精选) | 由 `scripts/init_drug_rules.py` 批量渲染 |
+| **M8** | **药品适应症/限定审计** | ✅ **bulk 收敛；肿瘤 v2 on** | 5 ready (RD04+R007+RD01-03)；RD10-37 abandoned | `scripts/init_drug_rules.py` 维护通用 bulk；RD04 独立维护 |
+
+M5 的 10 条由原 8 条虚构服务规则加 R317（溶栓术配套）和 R318（内镜治疗）组成；
+后两条体现当前的举证倒置/companion 预检口径。
 
 #### M8 schema 特殊点 (与 M1-M7 不同)
 
@@ -204,6 +208,7 @@ diff <(uv run python -c "import yaml; print(yaml.safe_load(open('configs/rules/R
 - **on-label 误报闸 + 同名异药/剂型复核**: master_prompt 硬写「命中 KB ≠ 违规」「诊断与依据合理临床外延算落在范围内」「fee 剂型与依据明显不符 → 同名异药 → INCONCLUSIVE」.
 - 诊断源: 工具 `drug_audit_lookup` bulk 直接带出 shi_zd 病案首页诊断 (ground truth), M8 引导优先用它, `note_diagnosis` 兜底.
 - 配套 Rule 字段: `drug_rule_type` (optional, M8 规则填; 非药品规则 None). 禁忌症规则 `violation_type` 单列「用药安全/禁忌」.
+- 当前所有权: `RD04` 负责肿瘤医保限定臂，`R007` 负责非肿瘤医保限适应症，`RD01-03` 负责其余三类 bulk；`RD10-RD37` 不进入默认执行集。详见 `docs/oncology/operations.md`.
 
 ---
 
@@ -215,3 +220,22 @@ diff <(uv run python -c "import yaml; print(yaml.safe_load(open('configs/rules/R
 - ❌ enum 写错 options 值 — vars_validator 拒绝, exit 1
 - ❌ `--auto` 后没看输出就回车 `y` — Qwen 起草质量参差, 必须 review
 - ❌ 模板 fields 加得过细 (>30 个) — 操作者会写错; 拆模板比加字段好
+
+---
+
+## 9. 模板变化与 Promise 回归
+
+模板负责生成规则提示词，不负责定义确定性终局 Promise。只有已确认漂移能够收敛为最小、
+可执行事实，并具备 positive 与 near-negative，才进入 `configs/promises/`；不要把模板变量、
+Jinja 条件或 LLM 散文复制成另一套 Promise DSL。
+
+模板渲染可能改变规则含义或 Promise scope，因此模板 change 的门禁顺序是：
+
+1. `javert template validate <M*>` 和 reference rule round-trip；
+2. 重建并核对 Router index；
+3. 检查受影响规则是否被 active Promise 显式纳入，必要时用新版本替代，不就地改 active；
+4. 运行 `.venv/bin/javert promise validate` 与 `.venv/bin/javert promise run`；
+5. 再做规则定向和患者级回归。
+
+当前模板与 ready 规则数量会变化，维护时以 `.venv/bin/javert template list` 和
+`.venv/bin/javert list` 的实时输出为准，不从本文历史表格推断执行集。

@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 
 from javert.data.loader import DataLoader
+from javert.config import JavertConfig
 from javert.tools.registry import build_executor
 
 
@@ -138,7 +139,9 @@ def test_executor_lists_tools(stub_loader, drug_map_tmp):
     executor = build_executor(stub_loader)
     assert set(executor.list_tools()) == {
         "search_notes",
+        "search_orders",
         "search_fees",
+        "catalog_lookup",
         "note_diagnosis",
         "drug_indication",
         "drug_audit_lookup",  # v0.8 药品违规审计 (与 drug_indication 并存)
@@ -148,3 +151,111 @@ def test_executor_lists_tools(stub_loader, drug_map_tmp):
         "search_pathology",   # add-visual-schema-onboarding view 工具
         "scan_progress_indications",  # add-verdict-gate-layer 病程指征扫描
     }
+
+
+def test_openai_tools_use_registered_schemas_without_patient_id(
+    stub_loader, drug_map_tmp
+):
+    tools = build_executor(stub_loader).get_openai_tools()
+    by_name = {item["function"]["name"]: item["function"] for item in tools}
+    search_notes = by_name["search_notes"]
+    assert search_notes["parameters"]["type"] == "object"
+    assert "keyword" in search_notes["parameters"]["properties"]
+    assert "patient_id" not in search_notes["parameters"]["properties"]
+    assert "patient_id" not in search_notes["parameters"].get("required", [])
+
+
+def test_qwen38_function_parameter_text_fallback_is_parseable():
+    from javert.tools.tool_executor import ToolExecutor
+
+    text = (
+        "<tool_call><function=search_fees>"
+        "<parameter=keyword>麻醉</parameter>"
+        "<parameter=category>\"手术类\"</parameter>"
+        "</function></tool_call>"
+    )
+    assert ToolExecutor().parse_tool_calls(text) == [{
+        "name": "search_fees",
+        "arguments": {"keyword": "麻醉", "category": "手术类"},
+    }]
+
+
+def test_duplicate_open_tool_tags_keep_legacy_json_parseable():
+    from javert.tools.tool_executor import ToolExecutor
+
+    text = (
+        '<tool_call><tool_call>{"name":"search_notes",'
+        '"arguments":{"keyword":"诊断"}}</tool_call>'
+    )
+    assert ToolExecutor().parse_tool_calls(text)[0]["name"] == "search_notes"
+
+
+def test_registry_wires_all_four_assets_from_configured_published_release(
+    stub_loader, tmp_path: Path, monkeypatch
+):
+    from javert.oncology.authoring import release as release_module
+    from javert.tools import drug_audit_lookup, registry
+
+    release_dir = tmp_path / "releases"
+    release_dir.mkdir()
+    assets = {
+        name: release_dir / name
+        for name in release_module.ASSET_FILENAMES
+    }
+    captured = {}
+
+    def capture_executor(loader, kb_path, zd_path, **kwargs):
+        captured.update(kb_path=kb_path, zd_path=zd_path, **kwargs)
+        return lambda **_kwargs: "ok"
+
+    monkeypatch.setattr(
+        release_module,
+        "resolve_active_release_assets",
+        lambda configured: assets if configured == release_dir else {},
+    )
+    monkeypatch.setattr(drug_audit_lookup, "create_executor", capture_executor)
+    monkeypatch.setattr(registry, "_spoke_tool_wiring", lambda loader, cfg: {})
+    cfg = JavertConfig(
+        oncology_eligibility_v2="on",
+        oncology_release_dir=str(release_dir),
+    )
+
+    build_executor(stub_loader, cfg)
+
+    assert captured["kb_path"].name == "drug_audit_kb.json"
+    assert captured["oncology_kb_path"] == assets[release_module.DRUG_ASSET]
+    assert captured["eligibility_path"] == assets[release_module.ELIGIBILITY_ASSET]
+    assert captured["pathology_path"] == assets[release_module.PATHOLOGY_ASSET]
+    assert captured["regimen_path"] == assets[release_module.REGIMEN_ASSET]
+
+
+# ==== harden-agent-loop: ToolExecutor 韧性原语 ====
+
+def test_parse_errors_surfaces_malformed_tool_call():
+    """parse_errors 暴露 <tool_call> 标签内 JSON 解析错误 (parse_tool_calls 静默丢弃)."""
+    from javert.tools.tool_executor import ToolExecutor
+    ex = ToolExecutor()
+    # 缺右括号 → json.loads 失败
+    errs = ex.parse_errors('<tool_call>{"name": "x", "arguments": {}</tool_call>')
+    assert len(errs) == 1
+    # 合法 tool_call → 无错误
+    assert ex.parse_errors('<tool_call>{"name": "x", "arguments": {}}</tool_call>') == []
+    # 无 tool_call 标签 → 无错误
+    assert ex.parse_errors("纯文本没有工具调用") == []
+
+
+def test_is_error_result_classifies_execute_output():
+    """is_error_result 认得 execute() 生成的两种错误串, 不误判真实输出."""
+    from javert.tools.tool_executor import ToolExecutor
+    ex = ToolExecutor()
+    # 未知工具错误
+    unknown, _ = ex.execute({"name": "no_such_tool", "arguments": {}})
+    assert ToolExecutor.is_error_result(unknown) is True
+    # 抛异常的工具
+    ex.register("boom", lambda **kw: (_ for _ in ()).throw(RuntimeError("炸了")))
+    fail, _ = ex.execute({"name": "boom", "arguments": {}})
+    assert ToolExecutor.is_error_result(fail) is True
+    # 真实工具输出不被误判
+    ex.register("ok", lambda **kw: "正常的检索结果")
+    good, _ = ex.execute({"name": "ok", "arguments": {}})
+    assert ToolExecutor.is_error_result(good) is False

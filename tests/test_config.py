@@ -9,15 +9,16 @@ from pathlib import Path
 import pytest
 import yaml
 
-from javert.config import JavertConfig, load_config, reset_config_cache
+from javert.config import PROJECT_ROOT, JavertConfig, load_config, reset_config_cache
 
 
 @pytest.fixture(autouse=True)
 def _clear_env_and_cache(monkeypatch):
-    """清掉 JAVERT_* 环境变量与 lru_cache."""
+    """清掉 JAVERT_*、项目 .env 与 lru_cache，确保真测字段默认值."""
     for key in list(os.environ):
         if key.startswith("JAVERT_"):
             monkeypatch.delenv(key, raising=False)
+    monkeypatch.setitem(JavertConfig.model_config, "env_file", None)
     reset_config_cache()
     yield
     reset_config_cache()
@@ -54,8 +55,14 @@ def test_env_overrides_file(tmp_path: Path, monkeypatch):
 
 def test_missing_file_uses_defaults(tmp_path: Path):
     cfg = load_config(tmp_path / "does_not_exist.yaml")
-    assert cfg.llm_endpoint == "http://192.168.31.62:30000/v1"
+    assert cfg.llm_endpoint == "http://127.0.0.1:30000/v1"
     assert cfg.max_tool_calls == 10
+    assert cfg.llm_tool_protocol == "text"
+
+
+def test_native_tool_protocol_env_override(monkeypatch):
+    monkeypatch.setenv("JAVERT_LLM_TOOL_PROTOCOL", "native")
+    assert JavertConfig().llm_tool_protocol == "native"
 
 
 def test_invalid_yaml_top_level_raises(tmp_path: Path):
@@ -71,3 +78,97 @@ def test_resolve_paths():
     assert cfg.data_path.is_absolute()
     assert cfg.notes_path.name == "case_notes.csv"
     assert cfg.fees_path.name == "shi_fee.csv"
+
+
+def test_hub_raw_defaults():
+    """add-workbench-sql-raw-source: 开关默认关 = 纯 CSV 行为不变."""
+    cfg = JavertConfig()
+    assert cfg.hub_raw_enabled is False
+    assert cfg.hub_database == "sh_yb_platform"
+    assert cfg.hub_table_prefix == ""
+    assert cfg.hub_raw_profiles == {}
+    assert cfg.hub_query_timeout == 4
+    assert cfg.hub_raw_deadline_seconds == 5.0
+
+
+def test_hub_raw_env_override(monkeypatch):
+    monkeypatch.setenv("JAVERT_HUB_RAW_ENABLED", "true")
+    monkeypatch.setenv("JAVERT_HUB_DATABASE", "TP_other")
+    monkeypatch.setenv("JAVERT_HUB_TABLE_PREFIX", "desus_")
+    monkeypatch.setenv("JAVERT_HUB_QUERY_TIMEOUT", "30")
+    monkeypatch.setenv("JAVERT_HUB_RAW_DEADLINE_SECONDS", "45")
+    cfg = JavertConfig()
+    assert cfg.hub_raw_enabled is True
+    assert cfg.hub_database == "TP_other"
+    assert cfg.hub_table_prefix == "desus_"
+    assert cfg.hub_query_timeout == 30
+    assert cfg.hub_raw_deadline_seconds == 45.0
+
+
+def test_hub_raw_profiles_env_json(monkeypatch, tmp_path):
+    monkeypatch.setenv(
+        "JAVERT_HUB_RAW_PROFILES",
+        '{"desus":{"database":"TP_data_hub","table_prefix":"desus_"}}',
+    )
+    cfg = load_config(tmp_path / "missing.yaml")
+    assert cfg.hub_raw_profiles["desus"].database == "TP_data_hub"
+    assert cfg.hub_raw_profiles["desus"].table_prefix == "desus_"
+
+
+def test_repository_config_pins_ocr_profile_to_desensitized_hub():
+    cfg = load_config(PROJECT_ROOT / "configs" / "llm.yaml")
+    profile = cfg.hub_raw_profiles["ocr1.0"]
+    assert profile.database == "TP_data_hub"
+    assert profile.table_prefix == "desus_"
+
+
+@pytest.mark.parametrize(
+    "profiles",
+    [
+        '{"desus":{"database":"TP_data_hub;DROP","table_prefix":"desus_"}}',
+        '{"desus":{"database":"TP_data_hub","table_prefix":"dbo."}}',
+        '{" desus":{"database":"TP_data_hub","table_prefix":"desus_"}}',
+    ],
+)
+def test_hub_raw_profiles_reject_unsafe_values(monkeypatch, tmp_path, profiles):
+    monkeypatch.setenv("JAVERT_HUB_RAW_PROFILES", profiles)
+    with pytest.raises(ValueError):
+        load_config(tmp_path / "missing.yaml")
+
+
+@pytest.mark.parametrize("prefix", ["dbo.", "desus-", "desus ", "x;DROP", "1desus_"])
+def test_hub_table_prefix_rejects_unsafe_identifier(monkeypatch, prefix):
+    monkeypatch.setenv("JAVERT_HUB_TABLE_PREFIX", prefix)
+    with pytest.raises(ValueError):
+        JavertConfig()
+
+
+def test_tool_result_max_chars_default():
+    """fix-drug-audit-precision: 未配置时默认 2000 (与现状一致)."""
+    cfg = JavertConfig()
+    assert cfg.tool_result_max_chars == 2000
+
+
+def test_tool_result_max_chars_from_file(tmp_path: Path):
+    config_file = tmp_path / "llm.yaml"
+    config_file.write_text(
+        yaml.safe_dump({"tool_result_max_chars": 4000}), encoding="utf-8"
+    )
+    assert load_config(config_file).tool_result_max_chars == 4000
+
+
+def test_oncology_eligibility_v2_defaults_off():
+    """默认关闭必须逐字保留现网药品审核路径."""
+    assert JavertConfig().oncology_eligibility_v2 == "off"
+
+
+@pytest.mark.parametrize("mode", ["off", "shadow", "on"])
+def test_oncology_eligibility_v2_env_modes(monkeypatch, mode):
+    monkeypatch.setenv("JAVERT_ONCOLOGY_ELIGIBILITY_V2", mode)
+    assert JavertConfig().oncology_eligibility_v2 == mode
+
+
+def test_oncology_eligibility_v2_rejects_unknown_mode(monkeypatch):
+    monkeypatch.setenv("JAVERT_ONCOLOGY_ELIGIBILITY_V2", "maybe")
+    with pytest.raises(ValueError):
+        JavertConfig()

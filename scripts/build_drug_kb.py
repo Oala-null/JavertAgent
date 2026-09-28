@@ -46,11 +46,13 @@ log = logging.getLogger("build_drug_kb")
 KB_DIR = ROOT / "data" / "药品类规则"
 CODE_DIR = KB_DIR / "含代码"
 OUT_KB = ROOT / "configs" / "drug_audit_kb.json"
+ONCOLOGY_KB = ROOT / "configs" / "oncology_drug_kb.json"
 OUT_HITS = ROOT / "output" / "drug_kb_hits.csv"
 OUT_JOIN_WARN = ROOT / "output" / "drug_kb_code_join_warnings.csv"
 FEE_CSV = ROOT / "data" / "shi_fee.csv"
 
 KB_VERSION = "2.0"  # fix-drug-code-match: drugs[通用名] 升级为 {entries, codes}
+ONCOLOGY_MERGED_VERSION = "3.0"
 DRUG_CHRGITM_TYPES = {"西药", "中药", "草药"}
 
 # 文件名关键片段 → rule_type (无码表)
@@ -148,6 +150,120 @@ def _build_code_map() -> dict[str, set[str]]:
     return code_map
 
 
+def _merge_oncology_kb(kb: dict, path: Path | None = None) -> dict:
+    """把肿瘤药 KB 的生效条目并入主 KB; 独立 KB 不存在时保持旧结果."""
+    path = path or ONCOLOGY_KB
+    if not path.exists():
+        return kb
+
+    oncology_kb = json.loads(path.read_text(encoding="utf-8"))
+    drugs = kb["drugs"]
+    active = {
+        name: drug for name, drug in oncology_kb.get("drugs", {}).items()
+        if drug.get("entries")
+    }
+    if not active:
+        return kb
+
+    legacy = {
+        name: {
+            "codes": {str(code).strip() for code in drug.get("codes", []) if str(code).strip()},
+            "entries": list(drug.get("entries", [])),
+        }
+        for name, drug in drugs.items()
+    }
+    declared_codes = {
+        name: {str(code).strip() for code in drug.get("codes", []) if str(code).strip()}
+        for name, drug in active.items()
+    }
+    all_declared_codes = set().union(*declared_codes.values()) if declared_codes else set()
+    # exact 同名旧实体的额外码仍属于该实体，但不抢其他 active 实体已声明的码。
+    oncology_codes = {
+        name: codes | (
+            legacy.get(name, {}).get("codes", set())
+            - (all_declared_codes - declared_codes[name])
+        )
+        for name, codes in declared_codes.items()
+    }
+    code_owners: dict[str, set[str]] = defaultdict(set)
+    for name, codes in oncology_codes.items():
+        for code in codes:
+            code_owners[code].add(name)
+    conflicted_codes = {code for code, owners in code_owners.items() if len(owners) > 1}
+    for code in sorted(conflicted_codes):
+        log.warning("肿瘤药码 %s 同时属于多个生效实体, 为防串药不接入主 KB", code)
+
+    inherited: dict[str, list[dict]] = {}
+    claimed_codes = set(code_owners)
+    for name, codes in oncology_codes.items():
+        source_names = [
+            legacy_name for legacy_name, old in legacy.items()
+            if codes & old["codes"]
+        ]
+        if name in legacy and name not in source_names:
+            source_names.append(name)
+        kept: list[dict] = []
+        seen: set[str] = set()
+        for source_name in source_names:
+            for entry in legacy[source_name]["entries"]:
+                if entry.get("rule_type") in {"限适应症", "超说明书"}:
+                    continue
+                key = json.dumps(entry, ensure_ascii=False, sort_keys=True)
+                if key not in seen:
+                    seen.add(key)
+                    kept.append(entry)
+        inherited[name] = kept
+
+    # 先把 active 码从旧实体剥离; 码被全部接管的旧实体直接移除，避免反向落入 stem 全量兜底。
+    for name in list(drugs):
+        if name in active:
+            continue
+        old_codes = legacy[name]["codes"]
+        remaining = old_codes - claimed_codes
+        if remaining == old_codes:
+            continue
+        if not remaining:
+            del drugs[name]
+            continue
+        drugs[name]["codes"] = sorted(remaining)
+        drugs[name].setdefault("oncology", {})["name_fallback"] = "disabled"
+
+    # 一个 active oncology 原始实体始终对应一个主 KB key，不按 stem/canonical 合并。
+    for name, oncology_drug in active.items():
+        codes = oncology_codes[name] - conflicted_codes
+        meta = {
+            "kb_version": oncology_kb.get("version"),
+            "effective_source_type": (oncology_drug.get("effective") or {}).get("source_type"),
+            "source_keys": sorted((oncology_drug.get("sources") or {}).keys()),
+        }
+        if oncology_codes[name]:
+            meta["name_fallback"] = "exact_entity_name"
+        drugs[name] = {
+            "entries": inherited[name] + list(oncology_drug["entries"]),
+            "codes": sorted(codes),
+            "oncology": meta,
+        }
+
+    # 合并改变了药品与类型集，所有汇总字段从最终 drugs 重算。
+    kb["drugs"] = dict(sorted(drugs.items()))
+    per_type_counts: dict[str, int] = defaultdict(int)
+    for drug in kb["drugs"].values():
+        drug["codes"] = sorted(set(drug.get("codes", [])))
+        for entry in drug.get("entries", []):
+            per_type_counts[entry.get("rule_type", "")] += 1
+
+    per_type_counts.pop("", None)
+    kb.update({
+        "version": ONCOLOGY_MERGED_VERSION,
+        "rule_types": sorted(per_type_counts),
+        "per_type_counts": dict(sorted(per_type_counts.items())),
+        "drug_count": len(kb["drugs"]),
+        "code_count": sum(len(drug["codes"]) for drug in kb["drugs"].values()),
+        "drugs_with_codes": sum(bool(drug["codes"]) for drug in kb["drugs"].values()),
+    })
+    return kb
+
+
 def build_kb() -> tuple[dict, list[str]]:
     """返回 (kb, 含代码表无法 join 无码 entries 的通用名核对清单)."""
     drugs: dict[str, list[dict]] = defaultdict(list)
@@ -200,7 +316,7 @@ def build_kb() -> tuple[dict, list[str]]:
         "drugs_with_codes": sum(1 for v in sorted_drugs.values() if v["codes"]),
         "drugs": sorted_drugs,
     }
-    return kb, sorted(unjoined)
+    return _merge_oncology_kb(kb), sorted(unjoined)
 
 
 def write_kb(kb: dict) -> None:

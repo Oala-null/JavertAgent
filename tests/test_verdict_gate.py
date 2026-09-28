@@ -294,10 +294,41 @@ def test_conf_at_ceiling_not_downgraded():
     assert not out.changed
 
 
-def test_conf_below_floor_not_touched():
-    vd = {"verdict": "VIOLATION", "confidence": 0.60, "evidence": [{"source": "fee", "locator": "x", "text": "y"}]}
+def test_conf_below_floor_now_downgraded():
+    # fix-drug-audit-precision 1c: ③闸改 conf < ceiling, floor 以下的低置信 V 也降 I
+    vd = {"verdict": "VIOLATION", "confidence": 0.50, "evidence": [{"source": "fee", "locator": "x", "text": "y"}]}
+    out = apply_gate(vd, _rule("R999"), None, _gate_cfg())
+    assert out.changed
+    assert out.verdict == "INCONCLUSIVE"
+    assert out.tag == "低置信降级"
+
+
+def test_conf_missing_归零_downgraded():
+    # confidence 字段缺失 → 归 0 → conf < ceiling → 降 I (消灭 "VIOLATION conf 0.00" 落库行)
+    vd = {"verdict": "VIOLATION", "evidence": [{"source": "fee", "locator": "x", "text": "y"}]}
+    out = apply_gate(vd, _rule("R999"), None, _gate_cfg())
+    assert out.changed
+    assert out.verdict == "INCONCLUSIVE"
+
+
+def test_conf_high_not_downgraded():
+    # conf 0.90 ≥ ceiling 0.85 → ③闸不改判
+    vd = {"verdict": "VIOLATION", "confidence": 0.90, "evidence": [{"source": "fee", "locator": "x", "text": "y"}]}
     out = apply_gate(vd, _rule("R999"), None, _gate_cfg())
     assert not out.changed
+
+
+def test_r205_counting_rule_not_cleared_by_anesthesia_existence():
+    # R205 (1台手术按次超收全麻) 是计数类规则 — 麻醉真实存在恰是违规前提, 不在 ⑥ 存在性闸;
+    # 高 conf V 应保留进落库 (仅受其他闸约束).
+    cfg = GateConfig(
+        anesthesia_reality_rules={"R203"},  # R205 已移出 ⑥ (与真实 yaml 一致)
+        conf_ceiling=0.85,
+    )
+    ctx = _ctx(surgeries=[Surgery(name="腹腔镜胆囊切除术", anst_way="1", anst_dr="沈兵")])
+    out = apply_gate(dict(_VD_V), _rule("R205", template="M1"), None, cfg, ctx)
+    assert not out.changed
+    assert out.verdict == "VIOLATION"
 
 
 # ========== 直通 ==========
@@ -312,3 +343,81 @@ def test_inconclusive_verdict_passthrough():
     vd = {"verdict": "INCONCLUSIVE", "confidence": 0.50, "evidence": []}
     out = apply_gate(vd, _rule("R141", template="M2"), None, _gate_cfg())
     assert not out.changed
+
+
+# ========== make-rules-code-portable: extract_exam_keywords 显式字段 ==========
+def test_exam_keywords_explicit_field_wins():
+    from javert.audit.verdict_gate import extract_exam_keywords
+    rule = Rule(
+        rule_id="R151", domain="测试", violation_type="过度检查", question="q",
+        prompt_addon='检索关键词: "旧措辞A"',
+        exam_keywords=["磁共振", "MRI"],
+    )
+    assert extract_exam_keywords(rule) == ["磁共振", "MRI"]
+
+
+def test_exam_keywords_absent_falls_back_to_prompt_grep():
+    from javert.audit.verdict_gate import extract_exam_keywords
+    rule = Rule(
+        rule_id="R151", domain="测试", violation_type="过度检查", question="q",
+        prompt_addon='检索关键词: "CT" / "增强"',
+    )
+    # 未填 exam_keywords → 回退旧链 (grep prompt_addon)
+    assert extract_exam_keywords(rule) == ["CT", "增强"]
+
+
+# ========== recover-deterministic-recall: 套餐类规则单次闸改口径 ==========
+import pandas as pd  # noqa: E402
+
+
+def _panel_cfg() -> GateConfig:
+    return GateConfig(
+        panel_rules={"R155": 3}, panel_downgrade_to="INCONCLUSIVE", conf_ceiling=0.85
+    )
+
+
+def _panel_fee_df(n_items: int, day: str = "1/8/2024 00:00:00") -> pd.DataFrame:
+    return pd.DataFrame({
+        "medins_list_name": [f"干扰素测定项{i}" for i in range(n_items)],
+        "med_list_codg": [f"IFN{i}" for i in range(n_items)],
+        "cnt": [1.0] * n_items,
+        "fee_ocur_time": [day] * n_items,
+    })
+
+
+def test_panel_many_items_same_day_preserves_violation():
+    # 11 项细胞因子单日打包 (≥ min_distinct_items=3) → V 保留, 不被单次闸误杀
+    out = apply_gate(
+        dict(_VD_V), _rule("R155", template="M2", triggers=["干扰素"]),
+        None, _panel_cfg(), None, fee_df=_panel_fee_df(11),
+    )
+    assert not out.changed and out.verdict == "VIOLATION"
+
+
+def test_panel_few_items_downgrades_to_inconclusive():
+    # 2 项 (< 3) → 降 INCONCLUSIVE (进专家队列), 不落 CLEAN 黑洞
+    out = apply_gate(
+        dict(_VD_V), _rule("R155", template="M2", triggers=["干扰素"]),
+        None, _panel_cfg(), None, fee_df=_panel_fee_df(2),
+    )
+    assert out.changed and out.verdict == "INCONCLUSIVE" and out.tag == "单次放过"
+
+
+def test_panel_fee_unavailable_fail_open_keeps_violation():
+    # 费用不可得 → fail-open 保留 V (不因数据缺失放大降级)
+    out = apply_gate(
+        dict(_VD_V), _rule("R155", template="M2", triggers=["干扰素"]),
+        None, _panel_cfg(), None, fee_df=None,
+    )
+    assert not out.changed and out.verdict == "VIOLATION"
+
+
+def test_non_panel_m2_rule_single_instance_unchanged():
+    # 非 panel 规则口径逐字不变: 净次数 1 → 仍降 CLEAN
+    net = {"K": NetItem(name="某检查", code="K", net_qty=1.0,
+                        distinct_billing_dates=1, has_refund=False)}
+    out = apply_gate(
+        dict(_VD_V), _rule("R151", template="M2", triggers=["某检查"]),
+        net, _panel_cfg(), None,
+    )
+    assert out.changed and out.verdict == "CLEAN" and out.tag == "单次放过"

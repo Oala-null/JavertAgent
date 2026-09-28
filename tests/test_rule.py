@@ -209,6 +209,24 @@ def test_priority_written_after_status(tmp_path: Path):
     assert text.index("status") < text.index("priority") < text.index("prompt_addon")
 
 
+# handling_level 字段
+def test_handling_level_load_default_validation_and_order(tmp_path: Path):
+    assert Rule(**_good_rule_dict()).handling_level == "可疑（警告）"
+
+    rule = Rule(**{**_good_rule_dict(), "handling_level": "违规（阻断）"})
+    p = tmp_path / "R191.yaml"
+    write_rule(rule, p)
+    text = p.read_text(encoding="utf-8")
+    assert text.index("priority") < text.index("handling_level") < text.index("prompt_addon")
+    assert load_rule(p).handling_level == "违规（阻断）"
+
+    bad = {**_good_rule_dict(), "handling_level": "合规（已检测）"}
+    p.write_text(yaml.safe_dump(bad, allow_unicode=True), encoding="utf-8")
+    with pytest.raises(RuleValidationError) as exc:
+        load_rule(p)
+    assert "handling_level" in str(exc.value)
+
+
 # derived_from_template 字段
 def test_load_rule_with_derived_from_template(tmp_path: Path):
     d = _good_rule_dict()

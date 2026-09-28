@@ -1,0 +1,10 @@
+asset_type: promise_case
+case_id: CASE-D001-LIMITED-PAYMENT
+promise_id: PR-D001
+promise_version: 1
+case_type: near_negative
+rule_id: R007
+facts:
+  fee_items:
+    - {name: 去标识限定支付药品, code: SYNTH-LIMIT, net_qty: 1, has_refund: true, refund_count: 1, quantity_parseable: true}
+expected: {outcome: NOT_APPLICABLE}

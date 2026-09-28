@@ -58,7 +58,7 @@ def test_manifest_loads_and_classifies():
     m = load_manifest()
     assert set(m.spokes) >= {"fees", "notes", "diagnoses", "surgeries", "labs", "examinations"}
     assert set(m.live_spokes()) == {"fees", "notes", "diagnoses", "surgeries", "labs", "examinations"}
-    assert set(m.view_spokes()) == {"anesthesia", "pathology"}
+    assert set(m.view_spokes()) == {"anesthesia", "pathology", "orders"}
     assert "anesthesia" not in m.tabular_spokes()
 
 

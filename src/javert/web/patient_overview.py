@@ -13,6 +13,7 @@ on-demand 调用 (不是全患者一次扫). 用 functools.lru_cache 缓存按 p
 
 from __future__ import annotations
 
+import copy
 import logging
 import re
 from collections import defaultdict
@@ -27,6 +28,8 @@ from typing import Any
 #   "X女，45 岁因..."            (姓名直接接性别)
 # 隔符放宽到 [，, \t]+ , 性别和年龄之间也允许空白
 _SEX_AGE_PATTERN = re.compile(r"[，, \t]\s*([男女])\s*[，, \t]\s*(\d{1,3})\s*岁")
+# szx 等外部文书形态: "性别男性，年龄57岁"
+_SEX_AGE_PATTERN2 = re.compile(r"性别\s*([男女])性?\s*[，,].{0,8}?年龄\s*(\d{1,3})\s*岁")
 
 from javert.config import get_config
 from javert.data.csv_loader import CsvLoader
@@ -441,7 +444,7 @@ def _extract_from_notes_df(df) -> dict[str, Any]:
         if ("gender" not in out["fields"] or "age" not in out["fields"]) and content:
             head = content[:300]
             if "某某" not in head:  # 脱敏文书没法救
-                m = _SEX_AGE_PATTERN.search(head)
+                m = _SEX_AGE_PATTERN.search(head) or _SEX_AGE_PATTERN2.search(head)
                 if m:
                     out["fields"].setdefault("gender", m.group(1))
                     out["fields"].setdefault("age", m.group(2) + "岁")
@@ -566,17 +569,44 @@ def _extract_from_fees_df(df) -> dict[str, Any]:
 # 主入口 — 拼装单患者概览数据
 # =========================================================
 def build_overview(patient_id: str, loader: CsvLoader) -> dict[str, Any]:
-    """单患者概览数据 dict, 可直接传 Jinja2 模板."""
+    """单患者概览数据 dict, 可直接传 Jinja2 模板.
+
+    boost-llm-efficiency: lru_cache 按 (patient_id, loader 实例) 命中 — detail 页重开同患者
+    不再重算. loader 换新实例 (reset_loader) 自然换 key; onboarding 载入新数据走
+    reset_caches() 统一失效. fix-scan-residuals: 返回缓存 dict 的深拷贝, 调用方可安全修改
+    (如就地补字段) 不污染缓存, 消跨请求串数据回归面.
+    """
+    return copy.deepcopy(_build_overview_cached(patient_id, loader))
+
+
+@lru_cache(maxsize=256)
+def _build_overview_cached(patient_id: str, loader: CsvLoader) -> dict[str, Any]:
     notes_df = loader.get_notes(patient_id)
     fees_df = loader.get_fees(patient_id)
+    basics = {}
+    get_basics = getattr(loader, "get_basics", None)
+    if callable(get_basics):
+        try:
+            basics = get_basics(patient_id) or {}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("读取患者基本信息失败: %s", type(exc).__name__)
 
     note_b = _extract_from_notes_df(notes_df)
     fee_b = _extract_from_fees_df(fees_df)
 
     dates = sorted(fee_b["dates"])
-    admit_date = dates[0].strftime("%Y-%m-%d") if dates else "—"
-    discharge_date = dates[-1].strftime("%Y-%m-%d") if dates else "—"
-    los_days = (dates[-1] - dates[0]).days + 1 if dates else 0
+    admit_date = basics.get("admission_date") or (
+        dates[0].strftime("%Y-%m-%d") if dates else "—"
+    )
+    discharge_date = basics.get("discharge_date") or (
+        dates[-1].strftime("%Y-%m-%d") if dates else "—"
+    )
+    try:
+        los_days = int(float(basics.get("los_days") or 0))
+    except (TypeError, ValueError):
+        los_days = 0
+    if not los_days and dates:
+        los_days = (dates[-1] - dates[0]).days + 1
 
     zd = _load_zd().get(patient_id, {"main": [], "others": []})
     ss = _load_ss().get(patient_id, [])
@@ -586,12 +616,21 @@ def build_overview(patient_id: str, loader: CsvLoader) -> dict[str, Any]:
     if zd["main"]:
         m = zd["main"][0]
         primary_dx = f"{m['name']} ({m['code']})" if m["code"] else m["name"]
-        primary_source = "病案首页 shi_zd"
+        primary_source = "病案首页"
     else:
+        get_main_diagnosis = getattr(loader, "get_main_diagnosis", None)
+        hub_primary_dx = None
+        if callable(get_main_diagnosis):
+            try:
+                hub_primary_dx = get_main_diagnosis(patient_id)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("读取患者主诊断失败: %s", type(exc).__name__)
         cand = (diags.get("出院诊断") or diags.get("主要诊断")
                 or diags.get("入院诊断") or diags.get("临床诊断") or [])
-        primary_dx = cand[0] if cand else "(无)"
-        primary_source = "病历文书 (无首页 ground truth)"
+        primary_dx = hub_primary_dx or (cand[0] if cand else "(无)")
+        primary_source = (
+            "诊断明细" if hub_primary_dx else "病历文书 (病案首页无主诊断)"
+        )
 
     other_dx = (
         [f"{o['name']} ({o['code']})" if o["code"] else o["name"] for o in zd["others"][:10]]
@@ -602,6 +641,10 @@ def build_overview(patient_id: str, loader: CsvLoader) -> dict[str, Any]:
     # top-N 排序
     top_depts = sorted(fee_b["departments"].items(), key=lambda kv: -kv[1])[:5]
     top_drs = sorted(fee_b["doctors"].items(), key=lambda kv: -kv[1])[:5]
+    if not top_depts and basics.get("department"):
+        top_depts = [(basics["department"], 1)]
+    if not top_drs and basics.get("doctor"):
+        top_drs = [(basics["doctor"], 1)]
     top_stages = sorted(note_b["notes_stages"].items(), key=lambda kv: -kv[1])[:8]
 
     fee_items_sorted = sorted(
@@ -671,8 +714,8 @@ def build_overview(patient_id: str, loader: CsvLoader) -> dict[str, Any]:
         "notes_total": note_b["notes_total"],
         "fees_count": fee_b["fees_count"],
         "fees_sum": fee_b["fees_sum"],
-        "gender": fields.get("gender", ""),
-        "age": fields.get("age", ""),
+        "gender": basics.get("gender") or fields.get("gender", ""),
+        "age": basics.get("age") or fields.get("age", ""),
         "anesthesia": fields.get("anesthesia_method", ""),
         "asa": fields.get("asa", ""),
         "chief_complaint": fields.get("chief_complaint", ""),
@@ -703,3 +746,4 @@ def reset_caches() -> None:
     _SS_CACHE = None
     _FEES_SUM_CACHE = None
     _STORED_CACHE = None
+    _build_overview_cached.cache_clear()

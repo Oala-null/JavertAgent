@@ -57,10 +57,39 @@ _CATEGORY_KEYWORDS: dict[str, list[str]] = {
 
 _VALID_CATEGORIES = ["手术类", "药品类", "耗材类", "检查类", "其他类"]
 
+# 官方类别标签 (medins_chrgitm_type) → 自信桶. data-hub 已把 MXFYLB 2 位国标码回填成同款
+# 中文, 故跨院可移植. 只在标签明确落桶时覆盖; 模糊标签 (治疗/床位/护理/其他/麻醉…) 与缺列
+# 回退名称启发式 = 最小漂移. 数字码 med_chrgitm_type 本院脏码, 不参与.
+_LABEL_CATEGORY: list[tuple[tuple[str, ...], str]] = [
+    (("手术",), "手术类"),
+    (("药",), "药品类"),           # 西药/中药/中成药/药品 皆含"药"
+    (("材料", "耗材"), "耗材类"),
+    (("检查", "化验", "检验", "CT", "MRI", "拍片", "病理", "影像", "超声", "B超"), "检查类"),
+]
 
-def _classify(name: str) -> str:
+
+def _clean_label(value: object) -> str:
+    """Normalize SQL/pandas values before substring matching (NaN is a float)."""
+    if value is None or pd.isna(value):
+        return ""
+    return str(value).strip()
+
+
+def _classify_by_label(label: object) -> str | None:
+    label_text = _clean_label(label)
+    for needles, cat in _LABEL_CATEGORY:
+        if any(n in label_text for n in needles):
+            return cat
+    return None
+
+
+def _classify(name: object, chrgitm_label: object = "") -> str:
+    by_label = _classify_by_label(chrgitm_label)
+    if by_label:
+        return by_label
+    name_text = _clean_label(name)
     for cat, kws in _CATEGORY_KEYWORDS.items():
-        if any(kw in name for kw in kws):
+        if any(kw in name_text for kw in kws):
             return cat
     return "其他类"
 
@@ -92,6 +121,10 @@ def create_executor(loader: DataLoader) -> Callable[..., str]:
         fees = patient_fees.copy()
         fees["_amount"] = pd.to_numeric(fees[amount_col], errors="coerce").fillna(0)
         fees["_name"] = fees[name_col].astype(str)
+        # make-rules-code-portable: 官方类别标签优先分类 (缺列→空串→纯名称兜底)
+        fees["_chrgitm_label"] = (
+            fees["medins_chrgitm_type"].astype(str) if "medins_chrgitm_type" in fees.columns else ""
+        )
 
         # v0.9 — 加日期返回, R112 等需要对比平扫/增强是否不同日
         date_col = _find_col(patient_fees, ["fee_ocur_time", "事件时间", "fee_date"])
@@ -107,6 +140,24 @@ def create_executor(loader: DataLoader) -> Callable[..., str]:
             fees["_cnt"] = pd.to_numeric(fees[cnt_col], errors="coerce").fillna(0)
         else:
             fees["_cnt"] = 1.0  # 无 cnt 列 → 每行视为 1 次正收费 (不净额)
+        # boost-llm-efficiency: 量价 + 开单科室/医师 信号 (M4 超标准/分解/串换科室类规则依赖).
+        # 源数据缺列时整体省略 (不出现占位符); 行锚与既有列文本不变, 只追加.
+        pric_col = next((c for c in ("pric", "unit_price", "单价") if c in patient_fees.columns), None)
+        unit_col = next((c for c in ("unit", "计价单位", "单位") if c in patient_fees.columns), None)
+        order_col = next((c for c in ("order_id", "YZID", "医嘱ID") if c in patient_fees.columns), None)
+        dept_col = next(
+            (c for c in ("acord_dept_name", "bilg_dept_name", "开单科室") if c in patient_fees.columns), None
+        )
+        dr_col = next(
+            (c for c in ("orders_dr_name", "bilg_dr_name", "开单医师") if c in patient_fees.columns), None
+        )
+        if pric_col:
+            fees["_pric"] = pd.to_numeric(fees[pric_col], errors="coerce")
+
+        def _clean_str(v) -> str:
+            s = str(v).strip()
+            return "" if s.lower() in ("nan", "none") else s
+
         has_code = "med_list_codg" in fees.columns
         net_items = net_fee_items(patient_fees)
         full_refunded = {k for k, it in net_items.items() if it.is_full_refund}
@@ -116,78 +167,119 @@ def create_executor(loader: DataLoader) -> Callable[..., str]:
             return fee_group_key(code, row["_name"])
 
         fees["_gkey"] = fees.apply(_gkey, axis=1)
-        # kept: 去掉完全充退组 (净0, 总额不受影响); 明细/计数再过滤掉退费行 (_cnt<=0)
+        # kept: 去掉完全充退组 (净0, 总额不受影响); 下方按项目名净额聚合 (退费行自动相抵)
         fees = fees[~fees["_gkey"].isin(full_refunded)].copy()
+        fees["_category"] = fees.apply(lambda r: _classify(r["_name"], r["_chrgitm_label"]), axis=1)
+
+        def _fmt_qty(q: float) -> str:
+            # 数量小数保真 (1.2): 0.75 计价行绝不取整为 0 或 1
+            return f"{int(q)}" if float(q).is_integer() else f"{q:g}"
+
+        def _agg(subset: pd.DataFrame) -> list[dict]:
+            """按项目名 (_gkey) 聚合退费后净额 → 净额降序的条目列表 (设计 D3).
+
+            金额走全量 (含退费行自动相抵); 数量/退费次数取 NetItem; 消除"同项目多行=多次"误读.
+            """
+            items: list[dict] = []
+            for gkey, grp in subset.groupby("_gkey", sort=False):
+                pos = grp[grp["_cnt"] > 0]
+                if pos.empty:
+                    continue  # 该组仅剩退费行 (完全充退已剔, 兜底)
+                first = pos.iloc[0]
+                netit = net_items.get(gkey)
+                who = "/".join(
+                    x for x in (
+                        _clean_str(first.get(dept_col)) if dept_col else "",
+                        _clean_str(first.get(dr_col)) if dr_col else "",
+                    ) if x
+                )
+                items.append({
+                    "name": str(first["_name"]),
+                    "amount": float(grp["_amount"].sum()),  # 净金额
+                    "cnt": float(netit.net_qty) if netit else float(pos["_cnt"].sum()),
+                    "dates": sorted({d for d in pos["_date"].tolist() if d}),
+                    "pric": float(first["_pric"]) if (pric_col and pd.notna(first["_pric"])) else None,
+                    "unit": _clean_str(first.get(unit_col)) if unit_col else "",
+                    "order_id": _clean_str(first.get(order_col)) if order_col else "",
+                    "who": who,
+                    "refunds": int(netit.refund_count) if netit else 0,
+                    "category": str(first["_category"]),
+                })
+            items.sort(key=lambda d: -d["amount"])
+            return items
+
+        def _extra(it: dict) -> str:
+            parts = []
+            q = _fmt_qty(it["cnt"])
+            if it["pric"] is not None and it["pric"] > 0:
+                parts.append(f"单价{it['pric']:.2f}×{q}")
+            elif it["cnt"] != 1:
+                parts.append(f"×{q}")
+            if it["unit"]:
+                parts.append(f"单位={it['unit']}")
+            if it["order_id"]:
+                parts.append("医嘱关联=有")
+            if it["who"]:
+                parts.append(f"[开单:{it['who']}]")
+            note = f" [含{it['refunds']}次退费已抵消]" if it["refunds"] > 0 else ""
+            return ((" " + " ".join(parts)) if parts else "") + note
 
         if keyword:
-            mask = fees["_name"].str.contains(keyword, na=False)
-            matched = fees[mask]
+            matched = fees[fees["_name"].str.contains(keyword, na=False)]
             if matched.empty:
                 return f"未找到包含 '{keyword}' 的费用项目 (退费已抵消项不计)"
-            # 合计走全量净 (含退费行自动相抵); 明细/计数只列净正收费行 (_cnt>0)
-            total = matched["_amount"].sum()
-            display = matched[matched["_cnt"] > 0].sort_values(
-                ["_date", "_amount"], ascending=[True, False]
-            )
-            lines = [f"关键词'{keyword}'搜索结果 (共{len(display)}条):", ""]
-            # 日期 → 列表 显示每天的明细 (帮 R112 对比日期)
-            for i, (_, row) in enumerate(display.iterrows(), 1):
-                date_str = f"  [{row['_date']}]" if row['_date'] else ""
-                # v0.9 (前向 locator): fee 行定位标记 — 让新审计锚点能精确指回该费用行
-                loc = f" ⟨行={i} 项目={row['_name']}⟩"
-                lines.append(f"  {row['_name']}: ¥{row['_amount']:.2f}{date_str}{loc}")
+            items = _agg(matched)
+            total = sum(it["amount"] for it in items)
+            lines = [f"关键词'{keyword}'搜索结果 (共{len(items)}项, 已净退费):", ""]
+            for i, it in enumerate(items, 1):
+                ds = it["dates"]
+                date_str = (
+                    f"  [{ds[0]}]" if len(ds) == 1 else (f"  [{ds[0]}→{ds[-1]}]" if ds else "")
+                )
+                # v0.9 (前向 locator): fee 行定位标记 — 让新审计锚点能精确指回该费用项
+                loc = f" ⟨行={i} 项目={it['name']}⟩"
+                lines.append(f"  {it['name']}: ¥{it['amount']:.2f}{date_str}{_extra(it)}{loc}")
                 if i >= 20:
-                    lines.append(f"... 共{len(display)}条, 已显示前 20 条")
+                    lines.append(f"... 共{len(items)}项, 已显示前 20 项")
                     break
             lines.append("")
             lines.append(f"合计: ¥{total:.2f}")
-            # 跨天统计 (v0.9) — 日期按净正收费行 (2.4)
-            if date_col:
-                distinct_dates = display[display['_date'] != '']['_date'].unique()
-                if len(distinct_dates) >= 2:
-                    lines.append(
-                        f"📅 跨 {len(distinct_dates)} 天 ({sorted(distinct_dates)[0]} → {sorted(distinct_dates)[-1]})"
-                    )
+            # 跨天统计 (v0.9) — 按聚合条目覆盖的净收费日期
+            all_dates = sorted({d for it in items for d in it["dates"]})
+            if len(all_dates) >= 2:
+                lines.append(f"📅 跨 {len(all_dates)} 天 ({all_dates[0]} → {all_dates[-1]})")
             return "\n".join(lines)
-
-        fees["_category"] = fees["_name"].apply(_classify)
-        # 明细/计数只看净正收费行 (退费行 _cnt<=0 不进列表); 合计仍走 fees 全量 (net)
-        display_fees = fees[fees["_cnt"] > 0]
 
         if category:
             if category not in _VALID_CATEGORIES:
                 return f"未知类别 '{category}', 可选: {'、'.join(_VALID_CATEGORIES)}"
-            cat_all = fees[fees["_category"] == category]
-            if cat_all.empty:
+            cat_rows = fees[fees["_category"] == category]
+            if cat_rows.empty:
                 return f"该患者无 {category} 费用记录"
-            cat_disp = display_fees[display_fees["_category"] == category].sort_values(
-                "_amount", ascending=False
-            )
-            lines = [f"{category}明细 (共{len(cat_disp)}项):", ""]
-            for i, (_, row) in enumerate(cat_disp.iterrows(), 1):
-                lines.append(f"  {i}. {row['_name']}: ¥{row['_amount']:.2f}")
-            total = cat_all["_amount"].sum()
+            items = _agg(cat_rows)
+            lines = [f"{category}明细 (共{len(items)}项):", ""]
+            for i, it in enumerate(items, 1):
+                lines.append(f"  {i}. {it['name']}: ¥{it['amount']:.2f}{_extra(it)}")
+            total = sum(it["amount"] for it in items)
             lines.append("")
             lines.append(f"{category}合计: ¥{total:.2f}")
             return "\n".join(lines)
 
-        # 目录模式 — 计数/Top3 按净正收费, 合计按 net (2.3)
-        total_amount = fees["_amount"].sum()
-        lines = [f"费用分类目录 (共{len(display_fees)}项, 总额¥{total_amount:.2f}):", ""]
+        # 目录模式 — 计数/Top3/合计 均按项目名净额聚合 (2.3)
+        all_items = _agg(fees)
+        total_amount = sum(it["amount"] for it in all_items)
+        lines = [f"费用分类目录 (共{len(all_items)}项, 总额¥{total_amount:.2f}):", ""]
         for cat in _VALID_CATEGORIES:
-            cat_all = fees[fees["_category"] == cat]
-            if cat_all.empty:
+            cat_items = [it for it in all_items if it["category"] == cat]
+            if not cat_items:
                 continue
-            cat_disp = display_fees[display_fees["_category"] == cat].sort_values(
-                "_amount", ascending=False
-            )
-            cat_total = cat_all["_amount"].sum()
+            cat_total = sum(it["amount"] for it in cat_items)
             pct = (cat_total / total_amount * 100) if total_amount > 0 else 0
-            lines.append(f"【{cat}】{len(cat_disp)}项, 合计¥{cat_total:.2f} ({pct:.1f}%)")
-            for i, (_, row) in enumerate(cat_disp.head(3).iterrows(), 1):
-                lines.append(f"    {i}. {row['_name']}: ¥{row['_amount']:.2f}")
-            if len(cat_disp) > 3:
-                lines.append(f"    ... 还有 {len(cat_disp) - 3} 项")
+            lines.append(f"【{cat}】{len(cat_items)}项, 合计¥{cat_total:.2f} ({pct:.1f}%)")
+            for i, it in enumerate(cat_items[:3], 1):
+                lines.append(f"    {i}. {it['name']}: ¥{it['amount']:.2f}")
+            if len(cat_items) > 3:
+                lines.append(f"    ... 还有 {len(cat_items) - 3} 项")
             lines.append("")
 
         lines.append(f"用 category 取该类详情, 例: search_fees(patient_id=\"{patient_id}\", category=\"手术类\")")

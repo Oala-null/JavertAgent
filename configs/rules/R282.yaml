@@ -5,6 +5,7 @@ question: 将未伴发精神行为症状的脑梗后遗症、癫痫、智力障�
 example: 示例：某医院将脑梗后遗症患者虚假诊断为“精神分裂症”并收治住院，实际患者无相关精神行为症状。
 status: drafting
 priority: P2
+handling_level: 提醒（引导）
 prompt_addon: ''
 trigger_keywords: []
 suggested_tools: []

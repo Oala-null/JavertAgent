@@ -1,0 +1,30 @@
+{
+  "fixture_id": "golden-pola-cycle-conflict",
+  "deidentified": true,
+  "encounter_date": "2026-03-12",
+  "drug_candidate": {
+    "generic_name": "注射用维泊妥珠单抗",
+    "trade_name": "优罗华",
+    "insurance_code": "XL01FXW129B001010181735",
+    "net_quantity": 1
+  },
+  "cancer_context": [
+    "弥漫大B细胞淋巴瘤"
+  ],
+  "treatment_observations": [
+    {
+      "text": "本次完成第四次 Pola-R-GemOx 方案化疗：利妥昔单抗、优罗华、吉西他滨、奥沙利铂。",
+      "document_type": "出院记录",
+      "document_date": "2025-03-12",
+      "anchor": "note:golden-pola-cycle-conflict:1"
+    }
+  ],
+  "expected_unknown_facts": [
+    "line_of_therapy",
+    "relapsed",
+    "refractory"
+  ],
+  "expected_data_quality_flags": [
+    "治疗叙述年份与就诊/收费年份冲突"
+  ]
+}

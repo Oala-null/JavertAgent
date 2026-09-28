@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block head_extra %}
+<style>
+.ab-head,.ab-summary,.ab-rule{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px}
+.ab-head-row,.ab-rule-head,.ab-run-meta{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.ab-summary{display:flex;gap:24px;flex-wrap:wrap}.ab-summary strong{font-size:1.35rem}
+.ab-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;margin-top:12px}
+.ab-side{border:1px solid var(--border);border-radius:10px;padding:14px;min-width:0}
+.ab-side h3{margin:0 0 8px}.ab-missing{display:grid;place-items:center;min-height:160px;color:var(--muted)}
+.ab-reasoning{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--surface-2);padding:12px;border-radius:8px}
+.ab-list{margin:8px 0 0;padding-left:20px}.ab-list li{margin:6px 0;overflow-wrap:anywhere}
+.ab-tool{margin:8px 0;border-left:3px solid var(--primary);padding-left:10px}.ab-tool pre{white-space:pre-wrap;overflow-wrap:anywhere}
+.ab-rule.is-different{border-color:#d97706}.ab-rule.is-same{border-color:#16a34a}
+@media(max-width:900px){.ab-grid{grid-template-columns:1fr}}
+</style>
+{% endblock %}
+{% block content %}
+<section class="ab-head">
+  <div class="ab-head-row">
+    <a class="btn-secondary" href="/workbench/{{ patient_id }}?filter=all">← 返回患者工作台</a>
+    <h1>{{ patient_id }} · 双模型逐规则对比</h1>
+    <span class="batch-badge">{{ batch_tag }}</span>
+  </div>
+  <p class="muted">左：{{ left_model }}　｜　右：{{ right_model }}</p>
+</section>
+
+<section class="ab-summary">
+  <span><strong>{{ summary.rules }}</strong><br>规则并集</span>
+  <span><strong>{{ summary.same }}</strong><br>裁决一致</span>
+  <span><strong>{{ summary.different }}</strong><br>裁决不同</span>
+  <span><strong>{{ summary.missing }}</strong><br>单边缺失</span>
+</section>
+
+{% for row in rows %}
+{% set meta = rule_meta.get(row.rule_id, {}) %}
+<article class="ab-rule {{ 'is-same' if row.same else 'is-different' }}" id="rule-{{ row.rule_id }}">
+  <div class="ab-rule-head">
+    <code>{{ row.rule_id }}</code>
+    <strong>{{ meta.get('behavior_name') or meta.get('violation_type') or '未分类' }}</strong>
+    <span class="muted">{{ '裁决一致' if row.same else '需专家对比' }}</span>
+  </div>
+  <div class="ab-grid">
+    {% for side, run, model in [('left', row.left, left_model), ('right', row.right, right_model)] %}
+    {% if run %}
+    <section class="ab-side ab-{{ side }}">
+      <h3>{{ model }}</h3>
+      <div class="ab-run-meta">
+        <span class="badge badge-{{ run.verdict | verdict_color }}">{{ run.verdict | verdict_label }}</span>
+        <span>置信 {{ '%.2f' % run.confidence }}</span>
+        <span>{{ '%.1f' % (run.duration_ms / 1000) }}s</span>
+        <span>{{ run.tool_calls|length }} 次工具</span>
+        {% if run.gate_tag %}<span class="batch-badge">{{ run.gate_tag }}</span>{% endif %}
+      </div>
+      <h4>模型推理</h4>
+      <div class="ab-reasoning">{{ run.reasoning or '（空）' }}</div>
+      <details open>
+        <summary>证据 {{ run.evidence|length }} 条</summary>
+        <ul class="ab-list">
+        {% for item in run.evidence %}
+          <li><strong>{{ item.get('source','') }}</strong> · {{ item.get('locator','') }}<br>{{ item.get('text','') }}</li>
+        {% else %}<li>无结构化证据</li>{% endfor %}
+        </ul>
+      </details>
+      <details>
+        <summary>工具链 {{ run.tool_calls|length }} 次</summary>
+        {% for call in run.tool_calls %}
+        <div class="ab-tool">
+          <strong>{{ loop.index }}. {{ call.get('tool_name') or call.get('name') }}</strong>
+          <code>{{ call.get('arguments', {}) | tojson }}</code>
+          <pre>{{ call.get('result','') }}</pre>
+        </div>
+        {% else %}<p class="muted">无工具调用</p>{% endfor %}
+      </details>
+    </section>
+    {% else %}
+    <section class="ab-side ab-missing">{{ model }} 在该规则无结果</section>
+    {% endif %}
+    {% endfor %}
+  </div>
+</article>
+{% endfor %}
+{% endblock %}

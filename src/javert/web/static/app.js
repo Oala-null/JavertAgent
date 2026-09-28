@@ -121,11 +121,61 @@
 
   // ---------- 原始数据 fetch (modal + 对照面板共用缓存) + table builders ----------
   var _rawCache = {};
-  function fetchRaw(pid) {
-    if (_rawCache[pid]) return Promise.resolve(_rawCache[pid]);
-    return fetch("/api/patient/" + encodeURIComponent(pid) + "/raw", {credentials: "same-origin"})
-      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
-      .then(function (data) { _rawCache[pid] = data; return data; });
+  var _rawPending = {};
+  function fetchRaw(pid, tab, force) {
+    var key = pid + ":" + tab;
+    if (!force && _rawCache[key]) return Promise.resolve(_rawCache[key]);
+    if (!force && _rawPending[key]) return _rawPending[key];
+    var url = "/api/patient/" + encodeURIComponent(pid) + "/raw?tab=" + encodeURIComponent(tab);
+    var pending = fetch(url, {credentials: "same-origin"})
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (body) {
+          if (r.ok) return body;
+          var detail = body && body.detail && typeof body.detail === "object" ? body.detail : {};
+          var err = new Error(detail.message || "原文加载失败");
+          err.status = r.status;
+          err.code = detail.code || "RAW_REQUEST_FAILED";
+          err.retryable = !!detail.retryable;
+          throw err;
+        });
+      })
+      .then(function (data) { _rawCache[key] = data; return data; })
+      .finally(function () { if (_rawPending[key] === pending) delete _rawPending[key]; });
+    _rawPending[key] = pending;
+    return pending;
+  }
+
+  function _rawErrorMessage(err) {
+    if (err && err.status === 503) return "原文数据源暂不可用，请稍后重试。";
+    if (err && err.status === 404) return "该页签暂无原始数据。";
+    return "原文加载失败，请稍后重试。";
+  }
+
+  function _tabPanelHtml(tab, data, hidden) {
+    if (tab === "fees") return _feesPanelHtml(data, hidden);
+    if (tab === "labs") return _labsPanelHtml(data, hidden);
+    var html = _notesPanelHtml(data);
+    return hidden ? html.replace('data-panel="notes"', 'data-panel="notes" hidden') : html;
+  }
+
+  function _tabCount(tab, data) {
+    if (tab === "fees") return data.n_fees || 0;
+    if (tab === "labs") return (data.n_labs || 0) + (data.n_exams || 0);
+    return data.n_notes || 0;
+  }
+
+  function _tabLabel(tab) {
+    return tab === "fees" ? "费用" : (tab === "labs" ? "检验记录" : "文书");
+  }
+
+  function _firstAvailableRaw(pid, tabs, index) {
+    index = index || 0;
+    return fetchRaw(pid, tabs[index]).catch(function (err) {
+      if (err.status === 404 && index + 1 < tabs.length) {
+        return _firstAvailableRaw(pid, tabs, index + 1);
+      }
+      throw err;
+    });
   }
 
   function _notesPanelHtml(data) {
@@ -227,7 +277,8 @@
   // ---------- 原始病历 modal (全量浏览入口, 保留) ----------
   window.showRawData = function (patientId) {
     var root = document.getElementById("modal-root") || document.body;
-    fetchRaw(patientId).then(function (data) {
+    _firstAvailableRaw(patientId, ["notes", "fees", "labs"]).then(function (data) {
+      var activeTab = data.tab || "notes";
       root.innerHTML =
         '<div class="modal-overlay" onclick="if(event.target===this)closeModal()">' +
         '<div class="modal raw-modal" style="max-width:1040px;">' +
@@ -235,12 +286,11 @@
           '<h2>' + _esc(patientId) + ' · 原始病历</h2>' +
           '<p class="muted">主诊: ' + _esc(data.main_diagnosis || "—") + '</p>' +
           '<div class="modal-tabs" role="tablist">' +
-            '<button type="button" class="tab active" data-tab="notes" onclick="switchTab(this,\'notes\')">' +
-              '文书 (' + (data.n_notes || 0) + ' 段)</button>' +
-            '<button type="button" class="tab" data-tab="fees" onclick="switchTab(this,\'fees\')">' +
-              '费用 (' + (data.n_fees || 0) + ')</button>' +
-            '<button type="button" class="tab" data-tab="labs" onclick="switchTab(this,\'labs\')">' +
-              '检验记录 (' + ((data.n_labs || 0) + (data.n_exams || 0)) + ')</button>' +
+            ["notes", "fees", "labs"].map(function (tab) {
+              return '<button type="button" class="tab' + (tab === activeTab ? ' active' : '') +
+                '" data-tab="' + tab + '" onclick="switchRawTab(this,\'' + tab + '\')">' +
+                _tabLabel(tab) + (tab === activeTab ? ' (' + _tabCount(tab, data) + ')' : '') + '</button>';
+            }).join("") +
           '</div>' +
           '<div class="modal-search src-search">' +
             '<input type="text" class="src-search-input" placeholder="搜索 (Ctrl+F / ⌘F) — 当前 tab 内高亮跳转" ' +
@@ -251,14 +301,44 @@
             '<button type="button" onclick="clearSearch(this)" title="清空 (Esc)">×</button>' +
           '</div>' +
           '<div class="source-hint" hidden></div>' +
-          '<div class="modal-body src-scope">' +
-            _notesPanelHtml(data) + _feesPanelHtml(data, true) + _labsPanelHtml(data, true) + '</div>' +
+          '<div class="modal-body src-scope" data-patient-id="' + _esc(patientId) + '">' +
+            _tabPanelHtml(activeTab, data, false) + '</div>' +
         '</div></div>';
       setTimeout(function () {
         var inp = document.querySelector(".raw-modal .src-search-input");
         if (inp) inp.focus();
       }, 0);
-    }).catch(function (e) { alert("加载原始数据失败: " + e.message); });
+    }).catch(function (e) { alert(_rawErrorMessage(e)); });
+  };
+
+  window.switchRawTab = function (btn, tab, patientId) {
+    var container = btn.closest(".raw-modal") || btn.closest("#source-panel");
+    if (!container) return;
+    var scope = container.querySelector(".src-scope");
+    patientId = patientId || (scope && scope.getAttribute("data-patient-id")) || window.JAVERT_PATIENT;
+    if (!patientId) return;
+    var existing = scope && scope.querySelector('[data-panel="' + tab + '"]');
+    if (existing) { switchTab(btn, tab); return; }
+    btn.disabled = true;
+    fetchRaw(patientId, tab).then(function (data) {
+      if (scope) scope.insertAdjacentHTML("beforeend", _tabPanelHtml(tab, data, true));
+      btn.textContent = _tabLabel(tab) + " (" + _tabCount(tab, data) + ")";
+      btn.disabled = false;
+      switchTab(btn, tab);
+    }).catch(function (err) {
+      btn.disabled = false;
+      var hint = container.querySelector(".source-hint");
+      if (hint) {
+        hint.hidden = false;
+        hint.innerHTML = _esc(_rawErrorMessage(err)) +
+          (err.retryable ? ' <button type="button" class="btn-secondary raw-retry">重试</button>' : '');
+        var retry = hint.querySelector(".raw-retry");
+        if (retry) retry.onclick = function () {
+          delete _rawCache[patientId + ":" + tab];
+          window.switchRawTab(btn, tab, patientId);
+        };
+      }
+    });
   };
 
   window.closeModal = function () {
@@ -286,16 +366,25 @@
     // 始终用右侧滑出对照面板 (parallel, 不 cover 原页面; 原违规卡片保留可左右对比).
     // 不再退回 modal — modal 会盖住整页且有渲染竞态.
     var panel = _ensureSourcePanel();
-    fetchRaw(pid).then(function (data) {
+    var targetTab = anchor.tab;
+    if (targetTab === "labs" || targetTab === "exams") targetTab = "labs";
+    else if (targetTab !== "fees") targetTab = "notes";
+    panel.innerHTML = '<div class="source-head"><strong>' + _esc(pid) +
+      ' · 原文对照</strong><button class="close-btn" onclick="closeSourcePanel()" title="关闭 (Esc)">×</button></div>' +
+      '<div class="source-hint">正在加载' + _tabLabel(targetTab) + '…</div>';
+    document.body.classList.add("compare-open");
+    fetchRaw(pid, targetTab).then(function (data) {
       panel.innerHTML =
         '<div class="source-head">' +
           '<strong>' + _esc(pid) + ' · 原文对照</strong>' +
           '<button class="close-btn" onclick="closeSourcePanel()" title="关闭 (Esc)">×</button>' +
         '</div>' +
         '<div class="modal-tabs" role="tablist">' +
-          '<button type="button" class="tab" data-tab="notes" onclick="switchTab(this,\'notes\')">文书 (' + (data.n_notes || 0) + ')</button>' +
-          '<button type="button" class="tab" data-tab="fees" onclick="switchTab(this,\'fees\')">费用 (' + (data.n_fees || 0) + ')</button>' +
-          '<button type="button" class="tab" data-tab="labs" onclick="switchTab(this,\'labs\')">检验记录 (' + ((data.n_labs || 0) + (data.n_exams || 0)) + ')</button>' +
+          ["notes", "fees", "labs"].map(function (tab) {
+            return '<button type="button" class="tab' + (tab === targetTab ? ' active' : '') +
+              '" data-tab="' + tab + '" onclick="switchRawTab(this,\'' + tab + '\')">' +
+              _tabLabel(tab) + (tab === targetTab ? ' (' + _tabCount(tab, data) + ')' : '') + '</button>';
+          }).join("") +
         '</div>' +
         '<div class="modal-search src-search">' +
           '<input type="text" class="src-search-input" placeholder="搜索当前 tab" oninput="onSearchInput(this)" onkeydown="onSearchKey(event)">' +
@@ -304,11 +393,20 @@
           '<button type="button" onclick="jumpMatch(1)" title="下一个">↓</button>' +
         '</div>' +
         '<div class="source-hint" hidden></div>' +
-        '<div class="source-body src-scope">' +
-          _notesPanelHtml(data) + _feesPanelHtml(data, true) + _labsPanelHtml(data, true) + '</div>';
-      document.body.classList.add("compare-open");
+        '<div class="source-body src-scope" data-patient-id="' + _esc(pid) + '">' +
+          _tabPanelHtml(targetTab, data, false) + '</div>';
       _applyAnchorInScope(panel, anchor);
-    }).catch(function (e) { showToast("加载原文失败: " + e.message); });
+    }).catch(function (err) {
+      panel.innerHTML = '<div class="source-head"><strong>' + _esc(pid) +
+        ' · 原文对照</strong><button class="close-btn" onclick="closeSourcePanel()">×</button></div>' +
+        '<div class="source-hint">' + _esc(_rawErrorMessage(err)) +
+        (err.retryable ? ' <button type="button" class="btn-secondary" id="source-retry">重试</button>' : '') + '</div>';
+      var retry = document.getElementById("source-retry");
+      if (retry) retry.onclick = function () {
+        delete _rawCache[pid + ":" + targetTab];
+        window.openSourcePanel(anchor);
+      };
+    });
   };
 
   window.closeSourcePanel = function () {
@@ -433,6 +531,14 @@
   // 默认隐藏 (checkbox checked), 与 only-i / server verdict filter 正交叠加, 可逆翻看.
   window.toggleHideMissingDoc = function (cb) {
     document.body.classList.toggle("hide-missing-doc", !!(cb && cb.checked));
+    refreshGroupVisibility();
+  };
+
+  // recover-deterministic-recall 3.3: 「只看被闸降级」facet — body.show-gated-only 隐藏
+  // gate_tag 为空 (未被闸降级) 的卡片, 专家可抽查确定性 gate 的击杀 (降级标签 + LLM 原始推理).
+  // 与 verdict filter / 缺文书 / only-i 正交叠加, 默认关.
+  window.toggleGatedOnly = function (cb) {
+    document.body.classList.toggle("show-gated-only", !!(cb && cb.checked));
     refreshGroupVisibility();
   };
 
@@ -653,130 +759,121 @@
     };
   }
 
-  // 病人列表排序 — 纯前端重排 DOM 节点 (金额 / 生成时间, 顺逆序); 与 facet 筛选叠加.
-  // data-fees / data-updated 已由 sidebar 渲染; "默认" 用首次记录的服务端原始序回退.
-  function applySort() {
-    var list = document.getElementById("patient-list");
-    if (!list) return;
-    var cards = $$(".patient-card", list);
-    if (!cards.length) return;
-    if (!cards[0].hasAttribute("data-orig-idx")) {
-      cards.forEach(function (c, i) { c.setAttribute("data-orig-idx", i); });
-    }
-    var mode = (document.getElementById("facet-sort") || {}).value || "default";
-    var cmp;
-    if (mode === "fee_desc" || mode === "fee_asc") {
-      cmp = function (a, b) {
-        var d = (parseFloat(a.getAttribute("data-fees") || "0") || 0) -
-                (parseFloat(b.getAttribute("data-fees") || "0") || 0);
-        return mode === "fee_desc" ? -d : d;
-      };
-    } else if (mode === "time_desc" || mode === "time_asc") {
-      cmp = function (a, b) {
-        var d = (Date.parse(a.getAttribute("data-updated") || "") || 0) -
-                (Date.parse(b.getAttribute("data-updated") || "") || 0);
-        return mode === "time_desc" ? -d : d;
-      };
-    } else {
-      cmp = function (a, b) {
-        return (+a.getAttribute("data-orig-idx")) - (+b.getAttribute("data-orig-idx"));
-      };
-    }
-    cards.sort(cmp);
-    cards.forEach(function (c) { list.appendChild(c); });
-  }
+  var _sidebarPage = 1, _sidebarPages = 1, _sidebarTimer = null;
+  var _sidebarAbort = null, _sidebarSequence = 0, _sidebarTags = [];
 
   function _saveFacets(st) {
+    st.page = _sidebarPage;
     try { sessionStorage.setItem(FACET_KEY, JSON.stringify(st)); } catch (_) {}
   }
 
-  function _inTimeWindow(d, preset, now) {
-    if (!d || isNaN(d.getTime())) return false;
-    if (preset === "today") {
-      var start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      return d >= start;
+  function loadPatientSidebar() {
+    var list = document.getElementById("patient-list");
+    if (!list) return;
+    if (_sidebarAbort) _sidebarAbort.abort();
+    _sidebarAbort = new AbortController();
+    var sequence = ++_sidebarSequence;
+    var st = _facetState();
+    st.tags = _sidebarTags.slice();
+    _saveFacets(st);
+    var params = new URLSearchParams({filter: _activeFilterMode(), page: _sidebarPage,
+      pid: st.pid, dx: st.dx, fee: st.fee, sort: st.sort,
+      active_patient: window.JAVERT_PATIENT || ""});
+    st.tags.forEach(function (tag) { params.append("tag", tag); });
+    if (st.time !== "all") {
+      var now = new Date();
+      var since = st.time === "today" ? new Date(now.getFullYear(), now.getMonth(), now.getDate()) :
+        new Date(now.getTime() - (st.time === "week" ? 7 : 30) * 864e5);
+      params.set("updated_since", since.toISOString());
     }
-    if (preset === "week") return (now - d) <= 7 * 864e5;   // 近 7 天
-    if (preset === "month") return (now - d) <= 30 * 864e5; // 近 30 天
-    return true;
+    var status = document.getElementById("sidebar-status");
+    var retry = document.getElementById("sidebar-retry");
+    status.textContent = "正在加载…";
+    retry.hidden = true;
+    list.setAttribute("aria-busy", "true");
+    var prev = document.getElementById("sidebar-prev");
+    var next = document.getElementById("sidebar-next");
+    prev.disabled = next.disabled = true;
+    var clear = document.getElementById("facet-clear");
+    if (clear) clear.hidden = !(st.pid || st.dx || st.fee !== "all" || st.time !== "all" || st.tags.length || st.sort !== "default");
+    fetch("/api/workbench/patients?" + params, {credentials: "same-origin", signal: _sidebarAbort.signal})
+      .then(function (r) {
+        if (!r.ok) throw new Error(r.status === 401 ? "登录已失效，请重新登录。" : "患者列表加载失败，请重试。");
+        return r.json();
+      }).then(function (data) {
+        if (sequence !== _sidebarSequence) return;
+        list.innerHTML = data.html;
+        _sidebarPage = data.page; _sidebarPages = data.pages;
+        _saveFacets(st);
+        document.getElementById("patient-count").textContent = data.total === data.unfiltered_total ? data.total : data.total + "/" + data.unfiltered_total;
+        document.getElementById("sidebar-page").textContent = data.page + " / " + data.pages;
+        prev.disabled = data.page <= 1; next.disabled = data.page >= data.pages;
+        var tags = document.getElementById("facet-tags");
+        tags.replaceChildren();
+        data.tags.forEach(function (tag) {
+          var btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "facet-chip" + (_sidebarTags.indexOf(tag) >= 0 ? " active" : "");
+          btn.setAttribute("data-tag", tag);
+          btn.textContent = tag;
+          btn.onclick = function () { window.toggleTagChip(btn); };
+          tags.appendChild(btn);
+        });
+        status.textContent = data.total ? "每页最多 50 人" : "没有符合筛选条件的患者";
+        list.scrollTop = 0;
+      }).catch(function (err) {
+        if (sequence !== _sidebarSequence || err.name === "AbortError") return;
+        status.textContent = err.message || "患者列表加载失败，请重试。";
+        // 保留已加载卡片供导航；首次失败移除“正在加载”占位。
+        if (!list.querySelector(".patient-card")) list.replaceChildren();
+        retry.hidden = false;
+      }).finally(function () {
+        if (sequence === _sidebarSequence) list.setAttribute("aria-busy", "false");
+      });
   }
 
   window.applyFacets = function () {
-    var st = _facetState();
-    _saveFacets(st);
-    var active = (st.pid || st.dx || st.fee !== "all" || st.time !== "all" || st.tags.length > 0);
-    var clearBtn = document.getElementById("facet-clear");
-    if (clearBtn) clearBtn.hidden = !active;
-
-    var pidq = st.pid.toLowerCase();
-    var dxq = st.dx.toLowerCase();
-    var now = new Date();
-    var cards = $$(".patient-card");
-    var shown = 0;
-    cards.forEach(function (card) {
-      var ok = true;
-      if (pidq) {
-        var pid = (card.getAttribute("data-patient-id") || "").toLowerCase();
-        if (pid.indexOf(pidq) < 0) ok = false;
-      }
-      if (ok && dxq) {
-        var dx = (card.getAttribute("data-dx") || "").toLowerCase();
-        if (dx.indexOf(dxq) < 0) ok = false;
-      }
-      if (ok && st.fee !== "all") {
-        var fee = parseFloat(card.getAttribute("data-fees") || "0") || 0;
-        if (st.fee === "lt1") ok = fee < 10000;
-        else if (st.fee === "1to5") ok = (fee >= 10000 && fee <= 50000);
-        else if (st.fee === "gt5") ok = fee > 50000;
-      }
-      if (ok && st.tags.length) {
-        ok = st.tags.indexOf(card.getAttribute("data-tag") || "") >= 0;
-      }
-      if (ok && st.time !== "all") {
-        var u = card.getAttribute("data-updated") || "";
-        ok = _inTimeWindow(u ? new Date(u) : null, st.time, now);
-      }
-      card.style.display = ok ? "" : "none";
-      if (ok) shown++;
-    });
-    var pc = document.getElementById("patient-count");
-    if (pc) pc.textContent = shown === cards.length ? cards.length : (shown + "/" + cards.length);
-    var empty = document.getElementById("facet-empty");
-    if (empty) empty.hidden = !(cards.length > 0 && shown === 0);
-    applySort();  // 筛完重排 (排序与筛选正交叠加)
+    _sidebarPage = 1;
+    // 输入发生即失效旧响应；防抖期间也不能被旧筛选结果覆盖。
+    ++_sidebarSequence;
+    if (_sidebarAbort) _sidebarAbort.abort();
+    clearTimeout(_sidebarTimer);
+    _sidebarTimer = setTimeout(loadPatientSidebar, 250);
   };
-
+  window.changePatientPage = function (delta) {
+    _sidebarPage = Math.max(1, Math.min(_sidebarPages, _sidebarPage + delta));
+    clearTimeout(_sidebarTimer);
+    loadPatientSidebar();
+  };
+  window.reloadPatientSidebar = function () {
+    clearTimeout(_sidebarTimer);
+    loadPatientSidebar();
+  };
   window.toggleTagChip = function (btn) {
     btn.classList.toggle("active");
+    _sidebarTags = $$(".facet-chip.active").map(function (c) { return c.getAttribute("data-tag"); });
     applyFacets();
   };
-
   window.clearFacets = function () {
-    var pid = document.getElementById("facet-pid"); if (pid) pid.value = "";
-    var dx = document.getElementById("facet-dx"); if (dx) dx.value = "";
-    var fee = document.getElementById("facet-fee"); if (fee) fee.value = "all";
-    var time = document.getElementById("facet-time"); if (time) time.value = "all";
+    ["pid", "dx"].forEach(function (key) { var el = document.getElementById("facet-" + key); if (el) el.value = ""; });
+    ["fee", "time", "sort"].forEach(function (key) { var el = document.getElementById("facet-" + key); if (el) el.value = key === "sort" ? "default" : "all"; });
+    _sidebarTags = [];
     $$(".facet-chip.active").forEach(function (c) { c.classList.remove("active"); });
-    try { sessionStorage.removeItem(FACET_KEY); } catch (_) {}
     applyFacets();
   };
-
   function restoreFacets() {
     if (!document.getElementById("facet-bar")) return;
     var st = null;
     try { st = JSON.parse(sessionStorage.getItem(FACET_KEY) || "null"); } catch (_) {}
     if (st) {
-      var pid = document.getElementById("facet-pid"); if (pid && st.pid) pid.value = st.pid;
-      var dx = document.getElementById("facet-dx"); if (dx && st.dx) dx.value = st.dx;
-      var fee = document.getElementById("facet-fee"); if (fee && st.fee) fee.value = st.fee;
-      var time = document.getElementById("facet-time"); if (time && st.time) time.value = st.time;
-      var sort = document.getElementById("facet-sort"); if (sort && st.sort) sort.value = st.sort;
-      (st.tags || []).forEach(function (t) {
-        var chip = document.querySelector('.facet-chip[data-tag="' + t + '"]');
-        if (chip) chip.classList.add("active");
+      ["pid", "dx", "fee", "time", "sort"].forEach(function (key) {
+        var el = document.getElementById("facet-" + key);
+        if (el && typeof st[key] === "string") el.value = st[key];
       });
+      _sidebarTags = Array.isArray(st.tags) ? st.tags.filter(function (t) { return typeof t === "string"; }) : [];
+      _sidebarPage = Number.isInteger(st.page) && st.page > 0 ? st.page : 1;
     }
-    applyFacets();
+    loadPatientSidebar();
   }
 
   // =========================================================
@@ -847,47 +944,9 @@
       try {
         var data = JSON.parse(e.data);
         showToast("新增审计: " + data.patient_id + " " + data.rule_id + " → " + verdictLabel(data.verdict));
-        var list = document.getElementById("patient-list");
-        if (!list) return;
-        var existing = list.querySelector('[data-patient-id="' + data.patient_id + '"]');
-        if (existing) {
-          // 更新 badge
-          var vKey = verdictColor(data.verdict);
-          var attr = vKey === "v" ? "data-v-count" : vKey === "i" ? "data-i-count" : "data-c-count";
-          var cur = parseInt(existing.getAttribute(attr) || "0", 10);
-          existing.setAttribute(attr, cur + 1);
-          var rel = parseInt(existing.getAttribute("data-relevant") || "0", 10);
-          existing.setAttribute("data-relevant", rel + 1);
-          // 重渲染 badges + progress 略简: 刷新 row2 innerHTML
-          var row2 = existing.querySelector(".row2");
-          if (row2) {
-            var vC = parseInt(existing.getAttribute("data-v-count"), 10);
-            var iC = parseInt(existing.getAttribute("data-i-count"), 10);
-            var cC = parseInt(existing.getAttribute("data-c-count"), 10);
-            var rev = existing.getAttribute("data-reviewed");
-            row2.innerHTML =
-              (vC > 0 ? '<span class="badge badge-v">' + vC + 'V</span>' : '') +
-              (iC > 0 ? '<span class="badge badge-i">' + iC + 'I</span>' : '') +
-              '<span class="progress-text">已审 ' + rev + '/' + (vC + iC) + '</span>';
-          }
-        } else if (data.is_new_patient) {
-          // prepend 新卡片
-          var a = document.createElement("a");
-          a.className = "patient-card";
-          a.setAttribute("data-patient-id", data.patient_id);
-          a.setAttribute("data-v-count", verdictColor(data.verdict) === "v" ? 1 : 0);
-          a.setAttribute("data-i-count", verdictColor(data.verdict) === "i" ? 1 : 0);
-          a.setAttribute("data-c-count", verdictColor(data.verdict) === "c" ? 1 : 0);
-          a.setAttribute("data-reviewed", 0);
-          a.setAttribute("data-relevant", 1);
-          a.href = "/workbench/" + data.patient_id;
-          a.innerHTML =
-            '<div class="row1"><span>' + data.patient_id + '</span></div>' +
-            '<div class="row2"><span class="badge badge-' + verdictColor(data.verdict) + '">1' +
-            (verdictColor(data.verdict).toUpperCase()) +
-            '</span><span class="progress-text">已审 0/1</span></div>';
-          list.insertBefore(a, list.firstChild);
-        }
+        // 重跑会替换旧 verdict；由服务器重算当前页，禁止无限插卡或盲加计数。
+        clearTimeout(_sidebarTimer);
+        _sidebarTimer = setTimeout(loadPatientSidebar, 11000);
       } catch (_) {}
     });
 
@@ -911,11 +970,10 @@
   }
 
   // ── 列表自动刷新兜底 (不靠 SSE/AuditWatcher) ──
-  // 仅在病人列表页 (/workbench) 生效, 详情页不刷 (不打断看病人). 轮询 142 max run id;
-  // 值变 = 有新裁决 → 防抖等结果稳定再整页刷一次 (facet 走 sessionStorage 会恢复).
+  // 轮询 max run id；值变后只刷新当前侧栏页，保留详情和未提交批注。
   // 142 抖时 sig=None → 不动, 绝不误刷. 跑批时 sig 连变 → 计时器不断重置 → 跑完才刷一次.
   function initAutoRefresh() {
-    if (location.pathname.replace(/\/$/, "") !== "/workbench") return;  // 只列表页
+    // 列表与详情都仅更新独立侧栏，保留当前阅读和未提交批注。
     if (!document.getElementById("patient-list")) return;
     var baseSig = null, settleTimer = null;
     function idle() {
@@ -924,10 +982,11 @@
       return true;
     }
     function doReload() {
-      if (idle()) location.reload();
+      if (idle()) loadPatientSidebar();
       else settleTimer = setTimeout(doReload, 8000);  // 用户在操作 → 稍后再试
     }
     function poll() {
+      if (document.hidden) return;
       fetch("/api/workbench/sig", { credentials: "same-origin" })
         .then(function (r) { return r.json(); })
         .then(function (j) {

@@ -20,7 +20,7 @@ import yaml
 
 from javert.audit.rule import Rule
 from javert.audit.rule_loader import load_rule
-from javert.audit.rule_writer import update_from_template_render
+from javert.audit.rule_writer import compute_render_hash, update_from_template_render
 from javert.config import JavertConfig, get_config
 
 from .llm_drafter import DrafterError, LlmDrafter
@@ -138,6 +138,7 @@ def run_prompt_fit(
     dry_run: bool = False,
     output_path: str | None = None,
     save_vars: str | None = None,
+    force: bool = False,
     config: JavertConfig | None = None,
     stdin: TextIO | None = None,
     stdout: TextIO | None = None,
@@ -228,6 +229,17 @@ def run_prompt_fit(
         if answer != "y":
             so.write("aborted by user\n")
             return 0
+
+    # --- 5.5 覆盖护栏: 检测 on-disk prompt_addon 自上次渲染后是否被人工手改 ---
+    if not force and rule.prompt_addon:
+        if rule.render_hash is None:
+            se.write(f"⚠ {rule.rule_id}: 无 render_hash (来源未知), 继续覆盖 prompt_addon\n")
+        elif compute_render_hash(rule.prompt_addon) != rule.render_hash:
+            se.write(
+                f"✗ {rule.rule_id}: prompt_addon 已被人工修改 (hash 不符), 拒绝覆盖. "
+                f"确认用模板渲染覆盖请加 --force ({rule_path}).\n"
+            )
+            return 1
 
     # --- 6. 写盘 ---
     update_from_template_render(

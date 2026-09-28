@@ -9,7 +9,7 @@ Type=simple
 User=admin2
 Group=admin2
 WorkingDirectory=/home/admin2/javert
-EnvironmentFile=/etc/default/javert-web
+EnvironmentFile=/home/admin2/javert/.env
 # uv 在 ~/.local/bin (curl install) 或 /usr/local/bin; 改成实际路径
 ExecStart=/home/admin2/.local/bin/uv run javert web --with-mssql --host 0.0.0.0 --port 8090
 Restart=on-failure

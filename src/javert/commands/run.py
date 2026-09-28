@@ -45,6 +45,7 @@ def run_batch(rule_id: str, patient: str | None, use_pilot: bool) -> None:
                     result, rule,
                     triggered_by="cli-run",
                     sqlite_store=store,
+                    source_loader=loader,
                 )
                 if state["sync_state"] == "synced":
                     sql142_synced += 1

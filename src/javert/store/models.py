@@ -12,6 +12,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from javert.oncology.contracts import EligibilityEvaluation
+from javert.promises.models import PromiseTrace
+
 
 ReviewVerdict = Literal["V", "I", "C"]
 
@@ -41,7 +44,7 @@ class ReviewRecord(BaseModel):
     # JOIN javert_users 时回填; 非持久化字段
     reviewer_username: str | None = None
     reviewer_display_name: str | None = None
-    # JOIN Javert_audit_runs 时回填 (submit_review 顺手取);
+    # JOIN javert_audit_runs 时回填 (submit_review 顺手取);
     # SSE 广播需要靠 patient_id 找 sidebar 卡片
     patient_id: str | None = None
     rule_id: str | None = None
@@ -104,10 +107,13 @@ class HistoricalRun(BaseModel):
     run_id: str
     verdict: str
     confidence: float
+    headline: str = ""
     reasoning: str
     batch_tag: str | None = None
     created_at: datetime
     reviews: list[ReviewRecord] = Field(default_factory=list)
+    eligibility_evaluation: EligibilityEvaluation | None = None
+    promise_trace: PromiseTrace | None = None
 
 
 class RunWithReviews(BaseModel):
@@ -118,6 +124,7 @@ class RunWithReviews(BaseModel):
     patient_id: str
     verdict: str
     confidence: float
+    headline: str = ""
     reasoning: str
     evidence_json: str | None = None
     tool_calls_json: str | None = None
@@ -126,8 +133,10 @@ class RunWithReviews(BaseModel):
     started_at: datetime | None = None
     created_at: datetime
     triggered_by: str | None = None
-    batch_tag: str | None = None  # v0.7: 这是 latest run 的 tag (v1.2 或 NULL)
+    batch_tag: str | None = None  # v0.7: latest tag；OCR 来源患者稳定保留 ocr1.0
     gate_tag: str = ""  # add-verdict-gate-layer: gate 降级标签 (缺文书/单次放过/低置信降级/'')
+    eligibility_evaluation: EligibilityEvaluation | None = None
+    promise_trace: PromiseTrace | None = None
     reviews: list[ReviewRecord] = Field(default_factory=list)
     history: list[HistoricalRun] = Field(default_factory=list)  # v0.7
 

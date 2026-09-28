@@ -1,0 +1,44 @@
+{
+  "schema_version": "1.0.0",
+  "synthetic_only": true,
+  "branches": [
+    {
+      "semantic_id": "synthetic-branch-a",
+      "tree": {
+        "kind": "ANY",
+        "children": [
+          {
+            "kind": "ALL",
+            "children": [
+              {"kind": "LEAF", "criterion_type": "diagnosis", "operator": "IN", "value": "合成疾病甲"},
+              {"kind": "LEAF", "criterion_type": "biomarker", "operator": "NOT_EQUALS", "value": "合成标志物阳性"}
+            ]
+          },
+          {"kind": "LEAF", "criterion_type": "time_window", "operator": "WITHIN_DAYS", "value": 180}
+        ]
+      }
+    },
+    {
+      "semantic_id": "synthetic-branch-b",
+      "tree": {
+        "kind": "ALL",
+        "children": [
+          {"kind": "LEAF", "criterion_type": "combination_requirement", "target_kind": "CONCEPT", "requirement": "REQUIRED", "value": "synthetic-drug-a"},
+          {"kind": "LEAF", "criterion_type": "combination_requirement", "target_kind": "CLASS", "requirement": "WITH_OR_WITHOUT", "value": "synthetic-class-b"}
+        ]
+      }
+    }
+  ],
+  "date_override": {
+    "effective_from": "2026-04-01",
+    "effective_to": "2027-03-31",
+    "effective_date_basis": "EXPERT_OVERRIDE",
+    "date_override_reason": "合成日期覆盖测试",
+    "date_review_comment": "合成审核意见"
+  },
+  "ambiguous_regimen_alias": {
+    "normalized_alias": "SYN-A",
+    "candidate_regimen_ids": ["synthetic-regimen-a", "synthetic-regimen-b"],
+    "resolution": "ambiguous"
+  }
+}

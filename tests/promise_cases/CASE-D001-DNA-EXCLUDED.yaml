@@ -1,0 +1,10 @@
+asset_type: promise_case
+case_id: CASE-D001-DNA-EXCLUDED
+promise_id: PR-D001
+promise_version: 1
+case_type: near_negative
+rule_id: R151
+facts:
+  fee_items:
+    - {name: 乙肝病毒 DNA 定量测定, code: SYNTH-DNA, net_qty: 1, has_refund: true, refund_count: 1, quantity_parseable: true}
+expected: {outcome: NOT_APPLICABLE}

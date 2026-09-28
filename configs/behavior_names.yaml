@@ -1,0 +1,33 @@
+# 行为认定名称映射 — 对外展示统一口径 (2C 出参 + 工作台)
+#
+# 来源: docs/templates/260611医保基金监管规则框架总表.xlsx sheet「两库汇总」I 列 行为认定名称
+#       (行为认定编码取 H 列); 运行时对照 configs/behavior_source_pairs.yaml 的版本化最小快照；
+#       虚构类按已确认口径归入 T380206，串换保持独立名称.
+# 左侧 key = 规则 yaml 的 violation_type 原词; 不在表内的细类 → 展示时回退 violation_type 原样.
+# 改这里即全局生效 (rule_meta 进程内缓存, 重启/reset 后加载).
+mappings:
+  重复收费: {code: T380301, name: 重复收费}
+  分解收费: {code: T380303, name: 分解项目收费}
+  超标准收费: {code: T380302, name: 超标准收费}
+  过度检查: {code: T380202, name: 过度检查}
+  过度诊疗: {code: T380201, name: 过度诊疗}
+  超量开药: {code: T380204, name: 超量开药}
+  重复开药: {code: T380205, name: 重复开药}
+  超医保限定支付适应症用药: {code: T380601, name: 超范围支付}
+  超药品说明书适应症用药: {code: T380601, name: 超范围支付}
+  超医保限定二线用药: {code: T380601, name: 超范围支付}
+  将不属于医保支付范围的纳入医保基金结算: {code: T380601, name: 超范围支付}
+  用药安全/禁忌: {code: T380206, name: 提供不必要的医药服务}
+  虚构医药服务项目或过度诊疗: {code: T380201, name: 过度诊疗}
+  过度诊疗或虚构医药服务项目: {code: T380201, name: 过度诊疗}
+  # 虚构类按 2C/工作台统一口径归入「提供不必要的医药服务」。
+  虚构医药服务项目: {code: T380206, name: 提供不必要的医药服务}
+  虚构医药服务: {code: T380206, name: 提供不必要的医药服务}
+  虚构医药服务项目或以骗保为目的串换项目: {code: T380206, name: 提供不必要的医药服务}
+  # 串换保持独立；正式行为认定编码尚未提供，不臆造编码。
+  串换项目:
+    code: ''
+    name: 串换药品、医用耗材、诊疗项目和服务设施
+    exception: true
+    exception_key: interchange-explicit-unmapped
+    source_ref: 两库汇总 H/I 未提供正式行为认定编码

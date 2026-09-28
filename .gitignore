@@ -15,12 +15,21 @@ test1/
 test2/
 test3/
 test4/
+# 同类测试集复制目录也可能含真实患者数据（例如 `test4 copy/`）
+/test[0-9]*/
 
 # 审计结果与日志 (含患者裁决)
 output/
+outputs/
+.tmp_oncology_academic_slides/
 
 # 文档中的真实审核记录 (含患者 ID + 临床批注)
 docs/javert_vio_review.csv
+
+# 本机静态参考资料（保留在工作区，不作为产品版本依赖）
+/docs/243部署手册.md
+/docs/templates/260611医保基金监管规则框架总表.xlsx
+/docs/*算力配置单*
 
 # ============================================================
 # 公司既有 Java 监管引擎源码 (内部专有, 不入公开仓库)
@@ -31,6 +40,8 @@ docs/javert_vio_review.csv
 # 凭证 / 密钥
 # ============================================================
 .env
+.env.*
+243_config.env
 configs/llm.local.yaml
 *.local.yaml
 
@@ -61,7 +72,20 @@ htmlcov/
 .idea/
 *.swp
 *.swo
+~$*
 
 # OS
 .DS_Store
 Thumbs.db
+
+# ============================================================
+# 红区补漏 (2026-07-05 进院前扫描)
+# ============================================================
+# data-hub 流B 反向取数快照 (真实患者数据, PHI; 通配盖住 _szx2 等批次变体)
+data_import_hub*/
+# onboarding GUI 上传目录 (现场医院 CSV, PHI)
+_uploads/
+# aider 工具产物 (含代码索引缓存)
+.aider*
+# 软著申报等打包文档 (可再生二进制)
+*.docx

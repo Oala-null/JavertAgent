@@ -1,4 +1,4 @@
--- Javert audit store schema (v2: 加 sync 状态列)
+-- Javert audit store schema (v9: 加 nullable 公开 headline)
 -- 一张主表 + 一张元数据表 + 索引
 -- v2 升级: synced_at / sync_attempts / sync_last_error 三列, migration 由 init_schema 兼容处理
 
@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS audit_runs (
     patient_id TEXT NOT NULL,
     verdict TEXT NOT NULL CHECK (verdict IN ('VIOLATION', 'CLEAN', 'INCONCLUSIVE')),
     confidence REAL,
+    headline TEXT,
     reasoning TEXT,
     evidence_json TEXT,
     tool_calls_json TEXT,
@@ -24,7 +25,13 @@ CREATE TABLE IF NOT EXISTS audit_runs (
     -- v4 (v0.9): 命中项目/锚点 (hit_resolver) 确定性缓存; backfill_anchors.py 回填
     anchors_json TEXT,
     -- v5 (add-verdict-gate-layer): gate 降级标签 (缺文书 / 单次放过 / 低置信降级 / '')
-    gate_tag TEXT
+    gate_tag TEXT,
+    -- v6 (strengthen-oncology-drug-eligibility): 可空结构化资格结果
+    eligibility_json TEXT,
+    -- v7 (add-evolving-promise-harness): 可空、去标识终局 Promise trace
+    promise_trace_json TEXT,
+    -- v8 (OCR pipeline): caseRef/version 派生安全重放键
+    replay_key TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_rule_patient ON audit_runs(rule_id, patient_id);
@@ -37,4 +44,4 @@ CREATE TABLE IF NOT EXISTS _meta (
     value TEXT NOT NULL
 );
 
-INSERT OR IGNORE INTO _meta(key, value) VALUES ('schema_version', '2');
+INSERT OR IGNORE INTO _meta(key, value) VALUES ('schema_version', '9');

@@ -4,10 +4,11 @@
 -- 表前缀: Javert_  (与 zadig 现有表 drg_reconfirm_audit / agent_sessions 区分)
 -- 幂等: 通过 sys.tables / sys.indexes 检查保护, 可重复执行不报错
 -- 用途:
---   Javert_audit_runs    — Web/CLI 双写归档审计运行结果 (本地 SQLite 仍 SoT)
+--   javert_audit_runs    — Web/CLI 双写归档审计运行结果 (本地 SQLite 仍 SoT)
 --   javert_users         — 审核工作台账号 (bcrypt + last_login)
 --   javert_vio_review    — 专家三态决策 (V/I/C + 评语), insert-only + is_latest
 --   javert_audit_logs    — 全用户行为 trail (register/login/review_submit/...)
+-- 注: 不建视图 (2026-07-12 DE 意见: 大数据量下视图慢, 关联查询在程序层做; 代码本就零视图依赖)
 -- =============================================================================
 
 SET ANSI_NULLS ON;
@@ -15,7 +16,7 @@ SET QUOTED_IDENTIFIER ON;
 GO
 
 -- ============================================================
--- Javert_audit_runs: 单 (rule, patient) 审计结果
+-- javert_audit_runs: 单 (rule, patient) 审计结果
 --   id: BIGINT auto-increment, 主键
 --   run_id: aud_<12 char nanoid>, 业务唯一键 (与本地 SQLite 同源)
 --   verdict: VIOLATION / CLEAN / INCONCLUSIVE
@@ -23,18 +24,21 @@ GO
 --   rule_yaml_snapshot: 当次审计使用的 rule yaml 副本 (规则演进可追溯)
 --   rule_status: 当次审计时的规则 status (drafting/ready/validated/abandoned)
 -- ============================================================
-IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Javert_audit_runs')
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'javert_audit_runs')
 BEGIN
-    CREATE TABLE Javert_audit_runs (
+    CREATE TABLE javert_audit_runs (
         id                  BIGINT IDENTITY(1,1) PRIMARY KEY,
         run_id              NVARCHAR(50)   NOT NULL,
         rule_id             NVARCHAR(20)   NOT NULL,
         patient_id          NVARCHAR(50)   NOT NULL,
         verdict             NVARCHAR(20)   NOT NULL,
         confidence          FLOAT          NULL,
+        headline            NVARCHAR(120)  NULL,
         reasoning           NVARCHAR(MAX)  NULL,
         evidence_json       NVARCHAR(MAX)  NULL,
         tool_calls_json     NVARCHAR(MAX)  NULL,
+        eligibility_json    NVARCHAR(MAX)  NULL,
+        promise_trace_json  NVARCHAR(MAX)  NULL,
         duration_ms         INT            NULL,
         model               NVARCHAR(200)  NULL,
         rule_yaml_snapshot  NVARCHAR(MAX)  NULL,
@@ -42,24 +46,66 @@ BEGIN
         triggered_by        NVARCHAR(50)   NULL,   -- web / cli-dry-run / cli-run
         started_at          DATETIME2      NULL,
         created_at          DATETIME2      NOT NULL DEFAULT GETDATE(),
-        CONSTRAINT UQ_Javert_audit_runs_run_id UNIQUE (run_id),
+        CONSTRAINT UQ_javert_audit_runs_run_id UNIQUE (run_id),
         CONSTRAINT CK_Javert_audit_verdict CHECK (verdict IN (N'VIOLATION', N'CLEAN', N'INCONCLUSIVE'))
     );
-    PRINT 'Created table Javert_audit_runs';
+    PRINT 'Created table javert_audit_runs';
 END
 ELSE
-    PRINT 'Table Javert_audit_runs already exists, skip CREATE';
+    PRINT 'Table javert_audit_runs already exists, skip CREATE';
+GO
+
+-- add-public-audit-headline-contract: 可空公开短标题；旧行不回填
+IF NOT EXISTS (
+    SELECT 1 FROM sys.columns
+    WHERE Name = N'headline'
+      AND Object_ID = Object_ID(N'javert_audit_runs')
+)
+BEGIN
+    ALTER TABLE javert_audit_runs ADD headline NVARCHAR(120) NULL;
+    PRINT 'Added column headline to javert_audit_runs';
+END
+ELSE
+    PRINT 'Column headline already exists on javert_audit_runs';
+GO
+
+-- add-evolving-promise-harness: 可空、去标识终局 Promise trace (幂等迁移)
+IF NOT EXISTS (
+    SELECT 1 FROM sys.columns
+    WHERE Name = N'promise_trace_json'
+      AND Object_ID = Object_ID(N'javert_audit_runs')
+)
+BEGIN
+    ALTER TABLE javert_audit_runs ADD promise_trace_json NVARCHAR(MAX) NULL;
+    PRINT 'Added column promise_trace_json to javert_audit_runs';
+END
+ELSE
+    PRINT 'Column promise_trace_json already exists on javert_audit_runs';
+GO
+
+-- strengthen-oncology-drug-eligibility: 单一可空结构化资格 JSON (幂等迁移)
+IF NOT EXISTS (
+    SELECT 1 FROM sys.columns
+    WHERE Name = N'eligibility_json'
+      AND Object_ID = Object_ID(N'javert_audit_runs')
+)
+BEGIN
+    ALTER TABLE javert_audit_runs ADD eligibility_json NVARCHAR(MAX) NULL;
+    PRINT 'Added column eligibility_json to javert_audit_runs';
+END
+ELSE
+    PRINT 'Column eligibility_json already exists on javert_audit_runs';
 GO
 
 -- 索引 1: 按 rule + patient 反查最新结果
 IF NOT EXISTS (
     SELECT 1 FROM sys.indexes
     WHERE name = 'ix_Javert_audit_rule_patient'
-      AND object_id = OBJECT_ID(N'dbo.Javert_audit_runs')
+      AND object_id = OBJECT_ID(N'dbo.javert_audit_runs')
 )
 BEGIN
     CREATE INDEX ix_Javert_audit_rule_patient
-        ON Javert_audit_runs (rule_id, patient_id, created_at DESC);
+        ON javert_audit_runs (rule_id, patient_id, created_at DESC);
     PRINT 'Created index ix_Javert_audit_rule_patient';
 END
 ELSE
@@ -70,11 +116,11 @@ GO
 IF NOT EXISTS (
     SELECT 1 FROM sys.indexes
     WHERE name = 'ix_Javert_audit_created_at'
-      AND object_id = OBJECT_ID(N'dbo.Javert_audit_runs')
+      AND object_id = OBJECT_ID(N'dbo.javert_audit_runs')
 )
 BEGIN
     CREATE INDEX ix_Javert_audit_created_at
-        ON Javert_audit_runs (created_at DESC);
+        ON javert_audit_runs (created_at DESC);
     PRINT 'Created index ix_Javert_audit_created_at';
 END
 ELSE
@@ -85,11 +131,11 @@ GO
 IF NOT EXISTS (
     SELECT 1 FROM sys.indexes
     WHERE name = 'ix_Javert_audit_verdict_rule'
-      AND object_id = OBJECT_ID(N'dbo.Javert_audit_runs')
+      AND object_id = OBJECT_ID(N'dbo.javert_audit_runs')
 )
 BEGIN
     CREATE INDEX ix_Javert_audit_verdict_rule
-        ON Javert_audit_runs (verdict, rule_id);
+        ON javert_audit_runs (verdict, rule_id);
     PRINT 'Created index ix_Javert_audit_verdict_rule';
 END
 ELSE
@@ -100,14 +146,43 @@ GO
 IF NOT EXISTS (
     SELECT 1 FROM sys.columns
     WHERE Name = N'batch_tag'
-      AND Object_ID = Object_ID(N'Javert_audit_runs')
+      AND Object_ID = Object_ID(N'javert_audit_runs')
 )
 BEGIN
-    ALTER TABLE Javert_audit_runs ADD batch_tag NVARCHAR(20) NULL;
-    PRINT 'Added column batch_tag to Javert_audit_runs (v0.7 migration)';
+    ALTER TABLE javert_audit_runs ADD batch_tag NVARCHAR(20) NULL;
+    PRINT 'Added column batch_tag to javert_audit_runs (v0.7 migration)';
 END
 ELSE
-    PRINT 'Column batch_tag already exists on Javert_audit_runs';
+    PRINT 'Column batch_tag already exists on javert_audit_runs';
+GO
+
+-- OCR pipeline: caseRef/version 派生安全重放键（不含原始患者标识）
+IF NOT EXISTS (
+    SELECT 1 FROM sys.columns
+    WHERE Name = N'replay_key'
+      AND Object_ID = Object_ID(N'javert_audit_runs')
+)
+BEGIN
+    ALTER TABLE javert_audit_runs ADD replay_key NVARCHAR(128) NULL;
+    PRINT 'Added column replay_key to javert_audit_runs (OCR pipeline)';
+END
+ELSE
+    PRINT 'Column replay_key already exists on javert_audit_runs';
+GO
+
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes
+    WHERE name = N'ux_Javert_audit_replay_rule'
+      AND object_id = OBJECT_ID(N'dbo.javert_audit_runs')
+)
+BEGIN
+    CREATE UNIQUE INDEX ux_Javert_audit_replay_rule
+        ON javert_audit_runs (replay_key, rule_id)
+        WHERE replay_key IS NOT NULL;
+    PRINT 'Created index ux_Javert_audit_replay_rule';
+END
+ELSE
+    PRINT 'Index ux_Javert_audit_replay_rule already exists';
 GO
 
 -- v0.9 (enhance-workbench-usability) migration: anchors_json 派生缓存
@@ -116,14 +191,14 @@ GO
 IF NOT EXISTS (
     SELECT 1 FROM sys.columns
     WHERE Name = N'anchors_json'
-      AND Object_ID = Object_ID(N'Javert_audit_runs')
+      AND Object_ID = Object_ID(N'javert_audit_runs')
 )
 BEGIN
-    ALTER TABLE Javert_audit_runs ADD anchors_json NVARCHAR(MAX) NULL;
-    PRINT 'Added column anchors_json to Javert_audit_runs (v0.9 migration)';
+    ALTER TABLE javert_audit_runs ADD anchors_json NVARCHAR(MAX) NULL;
+    PRINT 'Added column anchors_json to javert_audit_runs (v0.9 migration)';
 END
 ELSE
-    PRINT 'Column anchors_json already exists on Javert_audit_runs';
+    PRINT 'Column anchors_json already exists on javert_audit_runs';
 GO
 
 -- add-verdict-gate-layer migration: gate_tag (裁决后确定性 gate 降级标签)
@@ -131,14 +206,14 @@ GO
 IF NOT EXISTS (
     SELECT 1 FROM sys.columns
     WHERE Name = N'gate_tag'
-      AND Object_ID = Object_ID(N'Javert_audit_runs')
+      AND Object_ID = Object_ID(N'javert_audit_runs')
 )
 BEGIN
-    ALTER TABLE Javert_audit_runs ADD gate_tag NVARCHAR(20) NULL;
-    PRINT 'Added column gate_tag to Javert_audit_runs (add-verdict-gate-layer migration)';
+    ALTER TABLE javert_audit_runs ADD gate_tag NVARCHAR(20) NULL;
+    PRINT 'Added column gate_tag to javert_audit_runs (add-verdict-gate-layer migration)';
 END
 ELSE
-    PRINT 'Column gate_tag already exists on Javert_audit_runs';
+    PRINT 'Column gate_tag already exists on javert_audit_runs';
 GO
 
 -- ============================================================
@@ -224,7 +299,7 @@ UPDATE rv
    SET rv.patient_id = r.patient_id,
        rv.rule_id    = r.rule_id
   FROM javert_vio_review rv
-  INNER JOIN Javert_audit_runs r ON r.run_id = rv.run_id
+  INNER JOIN javert_audit_runs r ON r.run_id = rv.run_id
  WHERE rv.patient_id IS NULL OR rv.rule_id IS NULL;
 GO
 
@@ -349,7 +424,7 @@ GO
 
 -- ============================================================
 -- 视图 v_javert_reviews: 给运营 / SSMS 看的友好版
---   把 javert_vio_review 跟 Javert_audit_runs + javert_users JOIN, 显式带出
+--   把 javert_vio_review 跟 javert_audit_runs + javert_users JOIN, 显式带出
 --   患者住院号 (patient_id) + 规则 ID (rule_id) + 用户名 (username)
 --   原表 javert_vio_review 保持窄设计 (insert-only + is_latest), 视图做拼接
 -- ============================================================
@@ -357,32 +432,6 @@ IF OBJECT_ID(N'dbo.v_javert_reviews', N'V') IS NOT NULL
     DROP VIEW v_javert_reviews;
 GO
 
-CREATE VIEW v_javert_reviews AS
-SELECT
-    rv.id                 AS review_id,
-    rv.created_at         AS reviewed_at,
-    rv.is_latest,
-    u.id                  AS user_id,
-    u.username,
-    u.display_name,
-    r.patient_id,
-    r.rule_id,
-    r.verdict             AS javert_verdict,
-    r.confidence          AS javert_confidence,
-    rv.review_verdict     AS expert_verdict,
-    CASE
-        WHEN (r.verdict = N'VIOLATION'     AND rv.review_verdict = N'V')
-          OR (r.verdict = N'INCONCLUSIVE'  AND rv.review_verdict = N'I')
-          OR (r.verdict = N'CLEAN'         AND rv.review_verdict = N'C')
-        THEN N'agree'
-        ELSE N'disagree'
-    END                   AS expert_vs_javert,
-    rv.comment,
-    rv.run_id
-FROM javert_vio_review rv
-INNER JOIN Javert_audit_runs r ON r.run_id = rv.run_id
-INNER JOIN javert_users     u ON u.id     = rv.user_id;
-GO
 
 PRINT 'Created view v_javert_reviews (review + patient_id + rule_id + username)';
 GO
@@ -394,21 +443,6 @@ IF OBJECT_ID(N'dbo.v_javert_audit_logs', N'V') IS NOT NULL
     DROP VIEW v_javert_audit_logs;
 GO
 
-CREATE VIEW v_javert_audit_logs AS
-SELECT
-    l.id,
-    l.ts,
-    l.action,
-    l.user_id,
-    u.username,
-    u.display_name,
-    l.target_id,
-    l.payload_json,
-    l.ip,
-    l.user_agent
-FROM javert_audit_logs l
-LEFT JOIN javert_users u ON u.id = l.user_id;
-GO
 
 PRINT 'Created view v_javert_audit_logs (action + username + target_id)';
 GO
@@ -418,7 +452,7 @@ SELECT
     COUNT(*) AS table_count,
     STRING_AGG(name, ', ') AS tables
 FROM sys.tables
-WHERE name IN ('Javert_audit_runs', 'javert_users', 'javert_vio_review', 'javert_audit_logs');
+WHERE name IN ('javert_audit_runs', 'javert_users', 'javert_vio_review', 'javert_audit_logs');
 GO
 
 SELECT

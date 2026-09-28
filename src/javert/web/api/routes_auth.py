@@ -29,7 +29,9 @@ router = APIRouter(tags=["auth"])
 try:
     from slowapi import Limiter
     from slowapi.util import get_remote_address
-    limiter = Limiter(key_func=get_remote_address)
+    # key_style="endpoint": 按视图函数聚合限流窗口. 默认 "url" 会把
+    # /api/patient/{pid}/raw 的每个 pid 算成独立 bucket → 枚举患者号永远限不住.
+    limiter = Limiter(key_func=get_remote_address, key_style="endpoint")
 except Exception:  # noqa: BLE001
     limiter = None  # type: ignore[assignment]
 

@@ -130,6 +130,16 @@ fees:
   - cnt
   - 数量
   - 数量（次）
+  unit:
+  - unit
+  - 计价单位
+  - 单位
+  - 收费单位
+  order_id:
+  - order_id
+  - YZID
+  - 医嘱ID
+  - 医嘱编号
   spec:
   - spec
   - 规格

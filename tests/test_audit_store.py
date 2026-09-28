@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import time
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -21,6 +22,7 @@ def _make_result(rule_id="R191", patient_id="J66252", verdict="VIOLATION", **ove
         patient_id=patient_id,
         verdict=verdict,
         confidence=0.85,
+        headline="脑功能成像项目存在重复收费，现有证据支持违规结论",
         reasoning="测试理由",
         evidence=[Evidence(source="note", locator="入院诊断", text="甲状腺乳头状癌")],
         tool_calls=[ToolCall(tool_name="search_notes", arguments={"patient_id": patient_id}, result="...", duration_ms=50)],
@@ -54,7 +56,7 @@ def test_init_creates_schema(tmp_path: Path):
     assert cur.fetchone()["value"] == str(SqliteStore.SCHEMA_VERSION)
     # v2 sync 列存在
     cols = {r[1] for r in s.conn.execute("PRAGMA table_info(audit_runs)").fetchall()}
-    assert {"synced_at", "sync_attempts", "sync_last_error"} <= cols
+    assert {"synced_at", "sync_attempts", "sync_last_error", "headline"} <= cols
     s.close()
 
 
@@ -87,7 +89,7 @@ def test_v1_to_v2_migration(tmp_path: Path):
     s = SqliteStore(db)
     s.init_schema()
     cols = {r[1] for r in s.conn.execute("PRAGMA table_info(audit_runs)").fetchall()}
-    assert {"synced_at", "sync_attempts", "sync_last_error"} <= cols
+    assert {"synced_at", "sync_attempts", "sync_last_error", "headline"} <= cols
     # 老数据保留 + 默认 unsynced
     state = s.count_sync_state()
     assert state["total"] == 1
@@ -176,14 +178,62 @@ def test_mark_synced_then_failed_then_synced(store: SqliteStore):
 
 
 def test_write_and_round_trip(store: SqliteStore):
-    r = _make_result()
+    r = _make_result(anchors_json='{"items":[],"schema_version":2,"verified_fee_snapshot":true}')
     store.write(r)
     again = store.find_by_run_id(r.run_id)
     assert again is not None
     assert again.run_id == r.run_id
     assert again.verdict == "VIOLATION"
+    assert again.headline == r.headline
     assert again.evidence[0].text == "甲状腺乳头状癌"
     assert again.tool_calls[0].tool_name == "search_notes"
+    assert again.anchors_json == r.anchors_json
+
+
+def test_find_unsynced_preserves_anchors_cache(store: SqliteStore):
+    r = _make_result(anchors_json='{"items":[],"schema_version":2,"verified_fee_snapshot":true}')
+    store.write(r)
+    pending = store.find_unsynced()
+    assert len(pending) == 1
+    assert pending[0].anchors_json == r.anchors_json
+
+
+def test_old_null_headline_roundtrip_and_migration_is_idempotent(tmp_path: Path):
+    db = tmp_path / "old-headline.sqlite"
+    conn = sqlite3.connect(db)
+    conn.execute("""
+        CREATE TABLE audit_runs (
+            run_id TEXT PRIMARY KEY, rule_id TEXT, patient_id TEXT,
+            verdict TEXT, confidence REAL, reasoning TEXT,
+            evidence_json TEXT, tool_calls_json TEXT,
+            duration_ms INTEGER, model TEXT, started_at TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute("CREATE TABLE _meta (key TEXT PRIMARY KEY, value TEXT)")
+    conn.execute("INSERT INTO _meta VALUES ('schema_version', '1')")
+    conn.execute(
+        "INSERT INTO audit_runs (run_id, rule_id, patient_id, verdict, started_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        ("aud_OLDHEADLINE1", "R191", "CASE-DEID-OLD", "CLEAN", "2026-01-01T00:00:00+00:00"),
+    )
+    conn.commit()
+    conn.close()
+
+    migrated = SqliteStore(db)
+    migrated.init_schema()
+    migrated.init_schema()
+    columns = [
+        row[1]
+        for row in migrated.conn.execute("PRAGMA table_info(audit_runs)").fetchall()
+    ]
+    assert columns.count("headline") == 1
+    loaded = migrated.find_by_run_id("aud_OLDHEADLINE1")
+    assert loaded is not None and loaded.headline == ""
+    assert migrated.conn.execute(
+        "SELECT headline FROM audit_runs WHERE run_id='aud_OLDHEADLINE1'"
+    ).fetchone()[0] is None
+    migrated.close()
 
 
 def test_two_writes_same_rule_patient_kept(store: SqliteStore):
@@ -197,6 +247,25 @@ def test_two_writes_same_rule_patient_kept(store: SqliteStore):
     latest = store.find_by_rule_patient_latest("R191", "J66252")
     assert latest is not None
     assert latest.run_id in {r1.run_id, r2.run_id}
+
+
+def test_replay_key_is_persisted_and_unique_per_rule(store: SqliteStore):
+    replay_key = "123e4567-e89b-42d3-a456-426614174000-v1"
+    first = _make_result(rule_id="R191")
+    store.write(first, batch_tag="ocr1.0", replay_key=replay_key)
+
+    assert store.publication_metadata(first.run_id) == ("ocr1.0", replay_key)
+    entries = store.find_replay_entries(replay_key)
+    assert [(result.run_id, synced) for result, synced in entries] == [
+        (first.run_id, False)
+    ]
+
+    with pytest.raises(sqlite3.IntegrityError):
+        store.write(
+            _make_result(rule_id="R191"),
+            batch_tag="ocr1.0",
+            replay_key=replay_key,
+        )
 
 
 def test_summary_distribution(store: SqliteStore):

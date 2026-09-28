@@ -5,6 +5,7 @@ question: 将健康人员、轻症患者诊断编造、篡改为重性精神疾�
 example: 示例：某医院为延长住院时间，在病历中虚构患者有自杀倾向，实际患者病情稳定，无相关风险。
 status: drafting
 priority: P2
+handling_level: 提醒（引导）
 prompt_addon: ''
 trigger_keywords: []
 suggested_tools: []

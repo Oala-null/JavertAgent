@@ -12,8 +12,9 @@ class FeeItem:
 
     item_sn: str                       # feedetl_sn (唯一键)
     medins_list_name: str              # 项目/药品名称 (主要 keyword)
-    medins_list_codg: Optional[str] = None  # 医保编码
-    chrgitm_type: Optional[str] = None      # med_chrgitm_type (西药/中成药/检查/治疗 etc)
+    medins_list_codg: Optional[str] = None  # 本院医保编码
+    med_list_codg: Optional[str] = None     # 国标医保目录编码 (C 码, 跨院可移植 → trigger_codes 前缀)
+    chrgitm_type: Optional[str] = None      # medins_chrgitm_type 类别标签 (西药/中成药/检查/治疗 etc)
     inscp_scp_amt: Optional[float] = None   # 医保内金额; None = 数据缺失, 视为可能命中
     self_flag: bool = False                 # 全自费标志
     fee_ocur_time: Optional[str] = None     # 发生时间
@@ -72,8 +73,6 @@ class RouterDecision:
 
     patient_id: str
     final_rules: list[str]                    # 排序后, Stage B 要跑的 javert rule ids
-    overlapping_kept: list[str]               # case A 因 java 触发而保留
-    javert_only_kept: list[str]               # case B 因高层 pruning 通过而保留
     pruned_out: list[str]                     # 被 prune 掉的 javert rule ids
     java_triggered: dict[str, list[TriggerEvidence]] = field(default_factory=dict)
     stats: dict[str, int] = field(default_factory=dict)

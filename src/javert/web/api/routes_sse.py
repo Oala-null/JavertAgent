@@ -3,7 +3,7 @@
 
 两类事件:
   - review_submitted: routes_workbench.submit_review 触发 (asyncio 同进程)
-  - new_audit_run:    audit_watcher 任务 (poll Javert_audit_runs 每秒) 触发
+  - new_audit_run:    audit_watcher 任务 (poll javert_audit_runs 每秒) 触发
 
 EventBus 单进程内 fan-out, 无外部依赖. 多 web 进程 (未来) 各自 poll 各自 fan-out.
 """
@@ -21,8 +21,41 @@ from sse_starlette.sse import EventSourceResponse
 
 from javert.store.sqlserver_store import get_sqlserver_store
 from javert.web.auth import session_user_id
+from javert.web.public_presenter import present_public_explanation, public_promise_summary
+from javert.web.rule_meta import load_rule_meta
 
 logger = logging.getLogger("javert.web.routes_sse")
+
+
+_ELIGIBILITY_SSE_FIELDS = (
+    "audit_disposition",
+    "eligibility_status",
+    "release_id",
+    "rule_revision_id",
+    "drug_concept_id",
+    "policy_scope",
+    "source_type",
+    "policy_scope_display_label",
+    "source_versions",
+    "source_document_ids",
+    "source_fragment_ids",
+    "rule_effective_from",
+    "rule_effective_to",
+    "evaluated_service_date",
+    "effective_date_enforced",
+    "temporal_applicability",
+    "temporal_warning",
+    "scope_evaluations",
+)
+
+
+def _eligibility_sse_fields(value: Any) -> dict[str, Any]:
+    """提取 SSE 顶层可选摘要；旧行/非肿瘤结果统一返回 None。"""
+
+    if hasattr(value, "model_dump"):
+        value = value.model_dump(mode="json")
+    evaluation = value if isinstance(value, dict) else {}
+    return {field: evaluation.get(field) for field in _ELIGIBILITY_SSE_FIELDS}
 
 
 # =========================================================
@@ -121,6 +154,10 @@ class AuditWatcher:
                     None, store.fetch_runs_since_id, self._last_id, 100,
                 )
                 for row in rows:
+                    eligibility_evaluation = row.get("eligibility_evaluation")
+                    public_explanation = present_public_explanation(
+                        row, load_rule_meta().get(row["rule_id"]), []
+                    )
                     is_new_p = not await loop.run_in_executor(
                         None, store.has_other_runs, row["patient_id"], row["run_id"],
                     )
@@ -130,6 +167,11 @@ class AuditWatcher:
                         "rule_id": row["rule_id"],
                         "verdict": row["verdict"],
                         "confidence": row["confidence"],
+                        "headline": public_explanation["headline"],
+                        "eligibility_evaluation": eligibility_evaluation,
+                        **_eligibility_sse_fields(eligibility_evaluation),
+                        "public_explanation": public_explanation,
+                        "promise": public_promise_summary(row.get("promise_trace")),
                         "is_new_patient": is_new_p,
                     })
                     self._last_id = int(row["id"])

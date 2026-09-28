@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""javert sync-to-mssql — sqlite audit_runs → 142 Javert_audit_runs 一次性/增量同步.
+"""javert sync-to-mssql — sqlite audit_runs → 142 javert_audit_runs 一次性/增量同步.
 
 设计上和 web SyncWorker 同源 (write_audit + mark_synced/mark_sync_failed), 但用于
 CLI 一次性 import (3345 条) 与 --pending-only 补漏.
@@ -63,7 +63,7 @@ def run_sync_to_mssql(
             existing = {
                 r[0]
                 for r in conn142.execute(
-                    text("SELECT run_id FROM Javert_audit_runs")
+                    text("SELECT run_id FROM javert_audit_runs")
                 ).fetchall()
             }
         with sqlite3.connect(cfg.audit_db_path) as conn_l:
@@ -109,17 +109,21 @@ def run_sync_to_mssql(
                 batch = [r for r in batch if r is not None]
                 offset += batch_size
 
-            # 一次性查 batch_tag (AuditResult model 没这字段)
+            # 一次性查批次与安全重放键 (AuditResult model 没这两个字段)
             run_ids = [r.run_id for r in batch]
             tag_map: dict[str, str | None] = {}
+            replay_map: dict[str, str | None] = {}
             if run_ids:
                 with sqlite3.connect(cfg.audit_db_path) as conn_t:
                     placeholders = ",".join("?" * len(run_ids))
                     cur = conn_t.execute(
-                        f"SELECT run_id, batch_tag FROM audit_runs WHERE run_id IN ({placeholders})",
+                        f"SELECT run_id, batch_tag, replay_key FROM audit_runs "
+                        f"WHERE run_id IN ({placeholders})",
                         run_ids,
                     )
-                    tag_map = {r[0]: r[1] for r in cur.fetchall()}
+                    metadata_rows = cur.fetchall()
+                    tag_map = {r[0]: r[1] for r in metadata_rows}
+                    replay_map = {r[0]: r[2] for r in metadata_rows}
 
             for result in batch:
                 rule_obj = None
@@ -131,6 +135,7 @@ def run_sync_to_mssql(
                     result, rule_obj,
                     triggered_by="cli-sync",
                     batch_tag=tag_map.get(result.run_id),
+                    replay_key=replay_map.get(result.run_id),
                 )
                 if ok:
                     store.mark_synced(result.run_id)

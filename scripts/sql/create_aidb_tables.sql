@@ -37,6 +37,8 @@ BEGIN
         [收费日期]    NVARCHAR(64)   NULL,   -- 推荐 ISO 2026-01-05
         [费用类别]    NVARCHAR(64)   NULL,   -- 西药/中成药/检查/化验/治疗/手术/护理/材料/其他
         [数量]        NVARCHAR(64)   NULL,
+        [计价单位]    NVARCHAR(64)   NULL,
+        [医嘱编号]    NVARCHAR(128)  NULL,
         [单价]        NVARCHAR(64)   NULL,
         [规格]        NVARCHAR(255)  NULL,
         [项目编码]    NVARCHAR(128)  NULL,
@@ -50,6 +52,12 @@ BEGIN
 END
 ELSE
     PRINT 'Table intake_fees already exists, skip CREATE';
+GO
+
+IF COL_LENGTH('dbo.intake_fees', '计价单位') IS NULL
+    ALTER TABLE dbo.intake_fees ADD [计价单位] NVARCHAR(64) NULL;
+IF COL_LENGTH('dbo.intake_fees', '医嘱编号') IS NULL
+    ALTER TABLE dbo.intake_fees ADD [医嘱编号] NVARCHAR(128) NULL;
 GO
 
 -- ============================================================

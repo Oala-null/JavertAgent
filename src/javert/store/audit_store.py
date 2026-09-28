@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from javert.audit.result import AuditResult, Evidence, ToolCall
+from javert.oncology.contracts import EligibilityEvaluation
+from javert.promises.models import PromiseTrace
 
 logger = logging.getLogger("javert.store.audit_store")
 
@@ -65,7 +67,7 @@ class AuditStore(ABC):
 class SqliteStore(AuditStore):
     """SQLite 实现."""
 
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 9
 
     def __init__(self, db_path: Path):
         self.db_path = db_path
@@ -78,8 +80,12 @@ class SqliteStore(AuditStore):
     def conn(self) -> sqlite3.Connection:
         if self._conn is None:
             # check_same_thread=False 允许跨线程使用同一 conn (由 _write_lock 串行)
-            self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            # timeout=30 + WAL + busy_timeout: jv-go (CLI 进程) 与 web SyncWorker 并发写同一库时
+            # 不再 5s 就抛 database is locked 丢结果 (跨进程 _write_lock 无效, 只能靠 sqlite 层)
+            self._conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=30)
             self._conn.row_factory = sqlite3.Row
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA busy_timeout=30000")
         return self._conn
 
     def close(self) -> None:
@@ -92,12 +98,12 @@ class SqliteStore(AuditStore):
         schema_sql = (Path(__file__).parent / "schema.sql").read_text(encoding="utf-8")
         with self.conn as c:
             c.executescript(schema_sql)
-        # v2 migration: 老库 ALTER 补三列, 新库一切就绪
+        # 累积 migration: 老库逐列幂等 ALTER, 新库一切就绪
         self._ensure_v2_columns()
         logger.info("audit_store schema 已初始化 (v%d): %s", self.SCHEMA_VERSION, self.db_path)
 
     def _ensure_v2_columns(self) -> None:
-        """v2 migration: 给 audit_runs 补 synced_at / sync_attempts / sync_last_error 列.
+        """累积 migration: 给 audit_runs 幂等补齐 v2-v9 可空列.
 
         幂等. 老库 (v1) 缺这三列 → ALTER TABLE 补; 新库 (v2) 已含 → 跳过.
         最后无条件 CREATE INDEX IF NOT EXISTS idx_audit_unsynced.
@@ -121,6 +127,18 @@ class SqliteStore(AuditStore):
         # v5 (add-verdict-gate-layer): gate_tag
         if "gate_tag" not in existing_cols:
             migrations.append("ALTER TABLE audit_runs ADD COLUMN gate_tag TEXT")
+        # v6 (strengthen-oncology-drug-eligibility): 单一可空 JSON 扩展
+        if "eligibility_json" not in existing_cols:
+            migrations.append("ALTER TABLE audit_runs ADD COLUMN eligibility_json TEXT")
+        # v7 (add-evolving-promise-harness): 可空、去标识的终局 trace
+        if "promise_trace_json" not in existing_cols:
+            migrations.append("ALTER TABLE audit_runs ADD COLUMN promise_trace_json TEXT")
+        # v8 (OCR pipeline): caseRef/version 派生安全重放键
+        if "replay_key" not in existing_cols:
+            migrations.append("ALTER TABLE audit_runs ADD COLUMN replay_key TEXT")
+        # v9 (add-public-audit-headline-contract): 旧行保持 NULL，不批量回填
+        if "headline" not in existing_cols:
+            migrations.append("ALTER TABLE audit_runs ADD COLUMN headline TEXT")
 
         with self.conn as c:
             for sql in migrations:
@@ -131,13 +149,23 @@ class SqliteStore(AuditStore):
                 "CREATE INDEX IF NOT EXISTS idx_audit_unsynced "
                 "ON audit_runs(synced_at, created_at)"
             )
+            c.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ux_audit_replay_rule "
+                "ON audit_runs(replay_key, rule_id) WHERE replay_key IS NOT NULL"
+            )
             if migrations:
                 c.execute(
-                    "INSERT OR REPLACE INTO _meta(key, value) VALUES ('schema_version', '2')"
+                    "INSERT OR REPLACE INTO _meta(key, value) VALUES ('schema_version', ?)",
+                    (str(self.SCHEMA_VERSION),),
                 )
 
     # ---- write ----
-    def write(self, result: AuditResult, batch_tag: str | None = None) -> None:
+    def write(
+        self,
+        result: AuditResult,
+        batch_tag: str | None = None,
+        replay_key: str | None = None,
+    ) -> None:
         evidence_json = json.dumps(
             [e.model_dump() for e in result.evidence],
             ensure_ascii=False,
@@ -146,14 +174,35 @@ class SqliteStore(AuditStore):
             [tc.model_dump() for tc in result.tool_calls],
             ensure_ascii=False,
         )
+        eligibility_json = (
+            json.dumps(
+                result.eligibility_evaluation.model_dump(mode="json"),
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+            if result.eligibility_evaluation is not None
+            else None
+        )
+        promise_trace_json = (
+            json.dumps(
+                result.promise_trace.model_dump(mode="json"),
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+            if result.promise_trace is not None
+            else None
+        )
+        # 防止调用方在构造后就地改 verdict/eligibility，写入前再次验证投影.
+        AuditResult.model_validate(result.model_dump())
         with self._write_lock, self.conn as c:
             c.execute(
                 """
                 INSERT INTO audit_runs (
                     run_id, rule_id, patient_id, verdict, confidence,
-                    reasoning, evidence_json, tool_calls_json,
-                    duration_ms, model, started_at, batch_tag, gate_tag
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    headline, reasoning, evidence_json, tool_calls_json,
+                    duration_ms, model, started_at, batch_tag, gate_tag,
+                    eligibility_json, promise_trace_json, anchors_json, replay_key
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     result.run_id,
@@ -161,6 +210,7 @@ class SqliteStore(AuditStore):
                     result.patient_id,
                     result.verdict,
                     result.confidence,
+                    result.headline or None,
                     result.reasoning,
                     evidence_json,
                     tool_calls_json,
@@ -169,6 +219,10 @@ class SqliteStore(AuditStore):
                     result.started_at.isoformat(),
                     batch_tag,
                     result.gate_tag or "",
+                    eligibility_json,
+                    promise_trace_json,
+                    result.anchors_json,
+                    replay_key,
                 ),
             )
 
@@ -179,12 +233,19 @@ class SqliteStore(AuditStore):
         started_at = datetime.fromisoformat(row["started_at"]) if row["started_at"] else datetime.now(timezone.utc)
         cols = row.keys()
         gate_tag = (row["gate_tag"] or "") if "gate_tag" in cols else ""
+        eligibility = None
+        if "eligibility_json" in cols and row["eligibility_json"]:
+            eligibility = EligibilityEvaluation.model_validate_json(row["eligibility_json"])
+        promise_trace = None
+        if "promise_trace_json" in cols and row["promise_trace_json"]:
+            promise_trace = PromiseTrace.model_validate_json(row["promise_trace_json"])
         return AuditResult(
             run_id=row["run_id"],
             rule_id=row["rule_id"],
             patient_id=row["patient_id"],
             verdict=row["verdict"],
             confidence=row["confidence"] or 0.0,
+            headline=(row["headline"] or "") if "headline" in cols else "",
             reasoning=row["reasoning"] or "",
             evidence=evidence,
             tool_calls=tool_calls,
@@ -192,6 +253,9 @@ class SqliteStore(AuditStore):
             model=row["model"] or "",
             started_at=started_at,
             gate_tag=gate_tag,
+            eligibility_evaluation=eligibility,
+            promise_trace=promise_trace,
+            anchors_json=(row["anchors_json"] if "anchors_json" in cols else None),
         )
 
     def find_by_run_id(self, run_id: str) -> AuditResult | None:
@@ -275,6 +339,31 @@ class SqliteStore(AuditStore):
                 "mean_duration_ms": float(row["mean_duration_ms"] or 0.0),
             }
         return out
+
+    def latest_verdict_rows(self, batch_tag: str | None = None) -> list[tuple[str, str, str]]:
+        """每 (rule_id, patient_id) 取 created_at 最新一条 → (rule_id, patient_id, verdict).
+
+        跨患者统计 (add-cross-patient-stats) 的 latest 去重源; batch_tag 非空则只算该批次.
+        ~5000 行 Python dedup 足够, 无需 window func. created_at 是 ISO/CURRENT_TIMESTAMP
+        文本, 字典序即时间序.
+        """
+        params: list = []
+        where = ""
+        if batch_tag is not None:
+            where = "WHERE batch_tag = ?"
+            params.append(batch_tag)
+        cur = self.conn.execute(
+            f"SELECT rule_id, patient_id, verdict, created_at FROM audit_runs {where}",
+            params,
+        )
+        latest: dict[tuple[str, str], tuple[str, str]] = {}  # (rule,patient)->(verdict,created_at)
+        for row in cur.fetchall():
+            key = (row["rule_id"], row["patient_id"])
+            ca = row["created_at"] or ""
+            prev = latest.get(key)
+            if prev is None or ca >= prev[1]:
+                latest[key] = (row["verdict"], ca)
+        return [(rid, pid, v) for (rid, pid), (v, _ca) in latest.items()]
 
     # =========================================================
     # v2: 142 同步状态管理
@@ -369,6 +458,30 @@ class SqliteStore(AuditStore):
             "last_error": last_err["sync_last_error"] if last_err else None,
             "last_error_run_id": last_err["run_id"] if last_err else None,
         }
+
+    def publication_metadata(self, run_id: str) -> tuple[str | None, str | None]:
+        """返回不进入 AuditResult 的批次标签与安全重放键。"""
+        row = self.conn.execute(
+            "SELECT batch_tag, replay_key FROM audit_runs WHERE run_id=?",
+            (run_id,),
+        ).fetchone()
+        if row is None:
+            return None, None
+        return row[0], row[1]
+
+    def find_replay_entries(
+        self,
+        replay_key: str,
+    ) -> list[tuple[AuditResult, bool]]:
+        """返回同一安全重放键的结果及其 Workbench 同步状态。"""
+        rows = self.conn.execute(
+            "SELECT * FROM audit_runs WHERE replay_key=? ORDER BY rule_id",
+            (replay_key,),
+        ).fetchall()
+        return [
+            (self._row_to_result(row), row["synced_at"] is not None)
+            for row in rows
+        ]
 
     # =========================================================
     # 中位数耗时 (v1 已有)

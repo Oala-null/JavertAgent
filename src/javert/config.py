@@ -3,17 +3,33 @@
 
 from __future__ import annotations
 
+import json
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
-from pydantic import Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+class HubRawProfile(BaseModel):
+    """按 batch tag 选择的只读 Hub 原文源；字段只允许单段安全标识符。"""
+
+    database: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,127}$",
+    )
+    table_prefix: str = Field(
+        default="",
+        max_length=64,
+        pattern=r"^(?:[A-Za-z_][A-Za-z0-9_]{0,63})?$",
+    )
 
 
 class JavertConfig(BaseSettings):
@@ -21,25 +37,52 @@ class JavertConfig(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="JAVERT_",
-        env_file=None,
+        # 项目根 .env 自动兜底 (优先级最低: 显式 env > yaml > .env 文件 > 字段默认).
+        # 凭证移出源码后, 忘 source .env 的 CLI/批跑进程也能拿到 JAVERT_SQL_PASSWORD.
+        env_file=str(PROJECT_ROOT / ".env"),
+        env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
     )
 
     # LLM
-    llm_endpoint: str = "http://192.168.31.62:30000/v1"
+    llm_endpoint: str = "http://127.0.0.1:30000/v1"  # 环境指向由 .env 提供, 代码不带内网地址
     llm_model: str = "Qwen/Qwen3.6-35B-A3B-FP8"
     llm_temperature: float = 0.0
     llm_max_tokens: int = 8192
     llm_timeout: int = 300
     llm_enable_thinking: bool = False
+    # text=现网兼容文本标签；native=OpenAI tools（Qwen3.8 / qwen3_coder parser）。
+    llm_tool_protocol: Literal["text", "native"] = "text"
 
     # Runner
     max_tool_calls: int = 10
     retry_budget: int = 3
+    # 单工具结果喂 LLM 前的截断上限 (fix-drug-audit-precision D2). 含必留标记的
+    # 工具结果只截明细段, 头部整段保全.
+    tool_result_max_chars: int = 2000
 
     # add-verdict-gate-layer: 裁决后确定性 gate 层开关. env JAVERT_VERDICT_GATE=off 直通 (回滚).
     verdict_gate: str = "on"
+
+    # pilot-deterministic-precheck: M1 确定性预检开关. env JAVERT_PRECHECK=off 直通 (回滚).
+    precheck: str = "on"
+
+    # recover-deterministic-recall: persist 层重跑漂移防护开关 (老 V 新 C → 落 I + 标签).
+    # env JAVERT_DRIFT_GUARD=off 直通 (回滚, 落库行为与本 change 之前逐字一致).
+    drift_guard: str = "on"
+
+    # strengthen-oncology-drug-eligibility: 肿瘤药结构化资格求值.
+    # off=完全保留现网旧路径; shadow=另存比较但不改旧 verdict; on=结构化结果生效.
+    oncology_eligibility_v2: Literal["off", "shadow", "on"] = "off"
+    # 肿瘤医保限定生效期闸 (env: JAVERT_ONCOLOGY_ENFORCE_EFFECTIVE_DATE).
+    # True=只审就诊日落在声明生效窗口内的候选 (保守, 代码默认);
+    # False=不分时间全部生效, 窗口外就诊追加"核查生效时间"提示 (前端 fail-loud, 不静默).
+    # 审核状态闸 (review_status=approved) 与本开关无关, 始终生效.
+    oncology_enforce_effective_date: bool = True
+    # 可选 published release bundle 目录；空值保持现有 configs/ 离线资产路径。
+    # 设置后启动时必须通过 active pointer/schema/checksum/review status 全部门禁，失败不回退。
+    oncology_release_dir: str = ""
 
     # Paths (字符串, 相对项目根)
     data_dir: str = "data"
@@ -60,17 +103,45 @@ class JavertConfig(BaseSettings):
     # v0.7: batch tag — 写入 audit_runs 时打上, 工作台 sidebar 显示 + 排序.
     # 默认 None = 不标 (baseline); CLI 跑 v1.2 重跑前 export JAVERT_BATCH_TAG=v1.2
     batch_tag: str | None = None
+    # OCR 流水线安全重放键：仅含 caseRef UUID + 版本，不含患者原始标识。
+    replay_key: str | None = Field(
+        default=None,
+        max_length=128,
+        pattern=(
+            r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"
+            r"[0-9a-f]{4}-[0-9a-f]{12}-v[1-9][0-9]*$"
+        ),
+    )
 
     # SQL Server 142 双写归档 (env: JAVERT_SQL_*)
     sql_enabled: bool = True
-    sql_host: str = "192.168.31.142"
+    sql_host: str = "127.0.0.1"
     sql_port: int = 1433
-    sql_user: str = "machendong"
-    sql_password: str = "Jyn_Machendong"
+    sql_user: str = "sa"
+    # 凭证不入源码 (进院前红区修复): 从 JAVERT_SQL_PASSWORD 环境变量注入 (source .env).
+    # 未设置时 142 双写自动降级不可用 (sqlserver_store warn), 本地 SQLite 不受影响.
+    sql_password: str = ""
     sql_database: str = "zadig"
     # 快照桥 (scripts/etl_from_sql.py) 的源数据库: 投资人/外院兜底数据填这里的 6 张 intake_* 表.
     # 与结果归档库 sql_database=zadig 区分 (同台 142 / 同账号, 桥读 aidb, 审计结果仍写 zadig).
     sql_source_database: str = "aidb"
+    # add-workbench-sql-raw-source: 工作台原文 hub SQL 源 (env: JAVERT_HUB_RAW_ENABLED /
+    # JAVERT_HUB_DATABASE). 默认关 = 纯 CSV 行为不变; 开启后 CSV 双 miss 时按患者号查 hub.
+    hub_raw_enabled: bool = False
+    hub_database: str = "sh_yb_platform"
+    # support-desus-hub-source: 同库隔离表族前缀，如 desus_TB_* 使用 "desus_"。
+    # 默认空串保持既有 TB_*；只允许单段 SQL 标识符字符，禁止 schema/引号/空白。
+    hub_table_prefix: str = Field(
+        default="",
+        max_length=64,
+        pattern=r"^(?:[A-Za-z_][A-Za-z0-9_]{0,63})?$",
+    )
+    # CSV miss 时按患者 latest batch_tag 选择隔离只读源；默认空映射保持单 Hub 行为。
+    # env 使用 JSON，例如 {"desus":{"database":"TP_data_hub","table_prefix":"desus_"}}。
+    hub_raw_profiles: dict[str, HubRawProfile] = Field(default_factory=dict)
+    # 单次 SQL 与整页签 deadline 分离；本地经 TCP 转发时可通过环境变量放宽。
+    hub_query_timeout: int = Field(default=4, ge=1, le=120)
+    hub_raw_deadline_seconds: float = Field(default=5.0, ge=0.1, le=180.0)
     sql_driver: str = "ODBC Driver 18 for SQL Server"
     sql_pool_size: int = 5
     sql_max_overflow: int = 5
@@ -92,6 +163,24 @@ class JavertConfig(BaseSettings):
     # 注册开关 (env: JAVERT_ALLOW_REGISTER) — 默认关; 运维走 `javert mssql-user`
     # 或 SSMS 直接 INSERT
     allow_register: bool = False
+
+    @field_validator("hub_raw_profiles", mode="before")
+    @classmethod
+    def _parse_hub_raw_profiles(cls, value):
+        if isinstance(value, str):
+            value = json.loads(value)
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise ValueError("hub_raw_profiles 必须是 batch_tag → Hub profile mapping")
+        for tag in value:
+            if not isinstance(tag, str) or not tag.strip() or tag != tag.strip() or len(tag) > 128:
+                raise ValueError("hub_raw_profiles 的 batch_tag 必须是非空、无首尾空白的短字符串")
+        return value
+
+    # harden-onsite-redlines: /api/patient/{pid}/raw 每会话限流档位 (slowapi 语法).
+    # 30/min 不影响专家逐个点开病历; 现场误伤时 env JAVERT_RAW_RATE_LIMIT 一行可调.
+    raw_rate_limit: str = "30/minute"
 
     # 解析为绝对路径
     def resolve(self, path: str) -> Path:

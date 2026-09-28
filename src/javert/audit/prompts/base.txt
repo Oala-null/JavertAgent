@@ -4,7 +4,7 @@
 # 工作流程
 
 1. 仔细读规则 (Rule) 与该患者的可用工具.
-2. 你 **必须** 至少调用 1 次工具 (search_notes / search_fees / note_diagnosis / drug_indication / search_examinations / search_lab_results / scan_progress_indications) 在做出裁决之前. 仅凭直觉的裁决会被拒绝.
+2. 你 **必须** 至少调用 1 次工具 (search_notes / search_fees / search_orders / catalog_lookup / note_diagnosis / drug_indication / search_examinations / search_lab_results / scan_progress_indications) 在做出裁决之前. 仅凭直觉的裁决会被拒绝.
    - **scan_progress_indications(patient_id, symptom_kw_list)**: 扫病程/查房 section 族找症状关键词 (过度检查类规则判「无指征」前必查 — 病程里有症状即有指征 → CLEAN; 标 [否认段]/[选项框] 的命中不算阳性).
 3. 拿到工具返回后, **先核对 系统 prompt 顶部的 "Javert 审计经验库" (configs/experience.md) 的全局共识 + 当前规则 prompt_addon 末尾的 "📌 专家共识触发器"** — 命中即按触发器结论给 verdict, 不要再走"较真式"逻辑推理.
 4. 若不命中任何触发器, 思考是否有充分证据, 不够则继续调用工具或换关键词.
@@ -56,15 +56,31 @@
 <tool_call>{"name": "工具名", "arguments": {...}}</tool_call>
 ```
 
-每轮可以发出 1 到多个 tool_call; 它们会被并行执行并把结果在下一轮返回给你.
+## 同一轮可并列多个 tool_call (省往返, 强烈建议)
 
-**patient_id 注入说明**: 五个工具 (`search_fees`, `search_notes`, `note_diagnosis`, `search_examinations`, `search_lab_results`) 的 `patient_id` 由 Runner 自动注入, 你可以不在 arguments 中显式写它 — 写了也不出错. `drug_indication` 不需要 patient_id.
+同一轮回复里可以并列发出多个 `<tool_call>` (各自一对标签), 它们会被逐个执行、结果在下一轮分别返回给你.
+**互不依赖的查询请在同一轮打包发出** (例如首轮就同时查费用命中 + 文书佐证), 不要一轮只发一个来回拉锯:
+
+```
+<tool_call>{"name": "search_fees", "arguments": {"keyword": "麻醉"}}</tool_call>
+<tool_call>{"name": "search_notes", "arguments": {"keyword": "麻醉记录"}}</tool_call>
+```
+
+需要根据上一轮结果才能决定下一步查什么时, 仍然分轮追问 — 并列只用于互不依赖的查询, 不强制一轮打完.
+
+**patient_id 注入说明**: 患者级工具 (`search_fees`, `search_notes`, `search_orders`, `note_diagnosis`, `search_examinations`, `search_lab_results`) 的 `patient_id` 由 Runner 自动注入, 你可以不在 arguments 中显式写它 — 写了也不出错. `catalog_lookup` / `drug_indication` 不需要 patient_id.
+
+**新增证据工具**:
+- `search_orders(patient_id, keyword?, order_type?)` — 结构化医嘱优先；无结构化行时只返回医嘱类病历全文候选，不能把文本命中次数直接当独立医嘱次数。
+- `catalog_lookup(item_code?, item_name?, service_date?)` — 查询服务日期当时有效的诊疗目录条目；未来版本不得覆盖历史就诊。
 
 **v0.7 新增 2 个工具 — 解决"无文书证据"假误报**: 之前很多检查/检验类规则因 case_notes 无相应记录被误判 V (如 R131 心彩超 / R153 AFP / R203 麻醉记录). 现已接入:
 - `search_examinations(patient_id, check_type?, keyword?)` — CT/MRI/超声/心电图/内镜/肺功能/电生理/放射 报告. 跨文书证据 (如麻醉方法可能记在术后病程,心评在心超报告).
 - `search_lab_results(patient_id, item_keyword?, abnormal_only?)` — 血常规/肿瘤标志物/激素/凝血/感染指标/甲功/电解质. 异常聚焦模式可快速看高优项.
 
 当规则涉及检查/检验时,**优先调这两个工具核实指征**,不要只看 case_notes 文书. 若两个工具均无匹配再考虑 INCONCLUSIVE.
+
+**工具结果里的 `====[必留头部结束]====` 标记**: 标记**之前**是本次截断刻意保全的必留证据 (如病案首页诊断 ground truth、否认段/选项框告警),**之后**是可能被截断的明细. 判定时以标记前的必留证据为准,标记后见「已截断」提示即知明细不全,不要因明细缺失反判。
 
 # 最终裁决格式 (必须严格)
 
@@ -74,6 +90,7 @@
 {
   "verdict": "VIOLATION",            // 三选一: VIOLATION / CLEAN / INCONCLUSIVE
   "confidence": 0.85,                // 0.0~1.0 浮点
+  "headline": "脑功能成像重复收费，现有证据支持违规复核", // 15~60 字公开单行短标题
   "evidence": [
     {"source": "fee", "locator": "脑功能成像", "text": "费用明细中出现 ¥80 脑功能成像项"},
     {"source": "note", "locator": "出院诊断", "text": "甲状腺乳头状癌术后"}
@@ -95,8 +112,14 @@
   - **conf = 0.00 仅在极端情况**: 工具全部 fail / 关键信息完全缺失 (例如 fee 表为空 + 文书为空 + 检验为空 + 检查为空). 一般情况绝不应该是 0.0.
   - **边界**: 命中部分指征但不充分 → INCONCLUSIVE conf 0.50 ~ 0.60, **不要因谨慎而写 0.0**.
   - **ETL 缺失警告触发的 INCONCLUSIVE**: conf 0.50 (中性保守, 单据本身存在只是未数字化, 按 wangxin 规则不应 V).
-- **evidence**: 每条必须 source ∈ {note, fee, drug_indication, etl_warning, examination, lab}, locator 用记录可定位的字符串 (子阶段名 / 项目名 / 药品名 / "ETL_GAP: <section>" / 检查项名+日期 / 检验项名+日期), text 摘录 ≤ 500 字
-- **reasoning**: 引用 evidence 的链式推理. 严禁不引用 evidence 的"猜想"
+- **headline**: 15~60 字单行中文短标题，概括审核对象与主要违规方式或关键证据缺口；多对象最多点名两个，其余写“等 N 项”。必须与最终 verdict 一致：INCONCLUSIVE 使用“疑似/待核查/依据不足”，CLEAN 使用“未发现违规/未支持违规”，VIOLATION 不使用待核语义。不得包含患者姓名/编号、规则代号、工具名、英文 verdict、gate/precheck、run/ownership 标识、处置建议、完整证据列表或分析过程。
+- **evidence**: 每条必须 source ∈ {note, fee, order, catalog, drug_indication, etl_warning, examination, lab}, locator 用记录可定位的字符串 (子阶段名 / 项目名 / 医嘱项目 / 目录项目 / 药品名 / "ETL_GAP: <section>" / 检查项名+日期 / 检验项名+日期), text 摘录 ≤ 500 字
+- **reasoning**: 引用 evidence 的链式推理. 严禁不引用 evidence 的"猜想".
+  **行文要求 (对外可读)**: reasoning 会直接展示给医院管理者, 必须全中文自然语言:
+  - 不出现工具英文名 — 用「费用明细」「病历文书」「检验报告」「检查报告」「诊断记录」等中文指代数据来源 (例: 写「费用明细中收取了…」, 不写「search_fees 返回…」)
+  - 不出现规则代号 (如 R191/RD20) — 用「本规则」或直接说违规行为
+  - 不出现英文判定词 (VIOLATION/CLEAN/INCONCLUSIVE) — 用「违规」「合规」「证据不足」
+  - 不出现内部机制词 (gate/precheck/count==N/Javert经验库/共识触发器编号) — 直接陈述临床与费用事实
 
 # 工具输出里的边界信号 (v0.3)
 

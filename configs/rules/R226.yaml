@@ -5,6 +5,7 @@ question: 开展静脉高营养治疗，重复收取静脉用药集中配置费�
 example: 示例：某省《诊疗目录》规定，静脉高营养治疗项目内涵：含静脉营养配置。某医院为ICU患者输注营养液，其中，静脉用药集中配置为重复收费。
 status: ready
 priority: P0
+handling_level: 违规（阻断）
 prompt_addon: |
   本规则关注: 患者本次住院里, 是否同时被收取了「静脉高营养治疗」项目 + 独立的「静脉用药集中配置 (PIVAS)」费用.
   按各省《医疗服务诊疗目录》, 静脉高营养治疗项目内涵已含静脉营养配置, 单独再收静脉用药集中配置费 = 重复收费.
@@ -29,6 +30,8 @@ trigger_keywords:
   - PIVAS
   - 配液费
   - 配置费
+trigger_codes:
+  - S120400008
 suggested_tools:
   - note_diagnosis
   - search_fees
@@ -38,3 +41,15 @@ expected_signal: |
   典型 CLEAN: 仅有高营养单笔; 或文书明确化疗等高危药物由独立配液中心配制单独计费.
 notes: ''
 derived_from_template: M1
+precheck:
+  a_items:
+    - 静脉高营养治疗
+    - 全胃肠外营养
+    - TPN
+    - PN
+    - 肠外营养
+  b_items:
+    - 静脉用药集中配置
+    - PIVAS 配置
+    - 配液费
+    - 配置费

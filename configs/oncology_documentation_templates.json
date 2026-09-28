@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0.0",
+  "templates": [
+    {
+      "criterion_id": "pola-transplant-ineligible",
+      "title": "补充造血干细胞移植适合性评估",
+      "rationale": "现有病种、既往多线治疗和疾病进展证据支持继续评估该药，但病历未见医保限定要求的移植不适合评估。",
+      "content_template": "患者{age}岁且已多线治疗；如拟使用该药，建议病程中补充“不适合造血干细胞移植”及简要原因，避免因文书缺项影响医保报销。",
+      "priority": "high",
+      "safety_note": "年龄和既往治疗仅作为建议语境；本建议不代表临床医师已作出该评估。",
+      "required_context": [
+        "age",
+        "multi_line_treatment"
+      ]
+    }
+  ]
+}

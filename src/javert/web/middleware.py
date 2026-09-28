@@ -31,6 +31,13 @@ PROTECTED_PREFIXES = (
     "/api/workbench",
     "/onboarding",
     "/api/onboarding",
+    # 进院前红区修复: 以下三组之前在 PUBLIC — 匿名可跑审计/枚举住院号/触发同步 (PHI 泄露面)
+    "/api/patients",
+    "/api/audit",
+    "/api/sync",
+    # 生产 Scriv 管理入口仍需登录；部署增量不得覆盖远端既有保护
+    "/scriv",
+    "/api/scriv",
 )
 
 PUBLIC_PREFIXES = (
@@ -40,12 +47,19 @@ PUBLIC_PREFIXES = (
     "/static",
     "/healthz",
     "/api/health",
-    # 已有 SPA 路由 (规则浏览) 不强制鉴权; 工作台是独立线
+    # 规则元数据 (非 PHI) 不强制鉴权
     "/api/rules",
-    "/api/patients/sample",
-    "/api/patients/pools",
-    "/api/sync",
-    "/api/audit",
+    # 2C 平台系统间对接 (docs/2c对接_javert审计服务.md): 仅这两个精确路径免鉴权, 限内网;
+    # /api/audit 其余路径仍受保护
+    "/api/audit/submit",
+    "/api/audit/results",
+    # 2C v2: 独立卡片契约，继续采用精确前缀，不放开其他 /api/audit/v2 路径
+    "/api/audit/v2/submit",
+    "/api/audit/v2/results",
+    # 2C v3: 收费明细行 + 非 PHI 规则等级目录；只放开三条系统间路径
+    "/api/audit/v3/submit",
+    "/api/audit/v3/results",
+    "/api/audit/v3/rules",
     "/",  # 老 index.html 入口仍开放
 )
 

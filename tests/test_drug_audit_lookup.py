@@ -243,6 +243,43 @@ def test_bulk_rule_type_filter(loader, kb_path, zd_path):
     assert {m["generic_name"] for m in r["matches"]} == {"人血白蛋白"}
 
 
+def test_bulk_source_type_filter_selects_insurance_arm_only(tmp_path, zd_path):
+    """source_type=insurance 只留医保限定条目; 老 KB 无 source_type 条目一律不命中."""
+    kb = {
+        "version": "t",
+        "drugs": {
+            "仑伐替尼胶囊": {
+                "codes": [],
+                "entries": [{
+                    "rule_type": "限适应症", "basis": "限不可切除的肝细胞癌",
+                    "detect_logic": "诊断不符医保限定", "source_type": "insurance",
+                    "source_label": "医院药品总库 2026-06（医保限定，优先）",
+                }],
+            },
+            "人血白蛋白": [
+                {"rule_type": "限适应症", "detect_logic": "诊断不符限定", "basis": "限抢救/重症"}
+            ],
+        },
+    }
+    p = tmp_path / "kb_src.json"
+    p.write_text(json.dumps(kb, ensure_ascii=False), encoding="utf-8")
+    fees = pd.DataFrame({
+        "bah": ["H31010600042-J66252 "] * 2,
+        "medins_list_name": ["仑伐替尼胶囊", "人血白蛋白(基)"],
+        "medins_chrgitm_type": ["西药", "西药"],
+    })
+    r = dal.lookup_patient_drugs(
+        "J66252", _StubLoader(fees), p, zd_path,
+        rule_type="限适应症", source_type="insurance",
+    )
+    assert {m["generic_name"] for m in r["matches"]} == {"仑伐替尼胶囊"}
+    text = dal.format_for_agent(r)
+    assert "依据层级过滤: insurance" in text
+    # 不加过滤 → 两药都在
+    r2 = dal.lookup_patient_drugs("J66252", _StubLoader(fees), p, zd_path, rule_type="限适应症")
+    assert {m["generic_name"] for m in r2["matches"]} == {"仑伐替尼胶囊", "人血白蛋白"}
+
+
 def test_bulk_no_match_is_empty_not_error(kb_path, zd_path):
     fees = pd.DataFrame({
         "bah": ["H31010600042-J99999 "],
@@ -298,3 +335,72 @@ def test_executor_bulk_mode_default(loader, kb_path, zd_path):
     ex = dal.create_executor(loader, kb_path, zd_path)
     out = ex(patient_id="J66252")
     assert "命中" in out and "阿卡波糖片" in out
+
+
+def test_source_priority_metadata_and_insurance_review_are_formatted(tmp_path, zd_path):
+    kb = {
+        "version": "oncology-test",
+        "drugs": {
+            "甲磺酸阿美替尼片": {
+                "codes": ["XL01_TEST"],
+                "entries": [{
+                    "rule_type": "超说明书",
+                    "detect_logic": "诊断不符合指导原则适应证",
+                    "basis": "EGFR 敏感突变非小细胞肺癌。",
+                    "source_type": "guideline",
+                    "source_label": "指导原则适应证（医保状态待核对）",
+                    "source_refs": ["guideline:161"],
+                    "requires_insurance_review": True,
+                }],
+            }
+        },
+    }
+    kb_file = tmp_path / "oncology.json"
+    kb_file.write_text(json.dumps(kb, ensure_ascii=False), encoding="utf-8")
+    fees = pd.DataFrame({
+        "bah": ["H-J66252"],
+        "medins_list_name": ["甲磺酸阿美替尼片"],
+        "medins_chrgitm_type": ["西药"],
+        "med_list_codg": ["XL01_TEST"],
+    })
+
+    result = dal.lookup_patient_drugs(
+        "J66252", _StubLoader(fees), kb_file, zd_path, rule_type="超说明书"
+    )
+
+    assert result["matches"][0]["source_type"] == "guideline"
+    assert result["matches"][0]["source_refs"] == ["guideline:161"]
+    assert result["matches"][0]["requires_insurance_review"] is True
+    rendered = dal.format_for_agent(result)
+    assert "依据层级: 指导原则适应证（医保状态待核对）" in rendered
+    assert "医保目录状态待人工核对" in rendered
+
+
+def test_single_lookup_reports_ambiguous_product_entities(tmp_path):
+    kb_file = tmp_path / "oncology-products.json"
+    kb_file.write_text(
+        json.dumps({
+            "version": "3.0",
+            "drugs": {
+                "注射用曲妥珠单抗": {
+                    "codes": ["A"],
+                    "entries": [{"rule_type": "限适应症", "basis": "A 限定"}],
+                },
+                "曲妥珠单抗注射液": {
+                    "codes": ["B"],
+                    "entries": [{"rule_type": "超说明书", "basis": "B 适应证"}],
+                },
+            },
+        }, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    ambiguous = dal.lookup_single_drug("曲妥珠单抗", kb_file)
+    exact = dal.lookup_single_drug("注射用曲妥珠单抗", kb_file)
+
+    assert ambiguous["found"] is False
+    assert ambiguous["ambiguous"] is True
+    assert ambiguous["candidates"] == ["曲妥珠单抗注射液", "注射用曲妥珠单抗"]
+    assert "请提供完整通用名" in dal.format_for_agent(ambiguous)
+    assert exact["found"] is True
+    assert exact["entries"][0]["basis"] == "A 限定"

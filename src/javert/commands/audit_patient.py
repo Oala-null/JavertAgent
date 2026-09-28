@@ -31,6 +31,7 @@ from javert.tools.registry import build_executor
 
 
 VALID_PRIORITIES = ("P0", "P1", "P2", "P3")
+_CURATED_DRUG_RULE_IDS = frozenset(f"RD{number:02d}" for number in range(10, 38))
 
 
 def _resolve_selection(
@@ -72,12 +73,30 @@ def _resolve_selection(
 
     # priority 单选过滤模式
     matches = [r for r in all_rules.values() if r.priority == priority]
-    selected_p = [r for r in matches if r.status != "abandoned"]
+    selected_p = [
+        r
+        for r in matches
+        if r.status != "abandoned"
+        and not (
+            r.rule_id in _CURATED_DRUG_RULE_IDS
+            and r.status == "drafting"
+        )
+    ]
     excluded = [r.rule_id for r in matches if r.status == "abandoned"]
+    migration_pending = [
+        r.rule_id
+        for r in matches
+        if r.rule_id in _CURATED_DRUG_RULE_IDS and r.status == "drafting"
+    ]
     selected_p.sort(key=lambda r: r.rule_id)
     label = f"priority={priority}"
     if excluded:
         label += f" (excluded {','.join(sorted(excluded))} [abandoned])"
+    if migration_pending:
+        label += (
+            f" (excluded {','.join(sorted(migration_pending))} "
+            "[knowledge-migration-pending])"
+        )
     return selected_p, label, []
 
 
@@ -90,7 +109,6 @@ def _print_summary(
     results: list,
     total_ms: int,
     n_selected: int,
-    llm_failed_at: tuple[int, str] | None,
     failed_rules: list[str],
     llm_failed_rules: list[str],
     sync_counters: dict[str, int] | None = None,
@@ -123,16 +141,11 @@ def _print_summary(
     n_tc_cached = sum(1 for r in results for tc in r.tool_calls if tc.cached)
     hit_rate = (n_tc_cached / n_tc_total * 100) if n_tc_total > 0 else 0.0
 
-    # serial 模式: failed = 普通异常; pending = LLM 中断后未跑的
-    # parallel 模式: 全部都跑完 (无 pending), llm_failed_rules + failed_rules 都计 failed
-    if concurrency > 1:
-        n_failed = len(failed_rules) + len(llm_failed_rules)
+    # 串行/并发同语义 (harden-onsite-redlines): 单条失败标 failed 继续, 无 pending
+    n_failed = len(failed_rules) + len(llm_failed_rules)
+    n_pending = n_selected - n_done - n_failed
+    if n_pending < 0:
         n_pending = 0
-    else:
-        n_failed = len(failed_rules) + (1 if llm_failed_at else 0)
-        n_pending = n_selected - n_done - n_failed
-        if n_pending < 0:
-            n_pending = 0
 
     click.echo(
         f"Total: {total_ms / 1000:.1f}s  "
@@ -143,13 +156,7 @@ def _print_summary(
         f"Verdicts: V={n_v} / C={n_c} / I={n_i}  "
         f"({n_done} completed, {n_pending} pending, {n_failed} failed)"
     )
-    if llm_failed_at and concurrency == 1:
-        i, rid = llm_failed_at
-        click.echo(
-            f"LLM failed at: rule #{i} ({rid}); "
-            f"{n_pending} rules were not attempted"
-        )
-    if concurrency > 1 and llm_failed_rules:
+    if llm_failed_rules:
         click.echo(
             f"LLM unavailable rules: {','.join(sorted(llm_failed_rules))}"
         )
@@ -203,14 +210,14 @@ def _run_serial(
     runner: Runner,
     share_tool_cache: bool,
     store: SqliteStore,
-) -> tuple[list, list[str], tuple[int, str] | None, dict[str, int], list[str]]:
-    """串行跑 (现行行为, LlmUnavailableError 中断整 batch).
+) -> tuple[list, list[str], list[str], dict[str, int], list[str]]:
+    """串行跑. 单条失败 (LLM 或其他) 标 failed 继续, 与并发模式对齐 (harden-onsite-redlines).
 
-    Returns: (results, failed_rules, llm_failed_at, sync_counters, pending_run_ids)
+    Returns: (results, failed_rules, llm_failed_rules, sync_counters, pending_run_ids)
     """
     results: list = []
     failed_rules: list[str] = []
-    llm_failed_at: tuple[int, str] | None = None
+    llm_failed_rules: list[str] = []
     sync_counters: dict[str, int] = {"synced": 0, "pending": 0, "skipped": 0}
     pending_run_ids: list[str] = []
     n_total = len(selected)
@@ -226,8 +233,8 @@ def _run_serial(
                 f"[{i}/{n_total}] {rule.rule_id} → LLM 不可用: {exc}",
                 err=True,
             )
-            llm_failed_at = (i, rule.rule_id)
-            break
+            llm_failed_rules.append(rule.rule_id)
+            continue
         except Exception as exc:  # noqa: BLE001
             click.echo(
                 f"[{i}/{n_total}] {rule.rule_id} → 异常: {exc}",
@@ -241,6 +248,7 @@ def _run_serial(
                 result, rule,
                 triggered_by="cli-audit-patient",
                 sqlite_store=store,
+                source_loader=runner.loader,
             )
             key = state.get("sync_state", "pending")
             sync_counters[key] = sync_counters.get(key, 0) + 1
@@ -255,7 +263,7 @@ def _run_serial(
         results.append(result)
         click.echo(_format_progress(i, n_total, rule.rule_id, result), err=True)
 
-    return results, failed_rules, llm_failed_at, sync_counters, pending_run_ids
+    return results, failed_rules, llm_failed_rules, sync_counters, pending_run_ids
 
 
 def _run_parallel(
@@ -330,6 +338,7 @@ def _run_parallel(
                         result, rule,
                         triggered_by="cli-audit-patient",
                         sqlite_store=store,
+                        source_loader=runner.loader,
                     )
                     with print_lock:
                         key = state.get("sync_state", "pending")
@@ -414,18 +423,70 @@ def _print_router_block(decision: RouterDecision) -> None:
             )
     click.echo(
         f"final rules: {decision.n_final}  "
-        f"(overlapping={len(decision.overlapping_kept)} + "
-        f"javert_only={len(decision.javert_only_kept)})",
+        f"(kept={decision.stats.get('kept', decision.n_final)} / "
+        f"scanned={decision.stats.get('total_yaml_scanned', '?')})",
         err=True,
     )
     click.echo("", err=True)
+
+
+def _reconcile_replay_entries(
+    *,
+    store: SqliteStore,
+    selected: list[Rule],
+    patient_id: str,
+    replay_key: str,
+    sql_enabled: bool,
+) -> tuple[list[AuditResult], dict[str, int], list[str]]:
+    """复用已完成规则，并补偿 callback 丢失后的 Workbench 同步状态。"""
+    selected_by_id = {rule.rule_id: rule for rule in selected}
+    entries = [
+        (result, synced)
+        for result, synced in store.find_replay_entries(replay_key)
+        if result.rule_id in selected_by_id
+    ]
+    if any(result.patient_id != patient_id for result, _synced in entries):
+        raise RuntimeError("replay_key 已关联另一伪名患者")
+
+    counters = {"synced": 0, "pending": 0, "skipped": 0}
+    pending_run_ids: list[str] = []
+    sql_store = None
+    if sql_enabled and any(not synced for _result, synced in entries):
+        from javert.store.sqlserver_store import get_sqlserver_store
+
+        sql_store = get_sqlserver_store()
+
+    for result, synced in entries:
+        if synced:
+            counters["synced"] += 1
+            continue
+        if not sql_enabled:
+            counters["skipped"] += 1
+            continue
+        batch_tag, stored_replay_key = store.publication_metadata(result.run_id)
+        assert sql_store is not None
+        ok = sql_store.write_audit(
+            result,
+            selected_by_id[result.rule_id],
+            triggered_by="cli-audit-patient-replay",
+            batch_tag=batch_tag,
+            replay_key=stored_replay_key,
+        )
+        if ok:
+            store.mark_synced(result.run_id)
+            counters["synced"] += 1
+        else:
+            store.mark_sync_failed(result.run_id, "OCR replay Workbench 补偿失败")
+            counters["pending"] += 1
+            pending_run_ids.append(result.run_id)
+    return [result for result, _synced in entries], counters, pending_run_ids
 
 
 def run_audit_patient(
     patient_id: str,
     priority: str = "P0",
     rules_arg: str | None = None,
-    share_tool_cache: bool = False,
+    share_tool_cache: bool = True,
     concurrency: int = 1,
     use_router: bool = False,
 ) -> int:
@@ -465,26 +526,15 @@ def run_audit_patient(
             click.echo(f"✓ router 判定无可疑规则, 跳过 LLM 审计 (V=0 C=0 I=0, 0.0s)", err=True)
             return 0
 
-    executor = build_executor(loader, cfg)
-    runner = Runner(executor=executor, config=cfg, emit=lambda _msg: None, loader=loader)
-
     cache_mode = (
         "shared (reset only between patients)"
         if share_tool_cache or concurrency > 1
         else "cold-start (reset per rule)"
     )
-    click.echo(f"=== audit-patient {patient_id} ===", err=True)
-    click.echo(f"rule selection: {selection_label}", err=True)
-    if router_decision is not None:
-        _print_router_block(router_decision)
-    click.echo(f"cache mode: {cache_mode}", err=True)
-    click.echo(f"concurrency: {concurrency}", err=True)
-    click.echo("", err=True)
-
-    results: list = []
+    original_selection = list(selected)
+    results: list[AuditResult] = []
     failed_rules: list[str] = []
     llm_failed_rules: list[str] = []
-    llm_failed_at: tuple[int, str] | None = None
     sync_counters: dict[str, int] = {"synced": 0, "pending": 0, "skipped": 0}
     pending_run_ids: list[str] = []
     t_total_start = time.perf_counter()
@@ -492,27 +542,65 @@ def run_audit_patient(
     store = SqliteStore(cfg.audit_db_path)
     store.init_schema()
     try:
-        if concurrency > 1:
-            (results, failed_rules, llm_failed_rules,
-             sync_counters, pending_run_ids) = _run_parallel(
+        if cfg.replay_key:
+            replayed, replay_counters, replay_pending = _reconcile_replay_entries(
+                store=store,
                 selected=selected,
                 patient_id=patient_id,
-                runner=runner,
-                share_tool_cache=share_tool_cache,
-                store=store,
-                concurrency=concurrency,
+                replay_key=cfg.replay_key,
+                sql_enabled=cfg.sql_enabled,
             )
-        else:
-            (results, failed_rules, llm_failed_at,
-             sync_counters, pending_run_ids) = _run_serial(
-                selected=selected,
-                patient_id=patient_id,
-                runner=runner,
-                share_tool_cache=share_tool_cache,
-                store=store,
+            results.extend(replayed)
+            sync_counters.update(replay_counters)
+            pending_run_ids.extend(replay_pending)
+            replayed_rule_ids = {result.rule_id for result in replayed}
+            selected = [
+                rule for rule in selected if rule.rule_id not in replayed_rule_ids
+            ]
+            if replayed:
+                cache_mode += f"; replay reused {len(replayed)}"
+
+        if selected:
+            executor = build_executor(loader, cfg)
+            runner = Runner(
+                executor=executor,
+                config=cfg,
+                emit=lambda _msg: None,
+                loader=loader,
             )
+            if concurrency > 1:
+                (new_results, failed_rules, llm_failed_rules,
+                 new_counters, new_pending) = _run_parallel(
+                    selected=selected,
+                    patient_id=patient_id,
+                    runner=runner,
+                    share_tool_cache=share_tool_cache,
+                    store=store,
+                    concurrency=concurrency,
+                )
+            else:
+                (new_results, failed_rules, llm_failed_rules,
+                 new_counters, new_pending) = _run_serial(
+                    selected=selected,
+                    patient_id=patient_id,
+                    runner=runner,
+                    share_tool_cache=share_tool_cache,
+                    store=store,
+                )
+            results.extend(new_results)
+            for key, value in new_counters.items():
+                sync_counters[key] = sync_counters.get(key, 0) + value
+            pending_run_ids.extend(new_pending)
     finally:
         store.close()
+
+    click.echo(f"=== audit-patient {patient_id} ===", err=True)
+    click.echo(f"rule selection: {selection_label}", err=True)
+    if router_decision is not None:
+        _print_router_block(router_decision)
+    click.echo(f"cache mode: {cache_mode}", err=True)
+    click.echo(f"concurrency: {concurrency}", err=True)
+    click.echo("", err=True)
 
     total_ms = int((time.perf_counter() - t_total_start) * 1000)
 
@@ -526,14 +614,13 @@ def run_audit_patient(
         concurrency=concurrency,
         results=results,
         total_ms=total_ms,
-        n_selected=len(selected),
-        llm_failed_at=llm_failed_at,
+        n_selected=len(original_selection),
         failed_rules=failed_rules,
         llm_failed_rules=llm_failed_rules,
         sync_counters=sync_counters,
         pending_run_ids=pending_run_ids,
     )
 
-    if llm_failed_at is not None or failed_rules or llm_failed_rules:
+    if failed_rules or llm_failed_rules or sync_counters.get("pending", 0):
         return 1
     return 0

@@ -5,6 +5,7 @@ question: 将用于临床试验的检验费用，纳入医保基金支付。
 example: 示例：某医院为某药物临床I期、II期试验的研究中心，该医院为完成临床试验招募受试者、对照者，并开展临床试验必须的血液、体液等系列检验项目，相关费用应由临床试验项目支付，但该院纳入医保基金支付范围，属于违规使用医保基金行为。
 status: drafting
 priority: P2
+handling_level: 提醒（引导）
 prompt_addon: ''
 trigger_keywords: []
 suggested_tools: []

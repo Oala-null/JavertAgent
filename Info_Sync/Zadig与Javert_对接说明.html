@@ -2170,7 +2170,7 @@ Expecting `+Ze.join(", ")+", got '"+(this.terminals_[Ne]||Ne)+"'":Dt="Parse erro
   <div class="head-inner">
     <h1>🛡️ Zadig &amp; Javert</h1>
     <div class="sub">院内 AI 临床编码 + 医保违规自查 · 产品介绍与数据对接说明</div>
-    <div class="meta">面向：医院信息科 / HIS 厂商 ｜ 阶段：测试合作 ｜ v1.0 · 2026-06-10</div>
+    <div class="meta">面向：医院信息科 / HIS 厂商 ｜ 阶段：测试合作 ｜ v1.1 · 2026-07-17</div>
     <div class="tabs">
       <button class="tab-btn active" data-tab="t1"><span class="ic">📖</span>对接说明</button>
       <button class="tab-btn" data-tab="t2"><span class="ic">📋</span>数据范围清单</button>
@@ -2179,6 +2179,10 @@ Expecting `+Ze.join(", ")+", got '"+(this.terminals_[Ne]||Ne)+"'":Dt="Parse erro
 </header>
 
 <div class="wrap">
+
+<div class="note info">ℹ️ <b>运行时更新（2026-07-17）</b>：62 当前模型为
+<code>Qwen3.6-35B-A3B-FP8</code>；Javert 当前 159 条规则、其中 118 条
+production-ready。下方 Qwen3.5/GPTQ 显存拆解是 2026-06-10 历史测量，不用于当前采购定型。</div>
 
 <!-- ================= TAB 1 ================= -->
 <section id="t1" class="panel active">
@@ -2267,7 +2271,7 @@ flowchart LR
         C["ICD 编码字典<br/>35,877 条"]
     end
     subgraph BOX["院内 GPU 服务器 · 数据不出院"]
-        E["Qwen3.5 推理引擎<br/>调查员 Agent"]
+        E["Qwen3.6 FP8 推理引擎<br/>调查员 Agent"]
         F["14 个专业工具<br/>文书提取 / 费用分析 / ICD 检索 / 编码校验"]
         E <--> F
     end
@@ -2287,12 +2291,13 @@ flowchart LR
   <h3>⚙️ 工作原理：规则即文件 + 四道关卡</h3>
   <table>
     <tr><th>环节</th><th>做什么</th></tr>
-    <tr><td><b>① 规则即文件</b></td><td>每条违规情形是一个 YAML 文件（共 <b>143 条</b>，对照国家医保问题清单），用 8 个模板批量生成，可 git 追溯、人工审阅——不是黑箱</td></tr>
+    <tr><td><b>① 规则即文件</b></td><td>每条违规情形是一个 YAML 文件（当前共 <b>159 条，其中 118 条 production-ready</b>），用 8 个模板批量生成，可 git 追溯、人工审阅——不是黑箱</td></tr>
     <tr><td><b>② 规则路由</b></td><td>先用关键词 / 适用条件砍掉 <b>70–80%</b> 明显不相关的规则（一个患者通常只需跑 ~7 条而非全部），省算力</td></tr>
     <tr><td><b>③ Agent 取证</b></td><td>AI 调查员调用工具，从费用 + 文书 + 病案首页交叉取证，给出三态判定 + 命中证据</td></tr>
     <tr><td><b>④ 确定性校验闸</b></td><td>判定落库前，拿病案首页真实诊断 / 手术兜底校验，把站不住脚的「违规」<b>只降不升</b>地降级，消误报、不伤已对判断</td></tr>
   </table>
   <div class="note info">📐 <b>三态判定</b>：<b style="color:var(--red)">违规</b>（证据确凿）· <b style="color:var(--amber)">存疑</b>（需人工复核）· <b style="color:var(--green)">合规</b>（无问题）。LLM 必须输出<b>结构化结果</b>而非自由文本，保证可机读、可统计、可逐条溯源到费用项与文书原文。</div>
+  <div class="note info">🧬 <b>肿瘤药医保资格</b>：RD04 额外输出审计处置与临床/支付资格两条独立轴，并附条件树、证据树和数据质量提示；“资料不足”不会被硬判成合规或违规。</div>
 
   <h3>🧰 Javert 的 10 个审计工具</h3>
   <table class="toollist">
@@ -2325,11 +2330,11 @@ flowchart LR
         D["化验 / 检查报告<br/>可选增强"]
     end
     subgraph RULES["规则库 · 我方自带"]
-        R["143 条审计规则<br/>对照国家医保问题清单"]
+        R["159 条规则<br/>118 条 production-ready"]
     end
     subgraph BOX["院内 GPU 服务器 · 数据不出院"]
         RT["规则路由<br/>砍 70-80% 无关规则"]
-        E["Qwen3.5 调查员<br/>+ 审计工具组"]
+        E["Qwen3.6 FP8 调查员<br/>+ 审计工具组"]
         G["确定性校验闸<br/>病案首页兜底"]
         RT --> E --> G
     end
@@ -2362,7 +2367,8 @@ flowchart TD
 
   <!-- RESOURCE -->
   <h2 class="sec">🖥️ 需要什么配置 / 吃多少资源</h2>
-  <p>两个产品<b>共用同一套院内 GPU 环境</b>，底层都是本地部署的 <b>Qwen3.5-35B</b>（4bit 量化，约 18GB 显存）。对接一台机器即可同时支撑两个产品。</p>
+  <p>两个产品<b>共用同一套院内 GPU 环境</b>。62 当前端点部署
+  <b>Qwen3.6-35B-A3B-FP8</b>。采购前应按目标模型版本重新压测，不能沿用旧量化模型的显存估算。</p>
 
   <h3>硬件配置与吞吐</h3>
   <table>
@@ -2380,6 +2386,8 @@ flowchart TD
     · 显存只是「装得下模型 + 检索模型」的门槛（~24–32GB 起步，48GB 舒服）；越过门槛后再大也不直接加吞吐。</div>
 
   <h3>🔍 为什么一张 48GB 卡几乎被占满？（澄清常见误解）</h3>
+  <div class="note warn">📌 <b>历史基线</b>：本节以下参数只对应 2026-06-10 的
+  Qwen3.5-35B-A3B-GPTQ-Int4 环境，不代表当前 Qwen3.6 FP8 运行时。</div>
   <div class="note warn">❗ <b>占满 ≈90% 显存是推理框架 sglang「主动预留」的结果，不是这个 8K 上下文的模型真的需要这么多。</b>
     模型本体（4-bit 量化）只占 ~18–20GB；剩下的 ~20–25GB 是 sglang 启动时<b>一次性圈下来的 KV 缓存池</b>（由 <code>--mem-fraction</code> 参数决定，<b>与上下文长度无关</b>），目的是最大化并发吞吐。即使 0 个请求，<code>nvidia-smi</code> 也会显示占用。</div>
 

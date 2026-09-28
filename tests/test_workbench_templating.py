@@ -32,7 +32,7 @@ def alice():
 def test_filters_registered():
     env = get_env()
     for k in ("humanize_delta", "humanize_since", "verdict_color",
-              "verdict_label", "format_dt"):
+              "verdict_label", "quality_flag_zh", "format_dt"):
         assert k in env.filters
 
 
@@ -52,6 +52,15 @@ def test_verdict_label_filter():
     assert env.filters["verdict_label"]("I") == "改判不明"
     assert env.filters["verdict_label"]("C") == "驳回"
     assert env.filters["verdict_label"]("VIOLATION") == "违规"
+
+
+def test_oncology_draft_quality_flags_are_human_readable():
+    quality_flag_zh = get_env().filters["quality_flag_zh"]
+    assert "草稿规则预览" in quality_flag_zh("DRAFT_RULE_PREVIEW_ONLY")
+    assert "必须人工复核" in quality_flag_zh("AUTHORING_REVIEW_REQUIRED")
+    assert "尚无生效且已审核" in quality_flag_zh(
+        "NO_APPROVED_ELIGIBILITY_RULE"
+    )
 
 
 def test_login_renders(alice):
@@ -116,6 +125,44 @@ def test_workbench_returning_user_banner(alice):
     assert "alice" in out or "Dr. Alice" in out
     assert "+3" in out
     assert "+15" in out
+
+
+def test_model_compare_template_renders_side_by_side(alice):
+    left = {
+        "run_id": "aud_left_compare",
+        "rule_id": "R191",
+        "verdict": "CLEAN",
+        "confidence": 0.9,
+        "reasoning": "左侧推理",
+        "evidence": [],
+        "tool_calls": [],
+        "duration_ms": 1000,
+        "gate_tag": "",
+    }
+    right = {
+        **left,
+        "run_id": "aud_right_compare",
+        "verdict": "INCONCLUSIVE",
+        "reasoning": "右侧推理",
+        "duration_ms": 2500,
+    }
+    out = render(
+        "model_compare.html",
+        title="模型对比",
+        current_user=alice,
+        active_patient="CASE-AB-001",
+        patient_id="CASE-AB-001",
+        batch_tag="ab3.8",
+        left_model="Qwen/Qwen3.6-35B-A3B-FP8",
+        right_model="Qwen/Qwen3.8-27B-FP8",
+        rows=[{"rule_id": "R191", "left": left, "right": right, "same": False}],
+        summary={"rules": 1, "same": 0, "different": 1, "missing": 0},
+        rule_meta={"R191": {"behavior_name": "合成重复收费"}},
+    )
+    assert "CASE-AB-001 · 双模型逐规则对比" in out
+    assert "左侧推理" in out and "右侧推理" in out
+    assert "需专家对比" in out
+    assert "ab3.8" in out
 
 
 def test_workbench_dismissed_banner(alice):
@@ -208,6 +255,32 @@ def test_workbench_sidebar_facets_and_summary(alice):
     assert "甲状腺恶性肿瘤" in out
 
 
+def test_ocr_clean_patient_links_to_all_results(alice):
+    patients = [
+        PatientSidebarItem(
+            patient_id="J-OCR-SYNTHETIC",
+            v_count=0,
+            i_count=0,
+            c_count=12,
+            reviewed_count=0,
+            relevant_count=0,
+            batch_tag="ocr1.0",
+        )
+    ]
+
+    out = render(
+        "workbench.html", title="工作台", current_user=alice,
+        patients=patients, active_patient=None, filter="v_and_i",
+        filter_label="违规 + 不明", runs=[], show_banner=False,
+        banner_stats=SinceLastLoginStats(), banner_first_login=False,
+        prev_last_login=None,
+    )
+
+    assert "/workbench/J-OCR-SYNTHETIC?filter=all" in out
+    assert "12C" in out
+    assert 'data-tag="ocr1.0"' in out
+
+
 def test_patient_detail_v_card_with_my_review(alice):
     my = ReviewRecord(
         id=1, run_id="aud_abcdefghijkl", user_id=alice.id,
@@ -241,7 +314,7 @@ def test_patient_detail_v_card_with_my_review(alice):
         filter_label="违规 + 不明",
         runs=runs,
     )
-    assert "R191" in out
+    assert "R191" not in out
     assert "verdict-v" in out  # Javert verdict CSS class
     assert "您的审核" in out  # my_review block
     assert "符合规则" in out
@@ -322,6 +395,56 @@ def test_patient_detail_hit_items_block(alice):
     assert not any(a.get("tab") == "notes" for a in anchors)
 
 
+def test_patient_detail_uses_leaflet_label_for_off_label_rule(alice):
+    """超说明书规则显示说明书适应证；医保限定规则继续沿用原有“限定”口径。"""
+    from javert.web.hit_resolver import Anchor, HitItem
+
+    off_label = RunWithReviews(
+        run_id="aud_leaflet_basis", rule_id="RD_SYNTH_OFF", patient_id="P-SYNTH",
+        verdict="VIOLATION", confidence=0.9, reasoning="r",
+        created_at=datetime.now(timezone.utc), reviews=[],
+    )
+    insurance = RunWithReviews(
+        run_id="aud_insurance_basis", rule_id="RD_SYNTH_INS", patient_id="P-SYNTH",
+        verdict="VIOLATION", confidence=0.9, reasoning="r",
+        created_at=datetime.now(timezone.utc), reviews=[],
+    )
+    common_meta = {
+        "violation_type": "超范围支付",
+        "behavior_name": "超范围支付",
+        "subtitle": "",
+        "question": "合成测试问题",
+    }
+    out = render(
+        "patient_detail.html", title="t", current_user=alice, patients=[],
+        active_patient="P-SYNTH", filter="v_and_i", filter_label="x",
+        runs=[off_label, insurance],
+        rule_meta={
+            off_label.rule_id: {**common_meta, "drug_rule_type": "超说明书"},
+            insurance.rule_id: {**common_meta, "drug_rule_type": "限适应症"},
+        },
+        hits_by_run={
+            off_label.run_id: [
+                HitItem(
+                    source="drug", name="合成药甲",
+                    restriction="说明书适应证原文。",
+                    anchor=Anchor(tab="fees", query="合成药甲"),
+                ),
+            ],
+            insurance.run_id: [
+                HitItem(
+                    source="drug", name="合成药乙",
+                    restriction="限特定诊断患者。",
+                    anchor=Anchor(tab="fees", query="合成药乙"),
+                ),
+            ],
+        },
+    )
+
+    assert "说明书适应证: 说明书适应证原文。" in out
+    assert "限定: 限特定诊断患者。" in out
+
+
 def test_patient_detail_run_groups_chips_and_ordering(alice):
     """细类分组渲染: 顶部 chip (别名+计数) + 可折叠组 (按锚点 id) + 组内 V 前 I 后 + 只看不明 toggle."""
     def mkrun(rid, verdict):
@@ -358,8 +481,9 @@ def test_patient_detail_run_groups_chips_and_ordering(alice):
     assert "只看不明" in out
     assert "toggleInconclusiveOnly" in out
     assert 'data-has-i="0"' in out
-    # 卡片字幕用细类别名, 不背模板 code 串
-    assert "rule-subtitle-alias" in out
+    # 公共卡片只显示行为认定名称，不再把内部 R 代号放进 hover。
+    assert "rule-subtitle-alias" not in out
+    assert 'class="rule-id" title="' not in out
 
 
 def test_patient_detail_long_comment_hover_full_text(alice):

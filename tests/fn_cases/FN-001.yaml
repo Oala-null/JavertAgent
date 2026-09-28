@@ -1,0 +1,9 @@
+# FN 回归案例 — 一例一文件. schema 见 scripts/fn_regression.py::FnCase
+case_id: FN-001
+patient_id: "211351896"
+rule_id: R317        # 脑血管介入溶栓虚构 (add-fabrication-burden-of-proof 新建; 0325 无神经溶栓虚构条目)
+expected_verdict: VIOLATION
+expected_evidence_keywords: [溶栓]
+data_source: hub
+found_by: 专家协查 2026-07-08
+attribution: 规则覆盖空白 — 收「经皮穿刺脑血管腔内溶栓术」但手术记录无溶栓 (连溶栓药都未用), 当前无虚构类规则可审

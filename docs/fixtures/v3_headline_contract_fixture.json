@@ -1,0 +1,43 @@
+{
+  "api_version": "3.0",
+  "SYXH": "CASE-DEID-HEADLINE-001",
+  "YLZZJGDM": "ORG-DEID-001",
+  "status": "done",
+  "outcome": "succeeded",
+  "attempt_id": "att_deid_headline_001",
+  "error_code": "",
+  "retryable": false,
+  "progress": {"total": 1, "completed": 1, "failed": 0},
+  "summary": {"total": 1, "violation": 1, "inconclusive": 0, "clean": 0, "not_applicable": 0},
+  "cards": [
+    {
+      "card_id": "aud_DEIDHEADLN01",
+      "run_id": "aud_DEIDHEADLN01",
+      "rule_id": "R191",
+      "headline": "脑功能成像项目存在重复收费，现有证据支持违规结论",
+      "verdict": "VIOLATION",
+      "verdict_label": "违规",
+      "confidence": 0.91,
+      "reasoning": "费用明细显示同一项目重复计费，现有结构化证据支持进入医保合规复核。",
+      "evidence": [
+        {"source": "fee", "locator": "语义化收费项目", "text": "去标识费用事实摘录。"}
+      ],
+      "public_explanation": {
+        "headline": "脑功能成像项目存在重复收费，现有证据支持违规结论",
+        "conclusion": {"label": "发现需核查行为", "summary": "现有结构化事实支持该项进入医保合规复核。"},
+        "narrative": "费用明细显示同一项目重复计费，现有结构化证据支持进入医保合规复核。",
+        "audit_items": ["核查同一收费项目是否重复计费。"],
+        "charge_facts": [],
+        "basis": [],
+        "clinical_evidence": [],
+        "review_needs": []
+      },
+      "matched_items": [],
+      "hit_codes": [],
+      "hit_names": [],
+      "hit_times": [],
+      "hits": [],
+      "finished_at": "2026-08-01T00:00:01+00:00"
+    }
+  ]
+}

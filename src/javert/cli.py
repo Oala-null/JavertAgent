@@ -115,10 +115,10 @@ def show_cmd(identifier: str, patient: str | None) -> None:
     help="逗号分隔的 rule_id 列表 (例如 R045,R191), 显式选定时绕过 priority 与 abandoned 过滤",
 )
 @click.option(
-    "--share-tool-cache", "share_tool_cache",
-    is_flag=True,
-    default=False,
-    help="跨规则共享 ToolExecutor 缓存 (默认关, 冷启动跑 baseline)",
+    "--share-tool-cache/--no-share-tool-cache", "share_tool_cache",
+    default=True,
+    show_default=True,
+    help="跨规则共享 ToolExecutor 缓存 (同患者多规则复用检索; --no-share-tool-cache 跑冷启动 baseline)",
 )
 @click.option(
     "--concurrency", "concurrency",
@@ -154,6 +154,19 @@ def audit_patient_cmd(
     sys.exit(code)
 
 
+@main.command("stats")
+@click.option("--batch-tag", "batch_tag", default=None,
+              help="只统计该 batch_tag 的裁决 (省略=全量)")
+@click.option("--min-patients", "min_patients", type=int, default=None,
+              help="覆盖系统性判定的最小样本数 (默认读 configs/systemic_thresholds.yaml)")
+@click.option("--min-v-rate", "min_v_rate", type=float, default=None,
+              help="覆盖系统性判定的 V 率阈值 (0-1, 默认读 configs)")
+def stats_cmd(batch_tag: str | None, min_patients: int | None, min_v_rate: float | None) -> None:
+    """规则维度跨患者聚合 (本地 sqlite): 患者数 / V / I / V 率 / 系统性违规."""
+    from .commands.stats import run_stats
+    sys.exit(run_stats(batch_tag=batch_tag, min_patients=min_patients, min_v_rate=min_v_rate))
+
+
 @main.command("web")
 @click.option("--host", default=None, help="监听地址 (默认 config.web_host = 127.0.0.1)")
 @click.option("--port", default=None, type=int, help="监听端口 (默认 config.web_port = 8090)")
@@ -174,14 +187,17 @@ def web_cmd(
         sys.exit(2)
     import os
 
-    from .config import get_config
+    from .config import get_config, reset_config_cache
     cfg = get_config()
+    # session secret 默认值 fail-fast 收敛进 create_app() (单一来源, uvicorn 直起也拦截)
     final_host = host or cfg.web_host
     final_port = port or cfg.web_port
     final_reload = reload or cfg.web_reload
     # 透传 with_mssql 到 create_app (默认走 config.web_with_mssql)
     if with_mssql is not None:
         os.environ["JAVERT_WEB_WITH_MSSQL"] = "true" if with_mssql else "false"
+        # get_config 已被上面调用 lru_cache 住 — 重置让 uvicorn import 时读到本次覆盖
+        reset_config_cache()
     click.echo(
         f"Javert Web → http://{final_host}:{final_port}"
         f"  (reload={final_reload}, with_mssql={with_mssql if with_mssql is not None else cfg.web_with_mssql})"
@@ -206,6 +222,8 @@ def web_cmd(
               help="--dry-run 时输出路径; '-' 表示 stdout (默认)")
 @click.option("--save-vars", "save_vars", default=None,
               help="把本次 vars dict 落盘到该 json 文件 (interactive / auto 模式留底)")
+@click.option("--force", is_flag=True,
+              help="prompt_addon 被人工手改 (render_hash 不符) 时仍强制覆盖")
 def prompt_fit_cmd(
     rule_id: str,
     template_id: str,
@@ -215,6 +233,7 @@ def prompt_fit_cmd(
     dry_run: bool,
     output_path: str | None,
     save_vars: str | None,
+    force: bool,
 ) -> None:
     """按模板渲染 prompt_addon 写回 rule yaml."""
     from .commands.prompt_fit import run_prompt_fit_cli
@@ -227,6 +246,7 @@ def prompt_fit_cmd(
         dry_run=dry_run,
         output_path=output_path,
         save_vars=save_vars,
+        force=force,
     )
     sys.exit(code)
 
@@ -259,6 +279,29 @@ def template_validate_cmd(template_id: str) -> None:
     sys.exit(run_template_validate(template_id))
 
 
+@main.group("promise")
+def promise_group() -> None:
+    """版本化 Promise 资产校验与离线回归。"""
+
+
+@promise_group.command("validate")
+@click.option("--json", "json_output", is_flag=True, help="输出稳定 JSON 报告")
+def promise_validate_cmd(json_output: bool) -> None:
+    """校验 schema、scope、版本链、案例与 H/I 映射。"""
+    from .commands.promise import run_promise_validate
+
+    sys.exit(run_promise_validate(json_output=json_output))
+
+
+@promise_group.command("run")
+@click.option("--json", "json_output", is_flag=True, help="输出稳定 JSON 报告")
+def promise_run_cmd(json_output: bool) -> None:
+    """离线重复执行全部 Promise 案例。"""
+    from .commands.promise import run_promise_harness
+
+    sys.exit(run_promise_harness(json_output=json_output))
+
+
 @main.command("ensure-mssql-schema")
 @click.option("--drop-first", is_flag=True,
               help="先 DROP 再 CREATE (需 JAVERT_ALLOW_DROP=1, 不可逆)")
@@ -271,6 +314,9 @@ def ensure_mssql_schema_cmd(drop_first: bool) -> None:
 from .commands.mssql_user import mssql_user_group as _mssql_user_group
 main.add_command(_mssql_user_group)
 
+from .commands.oncology_kb import oncology_kb_group as _oncology_kb_group
+main.add_command(_oncology_kb_group)
+
 
 @main.command("sync-to-mssql")
 @click.option("--dry-run", "dry_run", is_flag=True, help="仅打印 plan, 不写")
@@ -279,7 +325,7 @@ main.add_command(_mssql_user_group)
 @click.option("--batch-size", "batch_size", type=click.IntRange(1, 1000), default=200,
               show_default=True, help="单批大小")
 def sync_to_mssql_cmd(dry_run: bool, pending_only: bool, batch_size: int) -> None:
-    """sqlite audit_runs → 142 Javert_audit_runs 一次性 / 增量同步."""
+    """sqlite audit_runs → 142 javert_audit_runs 一次性 / 增量同步."""
     from .commands.sync_to_mssql import run_sync_to_mssql
     sys.exit(run_sync_to_mssql(
         dry_run=dry_run,

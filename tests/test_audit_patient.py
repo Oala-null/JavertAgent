@@ -6,6 +6,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
@@ -186,6 +187,50 @@ def test_audit_patient_explicit_rules_force_include_abandoned(audit_project, mon
     assert "Verdicts: V=1 / C=1 / I=0" in result.stdout
 
 
+def test_replay_key_reuses_persisted_audit_without_second_llm_run(
+    audit_project,
+    monkeypatch,
+):
+    replay_key = "123e4567-e89b-42d3-a456-426614174000-v1"
+    monkeypatch.setenv("JAVERT_REPLAY_KEY", replay_key)
+    monkeypatch.setenv("JAVERT_BATCH_TAG", "ocr1.0")
+    from javert.config import reset_config_cache
+
+    reset_config_cache()
+    first_provider = _patch_provider(
+        monkeypatch,
+        _ScriptedProvider(per_call=_audit_script("CLEAN")),
+    )
+    runner = CliRunner()
+    first = runner.invoke(main, ["audit-patient", PT_ID, "--rules", "R045"])
+    assert first.exit_code == 0
+    assert first_provider.call_idx == 2
+
+    monkeypatch.setenv("JAVERT_SQL_ENABLED", "true")
+    reset_config_cache()
+    sql_store = MagicMock()
+    sql_store.write_audit.return_value = True
+    monkeypatch.setattr(
+        "javert.store.sqlserver_store.get_sqlserver_store",
+        lambda: sql_store,
+    )
+    second_provider = _patch_provider(monkeypatch, _ScriptedProvider(per_call=[]))
+    second = runner.invoke(main, ["audit-patient", PT_ID, "--rules", "R045"])
+
+    assert second.exit_code == 0, second.output
+    assert second_provider.call_idx == 0
+    assert "replay reused 1" in second.stdout
+    assert "mssql_sync: 1/1 succeeded (0 pending)" in second.stdout
+    sql_store.write_audit.assert_called_once()
+    with sqlite3.connect(audit_project["db"]) as connection:
+        count, synced_at = connection.execute(
+            "SELECT COUNT(*), MAX(synced_at) FROM audit_runs WHERE replay_key=?",
+            (replay_key,),
+        ).fetchone()
+    assert count == 1
+    assert synced_at is not None
+
+
 def test_share_tool_cache_hits_on_second_rule(audit_project, monkeypatch):
     """7.4: --share-tool-cache 两条规则共享 cache, 第二条同参数 tool 命中."""
     # 两条规则各 1 tool + 1 verdict = 4 个 content. tool 参数完全一致 → 第二个应命中 cache.
@@ -226,29 +271,34 @@ def test_no_rules_match_priority_exits_2(audit_project, monkeypatch):
     assert "没有匹配的规则" in result.stderr
 
 
-def test_llm_unavailable_mid_batch_persists_first_exits_1(audit_project, monkeypatch):
-    """7.6: 第 2 条规则 raise LlmUnavailableError, 第 1 条已落 store, 进程 exit 1."""
+def test_llm_unavailable_mid_batch_continues_and_exits_1(audit_project, monkeypatch):
+    """7.6 (harden-onsite-redlines 改): 第 2 条 LlmUnavailableError 标 failed 继续跑第 3 条."""
     # 第 1 条: 2 calls (tool + verdict). 第 2 条: 第 1 call (call_idx=3) raise.
-    scripts = _audit_script("CLEAN")  # 第 1 条的 2 个 content
+    # 第 3 条: 继续消费 2 个 content (串行不再中断).
+    scripts = _audit_script("CLEAN") + _audit_script("CLEAN")
     provider = _ScriptedProvider(per_call=scripts, raise_on_call=3)
     _patch_provider(monkeypatch, provider)
 
     runner = CliRunner()
     result = runner.invoke(
-        main, ["audit-patient", PT_ID, "--rules", "R045,R191"],
+        main, ["audit-patient", PT_ID, "--rules", "R045,R191,R300"],
     )
     assert result.exit_code == 1
 
-    # 第 1 条已 verdict, 第 2 条标 LLM 不可用
-    assert "[1/2] R045 → C" in result.stderr
-    assert "[2/2] R191 → LLM 不可用" in result.stderr
-    # summary 区分
-    assert "LLM failed at: rule #2 (R191)" in result.stdout
+    # 第 1 条 verdict, 第 2 条标 LLM 不可用, 第 3 条照常跑 (失败不拖垮整患者)
+    assert "[1/3] R045 → C" in result.stderr
+    assert "[2/3] R191 → LLM 不可用" in result.stderr
+    assert "[3/3] R300 → C" in result.stderr
+    # summary: 2 完成 1 失败, 无 pending
+    assert "2 completed" in result.stdout
+    assert "1 failed" in result.stdout
+    assert "0 pending" in result.stdout
+    assert "LLM unavailable rules: R191" in result.stdout
 
-    # DB 应仅有 1 行 (R045)
+    # DB 应有 2 行 (R045 + R300)
     conn = sqlite3.connect(audit_project["db"])
     n = conn.execute(
         "SELECT COUNT(*) FROM audit_runs WHERE patient_id = ?", (PT_ID,)
     ).fetchone()[0]
     conn.close()
-    assert n == 1
+    assert n == 2

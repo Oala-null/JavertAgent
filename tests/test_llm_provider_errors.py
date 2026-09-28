@@ -1,0 +1,139 @@
+# -*- coding: utf-8 -*-
+"""harden-onsite-redlines Task 3.1: LLM 4xx 快速失败, 429/5xx 重试不变."""
+
+from __future__ import annotations
+
+import pytest
+
+from javert.tools.llm_provider import (
+    LlmClientError,
+    LlmUnavailableError,
+    Qwen35Provider,
+)
+
+
+class _FakeResponse:
+    def __init__(
+        self,
+        status_code: int,
+        text: str = "",
+        finish_reason: str = "stop",
+        message: dict | None = None,
+    ):
+        self.status_code = status_code
+        self.text = text
+        self.finish_reason = finish_reason
+        self.message = message or {"content": "ok"}
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+    def json(self):
+        return {
+            "choices": [{
+                "message": self.message,
+                "finish_reason": self.finish_reason,
+            }],
+            "usage": None,
+        }
+
+
+class _FakeClient:
+    def __init__(self, responses: list[_FakeResponse]):
+        self.responses = responses
+        self.n_posts = 0
+        self.last_json = None
+
+    def post(self, url, json=None):
+        self.n_posts += 1
+        self.last_json = json
+        return self.responses[min(self.n_posts - 1, len(self.responses) - 1)]
+
+
+def _provider_with(monkeypatch, client: _FakeClient) -> Qwen35Provider:
+    p = Qwen35Provider()
+    p._http_client = client
+    monkeypatch.setattr("javert.tools.llm_provider.time.sleep", lambda s: None)
+    return p
+
+
+def test_400_raises_client_error_with_status_and_body(monkeypatch):
+    client = _FakeClient([_FakeResponse(400, '{"error": "context length exceeded"}')])
+    p = _provider_with(monkeypatch, client)
+    with pytest.raises(LlmClientError) as ei:
+        p.chat([{"role": "user", "content": "hi"}])
+    assert "400" in str(ei.value)
+    assert "context length exceeded" in str(ei.value)
+
+
+def test_400_not_retried_by_chat_with_retry(monkeypatch):
+    client = _FakeClient([_FakeResponse(400, "too long")])
+    p = _provider_with(monkeypatch, client)
+    with pytest.raises(LlmClientError):
+        p.chat_with_retry([{"role": "user", "content": "hi"}], retries=3)
+    assert client.n_posts == 1, "4xx 不应触发重试"
+
+
+def test_429_still_retried(monkeypatch):
+    client = _FakeClient([_FakeResponse(429, "rate limited")])
+    p = _provider_with(monkeypatch, client)
+    with pytest.raises(LlmUnavailableError):
+        p.chat_with_retry([{"role": "user", "content": "hi"}], retries=3)
+    assert client.n_posts == 3, "429 应照旧重试"
+
+
+def test_503_still_retried_then_succeeds(monkeypatch):
+    client = _FakeClient([_FakeResponse(503, "busy"), _FakeResponse(200)])
+    p = _provider_with(monkeypatch, client)
+    out = p.chat_with_retry([{"role": "user", "content": "hi"}], retries=3)
+    assert out["content"] == "ok"
+    assert client.n_posts == 2
+
+
+def test_chat_surfaces_finish_reason(monkeypatch):
+    client = _FakeClient([_FakeResponse(200, finish_reason="length")])
+    p = _provider_with(monkeypatch, client)
+    out = p.chat([{"role": "user", "content": "hi"}])
+    assert out["finish_reason"] == "length"
+
+
+def test_chat_normalizes_native_tool_calls(monkeypatch):
+    client = _FakeClient([_FakeResponse(200, message={
+        "content": None,
+        "tool_calls": [{
+            "id": "call_1",
+            "type": "function",
+            "function": {
+                "name": "search_fees",
+                "arguments": '{"keyword":"麻醉"}',
+            },
+        }],
+    })])
+    provider = _provider_with(monkeypatch, client)
+    tools = [{"type": "function", "function": {"name": "search_fees"}}]
+    out = provider.chat([{"role": "user", "content": "查费用"}], tools=tools)
+    assert out["content"] == ""
+    assert out["tool_calls"] == [{
+        "id": "call_1",
+        "name": "search_fees",
+        "arguments": {"keyword": "麻醉"},
+    }]
+    assert out["tool_call_errors"] == []
+    assert client.last_json["tools"] == tools
+
+
+def test_chat_forwards_response_format(monkeypatch):
+    client = _FakeClient([_FakeResponse(200)])
+    provider = _provider_with(monkeypatch, client)
+    response_format = {
+        "type": "json_schema",
+        "json_schema": {"name": "verdict", "schema": {"type": "object"}},
+    }
+
+    provider.chat(
+        [{"role": "user", "content": "输出裁决"}],
+        response_format=response_format,
+    )
+
+    assert client.last_json["response_format"] == response_format

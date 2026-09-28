@@ -2,7 +2,9 @@
 """init_drug_rules — 建/装 药品类规则 (M8): 类型级 4 (R007/RD01-03) + 精选 ~29 (RD10+).
 
 每条规则: write_rule 骨架 (含 drug_rule_type) → update_from_template_render(M8 渲染,
-prompt_addon `|` 块 + derived_from_template=M8 + 保留 drug_rule_type) → status=ready.
+prompt_addon `|` 块 + derived_from_template=M8 + 保留 drug_rule_type).
+类型级 R007/RD01-03 保持 ready；精选 RD10-RD37 新建时默认 drafting，已存在时
+保留由知识迁移门禁决定的 drafting/abandoned，且两者都不进入默认执行集合。
 
 精选药数据驱动: 每条都校验 (a) 在 drug_audit_kb.json (b) 在 output/drug_kb_hits.csv (无休眠药).
 
@@ -20,7 +22,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from javert.audit.rule import Rule  # noqa: E402
+from javert.audit.rule import Rule, Status  # noqa: E402
 from javert.audit.rule_loader import load_rule  # noqa: E402
 from javert.audit.rule_writer import update_from_template_render, write_rule  # noqa: E402
 from javert.templating import load_template, render_template  # noqa: E402
@@ -112,6 +114,31 @@ CURATED = [
     ("RD37", "艾普拉唑肠溶片", "限二线", [], ""),
 ]
 
+CURATED_STATUS: Status = "drafting"
+_CURATED_EXECUTION_STATUSES = frozenset({"drafting", "abandoned"})
+_MIGRATION_PENDING_NOTE = (
+    "knowledge_migration_pending="
+    "docs/oncology/authoring/curated_knowledge_manifest.json"
+)
+
+
+def _curated_execution_state(rule_id: str, generated_notes: str) -> tuple[Status, str]:
+    """生成器不得覆盖知识迁移门禁已决定的精选规则状态。"""
+    path = RULES_DIR / f"{rule_id}.yaml"
+    if path.exists():
+        existing = load_rule(path)
+        if existing.status in _CURATED_EXECUTION_STATUSES:
+            status: Status = existing.status
+            if status == "abandoned":
+                return status, existing.notes or generated_notes
+        else:
+            status = CURATED_STATUS
+    else:
+        status = CURATED_STATUS
+    if _MIGRATION_PENDING_NOTE not in generated_notes:
+        generated_notes = f"{generated_notes}; {_MIGRATION_PENDING_NOTE}"
+    return status, generated_notes
+
 
 def _load_kb() -> dict:
     return json.loads(KB_PATH.read_text(encoding="utf-8"))["drugs"]
@@ -122,6 +149,7 @@ def _build_one(
     *, rule_id, drug_rule_type, domain, target_desc,
     drug_focus="", special_notes=None, pilot_caveat="", trigger_kw=None,
     notes="", question=None, example="", violation_type=None, priority="P1",
+    status: Status = "ready",
 ) -> str:
     special_notes = special_notes or []
     trigger_kw = trigger_kw or []
@@ -131,10 +159,10 @@ def _build_one(
         f"{QUESTION_SUFFIX[drug_rule_type]}。"
     )
 
-    # 骨架 (含 drug_rule_type + status=ready); prompt_addon 由下一步渲染填
+    # 骨架含 drug_rule_type/status；prompt_addon 由下一步渲染填。
     skeleton = Rule(
         rule_id=rule_id, domain=domain, violation_type=vt, question=q, example=example,
-        status="ready", priority=priority, prompt_addon="", trigger_keywords=[],
+        status=status, priority=priority, prompt_addon="", trigger_keywords=[],
         suggested_tools=[], expected_signal="", notes=notes,
         derived_from_template=None, drug_rule_type=drug_rule_type,
     )
@@ -157,7 +185,7 @@ def _build_one(
         suggested_tools=rendered.get("suggested_tools"),
         expected_signal=rendered.get("expected_signal"),
     )
-    return f"{rule_id} [{drug_rule_type}] ready"
+    return f"{rule_id} [{drug_rule_type}] {status}"
 
 
 def main() -> None:
@@ -185,7 +213,10 @@ def main() -> None:
             question=q, example=ex, violation_type=vt, trigger_kw=[],
         ))
 
-    print(f"\n=== 精选 {len(CURATED)} 条 (router 按通用名/stem 精准触发) ===")
+    print(
+        f"\n=== 精选 {len(CURATED)} 条 "
+        "(保留 drafting/abandoned 迁移门禁；仅 --rules 可显式单跑) ==="
+    )
     for rid, drug, rt, notes_extra, caveat in CURATED:
         if drug not in kb:
             raise SystemExit(f"✗ {rid}: 「{drug}」不在 drug_audit_kb.json")
@@ -196,13 +227,17 @@ def main() -> None:
             raise SystemExit(f"✗ {rid}: 「{drug}」KB 类型 {kb_types} 不含 {rt}")
         stem = kb_stem(drug)
         trigger_kw = [drug] + ([stem] if stem != drug else [])
-        notes = f"精选药品规则 (M8 {rt}); 通用名「{drug}」, router 触发词 {trigger_kw}."
+        notes = (
+            f"精选药品规则 (M8 {rt}); 通用名「{drug}」, router 触发词 {trigger_kw}. "
+            "由 bulk R007/RD01-03 独占, 消重复计违规 (fix-drug-audit-precision)."
+        )
+        curated_status, notes = _curated_execution_state(rid, notes)
         print("  " + _build_one(
             m8, kb, hit_set,
             rule_id=rid, drug_rule_type=rt, domain="药品",
             target_desc=f"{drug} ({rt})", drug_focus=drug,
             special_notes=notes_extra, pilot_caveat=caveat,
-            trigger_kw=trigger_kw, notes=notes,
+            trigger_kw=trigger_kw, notes=notes, status=curated_status,
         ))
 
     print(f"\n✓ 完成: 类型级 4 + 精选 {len(CURATED)} = {4 + len(CURATED)} 条 M8 规则")
