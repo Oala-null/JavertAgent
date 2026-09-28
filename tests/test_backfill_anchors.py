@@ -90,15 +90,14 @@ def test_backfill_sqlite_end_to_end(tmp_path):
     )
     con.execute(
         "INSERT INTO audit_runs VALUES (?,?,?,?,?,?)",
-        ("aud_x1", "R007", "J90508", "VIOLATION", _EV, "[]"),
+        ("aud_x1", "R007", "CASE-SYNTHETIC", "VIOLATION", _EV, "[]"),
     )
     con.commit()
     con.close()
 
-    cfg = get_config()
-    loader = CsvLoader(cfg.notes_path, cfg.fees_path)
+    loader = SimpleNamespace(get_fees=lambda pid: _FEE_DF.copy())
     meta = load_rule_meta()
-    kb = load_kb_drugs()
+    kb = {name: {"entries": entries, "codes": ["XH02ABB-SYNTHETIC"]} for name, entries in _KB.items()}
 
     n1 = backfill.backfill_sqlite(db, loader, meta, kb)
     assert n1 == 1
@@ -112,7 +111,7 @@ def test_backfill_sqlite_end_to_end(tmp_path):
     assert aj1  # anchors_json 已回填
     hits = hits_from_json(aj1)
     assert hits and hits[0].source == "drug"
-    # fix-drug-code-match: J90508 实际用「吸入用布地奈德混悬液」(R03 呼吸, 码 XR03BAB…),
+    # fix-drug-code-match: 合成费用用「吸入用布地奈德混悬液」(码 XR03BAB…),
     # 与 KB「布地奈德肠溶胶囊」(限 IgAN, H02 消化, 码 XH02ABB…) 码不同 → 码精确不命中.
     # 码全不中 → 名兜底但编码留空 + needs_review, 不臆造相似药码 (anti-串味, 修复旧子串误配).
     assert all(h.code_nat == "" for h in hits)

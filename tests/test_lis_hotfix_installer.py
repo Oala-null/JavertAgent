@@ -14,7 +14,16 @@ ROOT=Path(__file__).parents[1]
 
 
 @pytest.fixture
-def install_env(tmp_path):
+def install_env(tmp_path, monkeypatch):
+    # 当前维护线已有后续性能补丁；旧 v1 必须从冻结代码而非当前树演练。
+    frozen = tmp_path / 'v1-source'
+    shutil.copytree(ROOT / 'delivery/lis_hotfix', frozen / 'delivery/lis_hotfix')
+    code = json.loads(gzip.decompress((ROOT / 'tests/fixtures/249_lis_v1_code.json.gz').read_bytes()))
+    for name, text in code.items():
+        target = frozen / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding='utf-8')
+    monkeypatch.setattr('scripts.build_243_lis_hotfix.ROOT', frozen)
     package=build(tmp_path/'delivery')
     spec=importlib.util.spec_from_file_location('test_lis_installer',package/'installer.py')
     mod=importlib.util.module_from_spec(spec)

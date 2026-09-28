@@ -72,9 +72,9 @@ def _enrich_sidebar(patients: list) -> list:
     return patients
 
 
-# boost-llm-efficiency (design D5): 点开病人 detail 不再复跑两遍全表 ROW_NUMBER CTE.
-# sidebar 需要全患者列表 (按 pid 窄查询会砍掉侧栏导航), 故用短 TTL 进程缓存:
-# detail 页允许秒级陈旧 (计数由 SSE 客户端增量更新), 列表页始终现查并刷新缓存.
+# 侧栏摘要由独立分页请求读取，详情首屏不触发全局查询。
+# ponytail: CSV 主诊/费用无法在结果库统一分页；短 TTL 缓存摘要后筛选，
+# 冷摘要查询仍为 O(患者数)，规模扩大时将摘要物化后改 SQL 分页。
 _SIDEBAR_TTL_SECONDS = 10.0
 _sidebar_cache: dict[str, tuple[float, list]] = {}
 
@@ -86,8 +86,67 @@ def _sidebar_patients(store, filter_mode: str, *, allow_cached: bool) -> list:
         if hit is not None and (now - hit[0]) < _SIDEBAR_TTL_SECONDS:
             return hit[1]
     patients = _enrich_sidebar(store.list_patients_with_violations(filter_mode=filter_mode))
-    _sidebar_cache[filter_mode] = (now, patients)
+    _sidebar_cache[filter_mode] = (time.monotonic(), patients)
     return patients
+
+
+@router.get("/api/workbench/patients")
+def workbench_patients(
+    request: Request,
+    filter: str | None = None,
+    page: int = Query(1, ge=1),
+    pid: str = Query("", max_length=120),
+    dx: str = Query("", max_length=200),
+    fee: str = Query("all", pattern="^(all|lt1|1to5|gt5)$"),
+    sort: str = Query("default", pattern="^(default|fee_desc|fee_asc|time_desc|time_asc)$"),
+    tag: list[str] = Query(default=[]),
+    updated_since: datetime | None = None,
+    active_patient: str = Query("", max_length=120),
+):
+    """全名单摘要先筛选排序，再渲染至多 50 卡；不读取其它患者病历。"""
+    if current_user(request) is None:
+        return JSONResponse(status_code=401, content={"error": "未登录"})
+    f = _filter_from(request, filter)
+    patients = _sidebar_patients(get_sqlserver_store(), f, allow_cached=True)
+    tags = sorted({p.batch_tag for p in patients if p.batch_tag})
+    pid, dx = pid.strip().casefold(), dx.strip().casefold()
+    since = updated_since
+    if since is not None and since.tzinfo is None:
+        since = since.replace(tzinfo=timezone.utc)
+
+    def matches(p):
+        if pid not in p.patient_id.casefold() or dx not in p.primary_dx.casefold():
+            return False
+        if tag and p.batch_tag not in tag:
+            return False
+        amount = p.fees_sum or 0
+        if ((fee == "lt1" and amount >= 10000)
+                or (fee == "1to5" and not 10000 <= amount <= 50000)
+                or (fee == "gt5" and amount <= 50000)):
+            return False
+        updated = p.updated_at
+        if updated is not None and updated.tzinfo is None:
+            updated = updated.replace(tzinfo=timezone.utc)
+        return since is None or (updated is not None and updated >= since)
+
+    selected = [p for p in patients if matches(p)]
+    if sort.startswith("fee_"):
+        selected.sort(key=lambda p: p.fees_sum or 0, reverse=sort.endswith("desc"))
+    elif sort.startswith("time_"):
+        def timestamp(p):
+            value = p.updated_at
+            if value is None:
+                return 0
+            return value.replace(tzinfo=value.tzinfo or timezone.utc).timestamp()
+        selected.sort(key=timestamp, reverse=sort.endswith("desc"))
+    pages = max(1, (len(selected) + 49) // 50)
+    page = min(page, pages)
+    html = render("_patient_cards.html", patients=selected[(page - 1) * 50:page * 50],
+                  active_patient=active_patient, filter=f,
+                  sidebar_summary_available=get_config().hub_linkage_mode != "shanghai")
+    return JSONResponse({"html": html, "page": page, "pages": pages,
+                         "total": len(selected), "unfiltered_total": len(patients), "tags": tags},
+                        headers={"Cache-Control": "no-store"})
 
 
 def _resolve_hits_for_runs(
@@ -215,7 +274,7 @@ def workbench_index(request: Request, filter: str | None = None):
 
     f = _filter_from(request, filter)
     store = get_sqlserver_store()
-    patients = _sidebar_patients(store, f, allow_cached=False)
+    patients = []  # 侧栏独立分页，不阻塞首屏。
 
     # 欢迎 banner — 跳过条件: cookie welcome_dismissed == 当次 session login_ts
     prev_iso = request.session.get("prev_last_login")
@@ -269,7 +328,7 @@ def workbench_patient(
         )
     f = _filter_from(request, filter)
     store = get_sqlserver_store()
-    patients = _sidebar_patients(store, f, allow_cached=True)
+    patients = []  # 详情只查询当前患者，侧栏由浏览器独立加载。
     runs = store.list_runs_for_patient(patient_id=patient_id, filter_mode=f)
     if not runs:
         # 不报 404 — patient 可能存在但 filter 下空
@@ -364,6 +423,7 @@ async def submit_review(request: Request):
         logger.error("submit_review failed: %s", e)
         return JSONResponse(status_code=503, content={"error": "数据库不可用"})
 
+    _sidebar_cache.clear()  # 下次翻页/导航使用最新团队审核进度。
     # SSE 广播 (routes_sse.event_bus 注入)
     try:
         from .routes_sse import event_bus

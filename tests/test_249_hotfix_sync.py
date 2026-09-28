@@ -38,9 +38,14 @@ def test_unsafe_manifest_rejected(path):
         validate_manifest({'version': 1, 'base_commit': 'a'*40, 'files': {path: 'a'*64}, 'hotfix_paths': []})
 
 
-def test_recovered_release_matches_frozen_delivery():
+def test_maintenance_tree_matches_frozen_delivery_with_performance_patch():
     root = Path(__file__).parents[1]
     manifest = json.loads((root / 'deploy/249/known-release.json').read_text())
+    assert len(manifest['hotfix_paths']) == 14  # 原交付身份仍保留，不改写旧清单。
+    patch = json.loads((root / 'delivery/web_performance/v1-manifest.json').read_text())
+    for name, item in patch['files'].items():
+        assert manifest['files'].get(name) == item['before']
+        manifest['files'][name] = item['after']
     result = compare(root, manifest)
     assert result['disk_match'], result['differences']
     assert result['hotfix_files'] == 14

@@ -1,0 +1,44 @@
+{
+  "patch_id": "249-workbench-performance-v1",
+  "base_commit": "8645a2deb1c4c99921a65a3ab01754275ec2ac4e",
+  "baseline_maintenance_commit": "7bb34f9621763fa2cea98fab7f22512753ad8bc6",
+  "files": {
+    "src/javert/store/sqlserver_store.py": {
+      "before": "9f473cb5f699833f3eef0e8111280584b26f0a4279f9c532d8abdd429002a029",
+      "after": "bebf76929931829063112eaeb0b2ec135788ddeabf72c2d12ae3dd1e399ab452",
+      "mode": 420
+    },
+    "src/javert/web/api/routes_workbench.py": {
+      "before": "7d724263baf0970f14897f3d74d2b5e43ce7dcf063aaa1a007f1b0d1a5920b16",
+      "after": "a16b982cb8d10271216f49f6284b9eaa6021257a847b5ac0a067dc1cf7178fda",
+      "mode": 420
+    },
+    "src/javert/web/static/app.js": {
+      "before": "85717be400cfeebcea5dc6814e98dabaeb5fddcbc51dbef55147e3180afbd933",
+      "after": "893ab30c72055e3e14f8b87fa18f833ca950a35f07086472eb4fcd0fdd521434",
+      "mode": 420
+    },
+    "src/javert/web/templates/_patient_cards.html": {
+      "before": null,
+      "after": "17cadd81d2c2a773724026831f70eebcb668ba160d5b3f3f3cfd66908b59f14a",
+      "mode": 420
+    },
+    "src/javert/web/templates/_sidebar.html": {
+      "before": "32f2e6c878089707da8e7bc489e796e1521ec198972614d7707a8a38f405ec4d",
+      "after": "c055f84adf1579be606cde33300c6e997218b5d170b0ea7f74b0f62a8da7d1b1",
+      "mode": 420
+    }
+  },
+  "dependencies": {
+    "src/javert/data/hub_source.py": "db73357dccb0647272c3a7b06bd390cb96de3be9cb5ab59812ad14aac8322bce",
+    "src/javert/store/models.py": "aeb3ee46ff8f5b53040e1d897adda8701fb4c9dc31ac3d1b4845a92ac351c809",
+    "src/javert/web/api/main.py": "63aae431284eaee8886325596c61b4526811cded0e8f5a1070404e50d35020ac",
+    "src/javert/web/auth.py": "20230d0e9254c02656435e780b412f293f118fa4c722d6ac614688d89e4032d6",
+    "src/javert/web/hub_raw_source.py": "153f22c0aa18dcae95590a4ff36386b1b88e68c84008791d2de95b3761f1d38c",
+    "src/javert/web/patient_overview.py": "f50d67c7b712af5445f3ac99594dd1d16a311b1cc63803d14f021755b0cdc57e",
+    "src/javert/web/static/style.css": "b1ede6793770cdc5de42d92bd9f407fe68a1c8450c50e98099a94430c44dadbd",
+    "src/javert/web/templates/base.html": "771fd6024e0f7dd0469eb3ea99e57f14f248bd2ea609451266fbe304ebc153cd",
+    "src/javert/web/templates/patient_detail.html": "a295d2d572cd3e56635df7e18f634d89c491a1f058940e83bba619e1a1c4deae",
+    "src/javert/web/templating.py": "763ad9a96e7a9ea2d73a288bca313fd0b61cff2561e7b75048ae83447b05da95"
+  }
+}

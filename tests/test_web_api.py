@@ -17,6 +17,7 @@ def client(monkeypatch):
         if key.startswith("JAVERT_"):
             monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("JAVERT_SQL_ENABLED", "false")
+    monkeypatch.setenv("JAVERT_SESSION_SECRET", "SYNTHETIC-test-session-secret")
 
     # 重置 config / sqlserver 单例
     from javert.config import reset_config_cache
@@ -128,7 +129,12 @@ def test_get_rule_yaml(client):
     assert "rule_id:" in data["yaml_text"]
 
 
-def test_sample_pilot(client):
+def test_sample_pilot(client, monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from javert.web.api import routes_patients
+    roster = tmp_path / 'SYNTHETIC-roster.txt'
+    roster.write_text('CASE-SYNTHETIC-A\nCASE-SYNTHETIC-B\n')
+    monkeypatch.setattr(routes_patients, 'get_config', lambda: SimpleNamespace(pilot_roster_path=roster))
     _as_logged_in(client)
     resp = client.get("/api/patients/sample?n=2&pool=pilot")
     assert resp.status_code == 200

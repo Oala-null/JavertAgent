@@ -870,7 +870,7 @@ class SqlServerStore:
     ) -> list[RunWithReviews]:
         """patient_detail — 当前 patient 的 runs (按 filter), JOIN reviews + history.
 
-        v0.7: 拉所有 audit_runs (含老 v1.0), Python 端按 rule_id 分组,
+        SQL 按患者/规则定位最新记录，仅主卡取完整大字段；Python 按 rule_id 分组,
         每组 latest 作主显示, 其他作 history (v1.0 verdict + 当时的批注).
         filter 仍以 latest verdict 为准.
         """
@@ -878,15 +878,32 @@ class SqlServerStore:
         if engine is None:
             return []
         from sqlalchemy import text
-        # 拉该 patient 所有 audit_runs (含老 v1.0, 含 latest v1.2 — 一次性)
-        sql_runs = """
-            SELECT run_id, rule_id, patient_id, verdict, confidence,
-                   reasoning, evidence_json, tool_calls_json,
-                   duration_ms, model, started_at, created_at, triggered_by, batch_tag,
-                   gate_tag
-            FROM javert_audit_runs
-            WHERE patient_id = :pid
-            ORDER BY rule_id ASC, created_at DESC
+        # 仅在患者范围内排序标识；历史行不取未展示的大字段。
+        verdicts = {
+            "v_and_i": "N'VIOLATION', N'INCONCLUSIVE'",
+            "v_only": "N'VIOLATION'", "i_only": "N'INCONCLUSIVE'",
+            "all": "N'VIOLATION', N'INCONCLUSIVE', N'CLEAN'",
+        }.get(filter_mode, "N'VIOLATION', N'INCONCLUSIVE'")
+        sql_runs = f"""
+            WITH ranked AS (
+                SELECT id, rule_id, verdict,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY rule_id ORDER BY created_at DESC, id DESC
+                       ) AS rn
+                FROM javert_audit_runs WHERE patient_id = :pid
+            ), visible AS (
+                SELECT rule_id FROM ranked WHERE rn = 1 AND verdict IN ({verdicts})
+            )
+            SELECT r.run_id, r.rule_id, r.patient_id, r.verdict, r.confidence,
+                   CASE WHEN n.rn = 1 THEN r.reasoning END AS reasoning,
+                   CASE WHEN n.rn = 1 THEN r.evidence_json END AS evidence_json,
+                   CASE WHEN n.rn = 1 THEN r.tool_calls_json END AS tool_calls_json,
+                   r.duration_ms, r.model, r.started_at, r.created_at, r.triggered_by, r.batch_tag,
+                   r.gate_tag
+            FROM ranked n
+            INNER JOIN javert_audit_runs r ON r.id = n.id
+            INNER JOIN visible v ON v.rule_id = n.rule_id
+            ORDER BY r.rule_id ASC, r.created_at DESC, r.id DESC
         """
         sql_reviews = """
             SELECT rv.id, rv.run_id, rv.user_id, rv.review_verdict,
@@ -997,8 +1014,12 @@ class SqlServerStore:
             with engine.connect() as conn:
                 rows = conn.execute(
                     text(
-                        "SELECT run_id, anchors_json FROM javert_audit_runs "
-                        "WHERE patient_id = :pid AND anchors_json IS NOT NULL"
+                        "WITH ranked AS (SELECT id, ROW_NUMBER() OVER ("
+                        "PARTITION BY rule_id ORDER BY created_at DESC, id DESC) AS rn "
+                        "FROM javert_audit_runs WHERE patient_id = :pid) "
+                        "SELECT r.run_id, r.anchors_json FROM ranked n "
+                        "INNER JOIN javert_audit_runs r ON r.id = n.id "
+                        "WHERE n.rn = 1 AND r.anchors_json IS NOT NULL"
                     ),
                     {"pid": patient_id},
                 ).fetchall()
