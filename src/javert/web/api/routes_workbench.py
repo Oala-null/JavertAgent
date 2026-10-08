@@ -13,6 +13,7 @@ import json
 import logging
 import time
 from datetime import datetime, timezone
+from functools import cache
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -34,6 +35,7 @@ from javert.web.hit_resolver import (
     hits_from_json,
     hits_have_verified_fee_snapshot,
     load_kb_drugs,
+    prepare_fee_rows,
     resolve_hits,
 )
 from javert.web.patient_overview import (
@@ -80,8 +82,9 @@ def _enrich_sidebar(patients: list) -> list:
 # 侧栏摘要由独立分页请求读取，详情首屏不触发全局查询。
 # ponytail: CSV 主诊/费用无法在结果库统一分页；短 TTL 缓存摘要后筛选，
 # 冷摘要查询仍为 O(患者数)，规模扩大时将摘要物化后改 SQL 分页。
-_SIDEBAR_TTL_SECONDS = 10.0
+_SIDEBAR_TTL_SECONDS = 60.0
 _sidebar_cache: dict[str, tuple[float, list]] = {}
+_sidebar_audit_signature: int | None = None
 
 
 def _sidebar_patients(store, filter_mode: str, *, allow_cached: bool) -> list:
@@ -167,6 +170,12 @@ def _resolve_hits_for_runs(
     anchors_map = anchors_map or {}
     fee_df = None
     fee_loaded = False
+
+    @cache
+    def fee_rows_for_request():
+        # 同次住院切片只整理一次；请求结束即释放，不缓存患者结果。
+        return prepare_fee_rows(fee_df)
+
     kb_drugs: dict = {}
     kb_loaded = False
     for run in runs:
@@ -216,6 +225,7 @@ def _resolve_hits_for_runs(
                 run, drug_type,
                 patient_fee_df=fee_df,
                 kb_drugs=(kb_drugs if drug_type else {}),
+                fee_rows_factory=fee_rows_for_request,
             )
         except Exception as e:  # noqa: BLE001
             logger.warning("resolve_hits 失败 run=%s: %s", run.run_id, e)
@@ -285,6 +295,7 @@ def workbench_sig(request: Request):
     不依赖 SSE/AuditWatcher (142 抖时 SSE 会 backoff); MAX(id) 走主键索引 O(1), 极廉价.
     142 不可达 → 返回 sig=None, 前端按"无变化"处理 (绝不误刷).
     """
+    global _sidebar_audit_signature
     if current_user(request) is None:
         return JSONResponse(status_code=401, content={"error": "未登录"})
     try:
@@ -294,7 +305,13 @@ def workbench_sig(request: Request):
             return {"sig": None}
         with eng.connect() as c:
             sig = c.execute(text("SELECT MAX(id) FROM javert_audit_runs")).scalar()
-        return {"sig": int(sig) if sig is not None else 0}
+        signature = int(sig) if sig is not None else 0
+        if signature != _sidebar_audit_signature:
+            # 复用既有廉价轮询，使新审计结果不必等60秒缓存过期。
+            _sidebar_cache.clear()
+            _batch_tag_cache.clear()
+            _sidebar_audit_signature = signature
+        return {"sig": signature}
     except Exception:  # noqa: BLE001 — 142 抖 → None → 前端不动
         return {"sig": None}
 
@@ -552,6 +569,7 @@ async def submit_review(request: Request):
         return JSONResponse(status_code=503, content={"error": "数据库不可用"})
 
     _sidebar_cache.clear()  # 下次翻页/导航应看到刚提交的团队审核进度。
+    _batch_tag_cache.clear()
     # SSE 广播 (routes_sse.event_bus 注入)
     try:
         from .routes_sse import event_bus
@@ -661,11 +679,29 @@ def _get_hub_profile_source(batch_tag: str):
     return source
 
 
+_BATCH_TAG_TTL_SECONDS = 30.0
+_BATCH_TAG_CACHE_MAX = 4096
+_batch_tag_cache: dict[str, tuple[float, str | None]] = {}
+
+
+def _latest_batch_tag_cached(patient_id: str) -> str | None:
+    hit = _batch_tag_cache.get(patient_id)
+    if hit is not None and time.monotonic() - hit[0] < _BATCH_TAG_TTL_SECONDS:
+        return hit[1]
+    tag = get_sqlserver_store().latest_batch_tag_for_patient(patient_id)
+    # 旧 store 在查询失败时也返回 None；未知来源不跨请求缓存。
+    if tag is not None:
+        if len(_batch_tag_cache) >= _BATCH_TAG_CACHE_MAX:
+            _batch_tag_cache.clear()
+        _batch_tag_cache[patient_id] = (time.monotonic(), tag)
+    return tag
+
+
 def _get_profile_hub_source_for_patient(patient_id: str):
     """返回患者显式 batch profile；命中后调用方不得回退到 CSV/默认 Hub。"""
     cfg = get_config()
     if cfg.hub_raw_profiles:
-        tag = get_sqlserver_store().latest_batch_tag_for_patient(patient_id)
+        tag = _latest_batch_tag_cached(patient_id)
         if tag:
             profile_source = _get_hub_profile_source(tag)
             if profile_source is not None:

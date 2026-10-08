@@ -26,6 +26,7 @@ def synthetic_workbench(monkeypatch):
         calls.append(filter_mode)
         return patients
     store = SimpleNamespace(
+        latest_batch_tag_for_patient=lambda patient_id: None,
         list_patients_with_violations=list_patients,
         list_runs_for_patient=lambda patient_id, filter_mode: [RunWithReviews(
             run_id="aud_SYNTHETIC", rule_id="R191", patient_id=patient_id,
