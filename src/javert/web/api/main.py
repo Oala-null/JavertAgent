@@ -22,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from javert.config import get_config
 from javert.store.audit_store import SqliteStore
@@ -152,6 +153,7 @@ def create_app(with_mssql: bool | None = None) -> FastAPI:
         same_site=cfg.session_same_site,
         https_only=cfg.session_https_only,
     )
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
