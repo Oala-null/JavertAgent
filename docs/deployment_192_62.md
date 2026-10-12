@@ -118,7 +118,7 @@ sleep 8 && systemctl is-active javert-web         # 应回到 active (新 PID)
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8090/login   # 200
 ```
 
-**静态前端 (static/*.css, *.js) 改动无需任何重启**: FastAPI StaticFiles 每请求读盘, scp 后即时生效; 且模板给资源加了 `?v={mtime}` 自动 cache-busting (每次部署版本号自动变, 用户普通刷新即拉新, 无需 hard-refresh). **仅 `src/*.py` / 模板 / yaml 改动才需 kill-9 重拉进程.**
+**静态前端发布也应按受控流程重启 Web**：StaticFiles 每次读盘，但模板的 `asset_v` 在 Jinja 环境创建时计算一次。重启后须验证登录 HTML 的资源版本与磁盘一致、实际返回 JS 的 SHA 与制品一致；已有标签页普通刷新一次加载新脚本。源码、模板和配置变更同样需要重启。
 
 ---
 
@@ -297,8 +297,7 @@ python3 scripts/deployment_sync.py check
 `pyproject.toml`、`uv.lock` 的 blob；不携带仓库历史、`.env`、`data/` 患者文件或 `output/`。
 `artifact --allow-dirty` 仍然只取已提交 HEAD，仅供明确知道工作树未提交内容不属于本次发布时使用。
 
-**纯前端改动虽然无需重启，但仍必须使用带清单的部署包并跑 step 5**；静态文件即时生效 +
-cache-busting 自动刷新。仅 `*.py`/yaml 改动才需 step 4 重拉。
+**纯前端改动也必须使用带清单的部署包、执行 step 4 重启及 step 5 验收**；模板资源版本在进程内固定，须重启并确认新版本，再让已有页面普通刷新。
 
 数据 (data/) 或 schema (scripts/sql/) 改了类似流程, 但 schema 改完还要在 62 跑 `ensure-mssql-schema`.
 
