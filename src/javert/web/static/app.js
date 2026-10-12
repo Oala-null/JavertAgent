@@ -54,6 +54,61 @@
   // 患者切换保留页面框架，只在新详情完整到达时替换。
   var _navigationEpoch = 0, _navigationPending = false, _navigationRequest = null;
   var _committedHref = null, _reviewPending = false;
+  var _detailCache = new Map(), _detailCacheChars = 0, _detailCacheEpoch = 0;
+  var _detailCacheEnabled = true;
+  var DETAIL_CACHE_TTL = 60000, DETAIL_CACHE_LIMIT = 5, DETAIL_CACHE_CHARS = 2 * 1024 * 1024;
+
+  function detailCacheKey(href) {
+    var url = new URL(href, window.location.href);
+    url.hash = "";
+    url.searchParams.sort();
+    return (window.JAVERT_USER || "") + "\n" + url.href;
+  }
+
+  function forgetDetail(key) {
+    var entry = _detailCache.get(key);
+    if (entry) _detailCacheChars -= entry.html.length;
+    _detailCache.delete(key);
+  }
+
+  function invalidateDetails(patient) {
+    ++_detailCacheEpoch;
+    _detailCache.forEach(function (entry, key) {
+      if (!patient || entry.patient === patient) forgetDetail(key);
+    });
+  }
+
+  function cachedDetail(url) {
+    // 无显式filter时服务端会读取cookie，不能复用上次的筛选口径。
+    if (!_detailCacheEnabled || !url.searchParams.get("filter")) return null;
+    var key = detailCacheKey(url.href), entry = _detailCache.get(key);
+    if (!entry) return null;
+    if (Date.now() >= entry.expiresAt) { forgetDetail(key); return null; }
+    _detailCache.delete(key); _detailCache.set(key, entry);
+    return entry.html;
+  }
+
+  function rememberDetail(href, page) {
+    if (!_detailCacheEnabled) return;
+    var panel = page.querySelector(".detail-panel");
+    var patient = panel && panel.getAttribute("data-patient-id");
+    if (!patient || panel.getAttribute("data-user") !== window.JAVERT_USER) return;
+    var url = new URL(href, window.location.href);
+    if (!url.searchParams.get("filter")) url.searchParams.set("filter", panel.getAttribute("data-filter"));
+    var html = "<title>" + _esc(page.title) + "</title>" + panel.outerHTML;
+    if (html.length > DETAIL_CACHE_CHARS) return;
+    var key = detailCacheKey(url.href);
+    forgetDetail(key);
+    while (_detailCache.size >= DETAIL_CACHE_LIMIT || _detailCacheChars + html.length > DETAIL_CACHE_CHARS) {
+      forgetDetail(_detailCache.keys().next().value);
+    }
+    _detailCache.set(key, {patient: patient, html: html, expiresAt: Date.now() + DETAIL_CACHE_TTL});
+    _detailCacheChars += html.length;
+  }
+
+  window.addEventListener("focus", function () { invalidateDetails(); });
+  window.addEventListener("pagehide", function () { invalidateDetails(); });
+  document.addEventListener("visibilitychange", function () { invalidateDetails(); });
 
   function markActivePatient() {
     $$(".patient-card").forEach(function (card) {
@@ -125,25 +180,28 @@
     var previous = new URL(_committedHref);
     var oldFilter = _activeFilterMode();
     var epoch = ++_navigationEpoch;
+    var cacheEpoch = _detailCacheEpoch, cached = cachedDetail(url);
     if (_navigationRequest) _navigationRequest.abort();
     var controller = new AbortController(); _navigationRequest = controller;
     var timedOut = false;
     var timeout = setTimeout(function () { timedOut = true; controller.abort(); }, 30000);
     _rawCache = {}; _rawPending = {};
     clearTimeout(_searchTimer); closeModal(); closeSourcePanel();
-    setNavigationBusy(true); navigationStatus("正在切换患者…");
-    fetch(url.href, {credentials: "same-origin", signal: controller.signal})
+    setNavigationBusy(true); navigationStatus(cached ? "" : "正在切换患者…");
+    var responseHtml = cached ? Promise.resolve(cached) : fetch(url.href, {credentials: "same-origin", signal: controller.signal})
       .then(function (response) {
         if (epoch !== _navigationEpoch) return null;
         var destination = new URL(response.url || url.href, url.href);
         if (destination.origin !== url.origin) throw new Error("unexpected redirect");
         if (response.status === 401 || destination.pathname === "/login") {
+          invalidateDetails();
           window.location.assign("/login?next=" + encodeURIComponent(url.pathname + url.search));
           return null;
         }
         if (!response.ok) throw new Error("patient request failed");
         return response.text();
-      }).then(function (html) {
+      });
+    responseHtml.then(function (html) {
         if (html === null || epoch !== _navigationEpoch) return;
         var nextDocument = new DOMParser().parseFromString(html, "text/html");
         var nextPanel = nextDocument.querySelector(".detail-panel");
@@ -151,8 +209,10 @@
         var expectedPatient = path === "/workbench" ? "" : decodeURIComponent(path.slice("/workbench/".length));
         if (!nextPanel || nextPanel.getAttribute("data-patient-id") !== expectedPatient) throw new Error("invalid patient response");
         if (nextPanel.hasAttribute("data-user") && nextPanel.getAttribute("data-user") !== window.JAVERT_USER) {
+          invalidateDetails();
           window.location.assign(url.href); return;
         }
+        if (!cached && cacheEpoch === _detailCacheEpoch) rememberDetail(url.href, nextDocument);
         // 脚本不重跑；身份只从经过HTML转义的明确元数据获取。
         window.JAVERT_PATIENT = expectedPatient;
         window.JAVERT_DISPLAY_LABEL = nextPanel.getAttribute("data-display-label") || expectedPatient;
@@ -220,6 +280,7 @@
     }
     var comment = (form.querySelector('textarea[name="comment"]') || {}).value || null;
     _reviewPending = true;
+    invalidateDetails(window.JAVERT_PATIENT);
     var reviewEpoch = _navigationEpoch;
     fetch("/review", {
       method: "POST",
@@ -228,6 +289,7 @@
       body: JSON.stringify({run_id: runId, verdict: verdict, comment: comment}),
     }).then(function (resp) {
       if (!resp.ok) {
+        if (resp.status === 401) invalidateDetails();
         return resp.json().then(function (j) { throw new Error(j.error || ("HTTP " + resp.status)); });
       }
       return resp.json();
@@ -288,6 +350,7 @@
     var url = "/api/patient/" + encodeURIComponent(pid) + "/raw?tab=" + encodeURIComponent(tab);
     var pending = fetch(url, {credentials: "same-origin"})
       .then(function (r) {
+        if (r.status === 401) invalidateDetails();
         return r.json().catch(function () { return {}; }).then(function (body) {
           if (r.ok) return body;
           var detail = body && body.detail && typeof body.detail === "object" ? body.detail : {};
@@ -968,6 +1031,7 @@
     if (clear) clear.hidden = !(st.pid || st.dx || st.fee !== "all" || st.time !== "all" || st.tags.length || st.sort !== "default");
     fetch("/api/workbench/patients?" + params, {credentials: "same-origin", signal: _sidebarAbort.signal})
       .then(function (r) {
+        if (r.status === 401) invalidateDetails();
         if (!r.ok) throw new Error(r.status === 401 ? "登录已失效，请重新登录。" : "患者列表加载失败，请重试。");
         return r.json();
       }).then(function (data) {
@@ -1059,6 +1123,7 @@
     es.addEventListener("review_submitted", function (e) {
       try {
         var data = JSON.parse(e.data);
+        invalidateDetails(data.patient_id);
         // Sidebar 计数同步 (全局口径): 某 run 被「任意专家」首次审 (run_first_review) +
         // 该 run 的 AI 裁决落在当前 filter 命中集 → 进度 +1. 不分审核人 — 别的专家审完,
         // 我这边的卡片也实时 +1. run_first_review 保证改判 / 二次审不重复计数.
@@ -1114,6 +1179,7 @@
     es.addEventListener("new_audit_run", function (e) {
       try {
         var data = JSON.parse(e.data);
+        invalidateDetails(data.patient_id);
         showToast("新增审计: " + data.patient_id + " " + data.rule_id + " → " + verdictLabel(data.verdict));
         // 重跑会替换旧 verdict；由服务器重算当前页，禁止无限插卡或盲加计数。
         clearTimeout(_sidebarTimer);
@@ -1122,7 +1188,14 @@
     });
 
     es.addEventListener("heartbeat", function () { /* keepalive */ });
-    es.onerror = function () { /* 浏览器会自动重连 */ };
+    es.addEventListener("open", function () {
+      if (!_detailCacheEnabled) invalidateDetails();
+      _detailCacheEnabled = true;
+    });
+    es.onerror = function () {
+      _detailCacheEnabled = false;
+      invalidateDetails();  // 服务端不回放断线期间事件，重连前不复用快照。
+    };
 
     window.addEventListener("beforeunload", function () { es.close(); });
   }
@@ -1159,13 +1232,14 @@
     function poll() {
       if (document.hidden) return;
       fetch("/api/workbench/sig", { credentials: "same-origin" })
-        .then(function (r) { return r.json(); })
+        .then(function (r) { if (r.status === 401) invalidateDetails(); return r.json(); })
         .then(function (j) {
           var s = j && j.sig;
           if (s === null || s === undefined) return;     // 142 抖 → 不动
           if (baseSig === null) { baseSig = s; return; }  // 首次 = 基线
           if (s !== baseSig) {                            // 有新裁决
             baseSig = s;
+            invalidateDetails();
             if (settleTimer) clearTimeout(settleTimer);
             settleTimer = setTimeout(doReload, 18000);    // 防抖: 稳定 18s 再刷
           }
@@ -1178,6 +1252,7 @@
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", function () {
+      rememberDetail(window.location.href, document);
       startSse();
       scrollToHashRun();
       restoreFacets();
@@ -1186,6 +1261,7 @@
       initAutoRefresh();
     });
   } else {
+    rememberDetail(window.location.href, document);
     startSse();
     scrollToHashRun();
     restoreFacets();
