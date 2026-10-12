@@ -297,20 +297,36 @@ def test_backfill_sqlite_dry_run_writes_nothing(tmp_path):
 # =========================================================
 # route fallback / cache-hit (无需 142)
 # =========================================================
-def test_route_resolve_hits_cache_hit_charge_recheck_and_fallback():
-    from javert.web.api.routes_workbench import _resolve_hits_for_runs
+def test_route_resolve_hits_cache_hit_charge_recheck_and_fallback(monkeypatch):
+    from javert.web.api import routes_workbench as rw
+
+    patient_id = "CASE-SYNTHETIC-ANCHOR"
+    fees = pd.DataFrame([
+        {"medins_list_name": "布地奈德肠溶胶囊", "med_list_codg": "XH02ABB",
+         "medins_list_codg": "SYNTHETIC-LOCAL", "cnt": 1},
+    ])
+
+    def get_fees(requested_patient):
+        assert requested_patient == patient_id
+        return fees.copy()
+
+    monkeypatch.setattr(rw, "_get_profile_hub_source_for_patient", lambda pid: None)
+    monkeypatch.setattr(rw, "_get_loader", lambda: SimpleNamespace(get_fees=get_fees))
+    monkeypatch.setattr(rw, "get_config", lambda: SimpleNamespace(hub_raw_enabled=False))
+    monkeypatch.setattr(rw, "load_kb_drugs", lambda: _KB_CODED)
+    _resolve_hits_for_runs = rw._resolve_hits_for_runs
 
     run = SimpleNamespace(
-        run_id="aud_cache1", rule_id="R007", patient_id="J90508",
+        run_id="aud_cache1", rule_id="R007", patient_id=patient_id,
         evidence_json=_EV, tool_calls_json="[]",
     )
-    meta = load_rule_meta()
+    meta = {"R007": {"drug_rule_type": "限适应症"}}
 
     # 非收费锚点缓存可直接复用。
     cached_hits = [HitItem(source="note", name="缓存文书",
                            anchor=Anchor(tab="notes", query="x"))]
     amap = {"aud_cache1": hits_to_json(cached_hits)}
-    out = _resolve_hits_for_runs("J90508", [run], meta, amap)
+    out = _resolve_hits_for_runs(patient_id, [run], meta, amap)
     assert [h.model_dump() for h in out["aud_cache1"]] == [h.model_dump() for h in cached_hits]
 
     # fee/drug 旧缓存必须重算，抽象名称不能绕过患者实际净正收费约束。
@@ -318,14 +334,14 @@ def test_route_resolve_hits_cache_hit_charge_recheck_and_fallback():
                                  restriction="完整缓存依据。",
                                  anchor=Anchor(tab="fees", query="x"))]
     out_rechecked = _resolve_hits_for_runs(
-        "J90508", [run], meta, {"aud_cache1": hits_to_json(stale_charge_hits)},
+        patient_id, [run], meta, {"aud_cache1": hits_to_json(stale_charge_hits)},
     )
     assert out_rechecked["aud_cache1"]
     assert all(hit.matched_fee_name for hit in out_rechecked["aud_cache1"] if hit.source == "drug")
     assert all(hit.name != "缓存药" for hit in out_rechecked["aud_cache1"])
 
-    # 缓存缺失 — 现算回退 (真实 loader + KB), 仍出命中项目
-    out2 = _resolve_hits_for_runs("J90508", [run], meta, {})
+    # 缓存缺失 — 现算回退 (合成收费 + KB), 仍出命中项目
+    out2 = _resolve_hits_for_runs(patient_id, [run], meta, {})
     assert out2["aud_cache1"]  # 非空
     assert any(h.source == "drug" for h in out2["aud_cache1"])
 

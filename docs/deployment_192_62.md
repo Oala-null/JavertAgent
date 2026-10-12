@@ -259,6 +259,8 @@ clean 会漏掉远端文件被手工覆盖但未 commit 的事故。
 
 2026-10-12 的 main 性能归并只同步通用性能代码，不是 62 再部署；62 发布线还含主干未纳入的慢病与原始身份功能。既有现场提交、制品和验收记录只适用于对应发布基线，不能据主干合并推断生产版本已改变。
 
+对应历史证据：[侧栏与历史查询](deployments/2026-09-28-workbench-performance-62.md)、[压缩与费用热路径](deployments/2026-10-08-workbench-hot-path.md)、[局部导航](deployments/2026-10-11-patient-navigation.md)、[详情缓存](deployments/2026-10-12-patient-detail-cache.md)。本次主干移植验收见[主干性能验收](workbench_performance_main_qa.md)。
+
 首次启用仓库内 Git hook：
 
 ```bash
