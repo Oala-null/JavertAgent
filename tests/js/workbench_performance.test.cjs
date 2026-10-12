@@ -13,7 +13,7 @@ function page() {
       getElementById: () => root, querySelector: () => null,
       querySelectorAll: () => [], head: { insertAdjacentHTML() {} } },
     fetch(url) { return new Promise((resolve, reject) => pending.push({ url, resolve, reject })); },
-    setTimeout() {}, clearTimeout() {}, alert() {},
+    setTimeout() {}, clearTimeout() {}, alert() {}, addEventListener() {},
   };
   context.window = context;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../src/javert/web/static/app.js'), 'utf8'), context);
