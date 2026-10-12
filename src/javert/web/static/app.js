@@ -1,5 +1,5 @@
-// Javert 审核工作台 — vanilla JS (~250 行)
-// 处理: review form 提交 / SSE 订阅 / banner dismiss / 原始病历 modal / sidebar 增量更新
+// Javert 审核工作台 — vanilla JS
+// 处理: 患者导航 / 审核提交 / SSE / banner / 原文 / sidebar 增量更新
 
 (function () {
   "use strict";
@@ -51,11 +51,166 @@
     return c === "v" || c === "i";        // v_and_i (默认)
   }
 
+  // 患者切换保留页面框架，只在新详情完整到达时替换。
+  var _navigationEpoch = 0, _navigationPending = false, _navigationRequest = null;
+  var _committedHref = null, _reviewPending = false;
+
+  function markActivePatient() {
+    $$(".patient-card").forEach(function (card) {
+      card.classList.toggle("active", card.getAttribute("data-patient-id") === window.JAVERT_PATIENT);
+    });
+  }
+
+  function navigationStatus(message, retry) {
+    var status = document.getElementById("patient-navigation-status");
+    if (!status) {
+      status = document.createElement("div");
+      status.id = "patient-navigation-status";
+      status.className = "source-hint";
+      status.setAttribute("role", "status");
+      status.style.cssText = "position:fixed;top:72px;right:24px;z-index:2100;background:var(--bg-light);padding:10px 16px;border:1px solid var(--border);border-radius:8px;";
+      document.body.appendChild(status);
+    }
+    status.textContent = message;
+    status.hidden = !message;
+    if (retry) {
+      var button = document.createElement("button");
+      button.type = "button"; button.className = "btn-secondary"; button.textContent = "重试";
+      button.onclick = retry;
+      status.appendChild(button);
+    }
+  }
+
+  function setNavigationBusy(busy) {
+    _navigationPending = busy;
+    var panel = document.querySelector(".detail-panel");
+    if (panel) {
+      panel.inert = busy;
+      panel.setAttribute("aria-busy", String(busy));
+      panel.style.pointerEvents = busy ? "none" : "";
+    }
+  }
+
+  function canLeavePatient() {
+    var panel = document.querySelector(".detail-panel");
+    var dirty = panel && $$(".review-form input, .review-form textarea", panel).some(function (field) {
+      return field.type === "radio" || field.type === "checkbox" ?
+        field.checked !== field.defaultChecked : field.value !== field.defaultValue;
+    });
+    return !dirty || window.confirm("当前患者有未提交的审核内容，确定离开？");
+  }
+
+  function navigatePatient(href, fromHistory) {
+    var panel = document.querySelector(".detail-panel");
+    if (!panel) return;
+    var url = new URL(href, window.location.href);
+    _committedHref = _committedHref || window.location.href;
+    if (_reviewPending) {
+      showToast("正在提交审核，请稍后切换");
+      if (window.location.href !== _committedHref) history.replaceState(history.state, "", _committedHref);
+      return;
+    }
+    if (url.href === _committedHref) {
+      if (_navigationPending) {
+        ++_navigationEpoch;
+        if (_navigationRequest) _navigationRequest.abort();
+      }
+      if (window.location.href !== _committedHref) history.replaceState(history.state, "", _committedHref);
+      setNavigationBusy(false); navigationStatus(""); return;
+    }
+    if (!_navigationPending && !canLeavePatient()) {
+      if (window.location.href !== _committedHref) history.replaceState(history.state, "", _committedHref);
+      return;
+    }
+    var previous = new URL(_committedHref);
+    var oldFilter = _activeFilterMode();
+    var epoch = ++_navigationEpoch;
+    if (_navigationRequest) _navigationRequest.abort();
+    var controller = new AbortController(); _navigationRequest = controller;
+    var timedOut = false;
+    var timeout = setTimeout(function () { timedOut = true; controller.abort(); }, 30000);
+    _rawCache = {}; _rawPending = {};
+    clearTimeout(_searchTimer); closeModal(); closeSourcePanel();
+    setNavigationBusy(true); navigationStatus("正在切换患者…");
+    fetch(url.href, {credentials: "same-origin", signal: controller.signal})
+      .then(function (response) {
+        if (epoch !== _navigationEpoch) return null;
+        var destination = new URL(response.url || url.href, url.href);
+        if (destination.origin !== url.origin) throw new Error("unexpected redirect");
+        if (response.status === 401 || destination.pathname === "/login") {
+          window.location.assign("/login?next=" + encodeURIComponent(url.pathname + url.search));
+          return null;
+        }
+        if (!response.ok) throw new Error("patient request failed");
+        return response.text();
+      }).then(function (html) {
+        if (html === null || epoch !== _navigationEpoch) return;
+        var nextDocument = new DOMParser().parseFromString(html, "text/html");
+        var nextPanel = nextDocument.querySelector(".detail-panel");
+        var path = url.pathname.replace(/\/$/, "");
+        var expectedPatient = path === "/workbench" ? "" : decodeURIComponent(path.slice("/workbench/".length));
+        if (!nextPanel || nextPanel.getAttribute("data-patient-id") !== expectedPatient) throw new Error("invalid patient response");
+        if (nextPanel.hasAttribute("data-user") && nextPanel.getAttribute("data-user") !== window.JAVERT_USER) {
+          window.location.assign(url.href); return;
+        }
+        // 脚本不重跑；身份只从经过HTML转义的明确元数据获取。
+        window.JAVERT_PATIENT = expectedPatient;
+        window.JAVERT_DISPLAY_LABEL = nextPanel.getAttribute("data-display-label") || expectedPatient;
+        document.title = nextDocument.title;
+        panel.replaceWith(nextPanel);
+        document.body.classList.remove("only-i", "show-gated-only", "hide-missing-doc", "hide-inconclusive", "hide-clean");
+        var banner = document.getElementById("welcome-banner");
+        if (banner) banner.remove();
+        var nextBanner = nextDocument.querySelector("#welcome-banner");
+        var grid = document.querySelector(".workbench-grid");
+        if (nextBanner && grid) grid.parentNode.insertBefore(nextBanner, grid);
+        var form = document.querySelector(".filter-form");
+        var select = document.querySelector('.filter-form select[name="filter"]');
+        var filter = nextPanel.getAttribute("data-filter") || oldFilter;
+        if (select) select.value = filter;
+        if (form) form.action = url.pathname;
+        var sidebar = document.getElementById("sidebar");
+        if (sidebar) sidebar.setAttribute("data-filter", filter);
+        if (!fromHistory) history.pushState({javertPatientNavigation: true}, "", url.href);
+        _committedHref = url.href;
+        markActivePatient(); initVerdictFilter();
+        var focus = nextPanel.querySelector("h1") || nextPanel;
+        focus.setAttribute("tabindex", "-1"); focus.focus({preventScroll: true});
+        if (url.hash) scrollToHashRun();
+        else window.scrollTo({top: 0, behavior: "instant"});
+        if (oldFilter !== filter || previous.searchParams.get("batch_tag") !== url.searchParams.get("batch_tag")) loadPatientSidebar();
+        navigationStatus("");
+      }).catch(function (error) {
+        if (epoch !== _navigationEpoch) return;
+        if (window.location.href !== _committedHref) history.replaceState(history.state, "", _committedHref);
+        navigationStatus(timedOut ? "加载超时，当前页面已保留。" : "未能打开患者，当前页面已保留。", function () { navigatePatient(url.href, false); });
+      }).finally(function () {
+        clearTimeout(timeout);
+        if (epoch === _navigationEpoch) setNavigationBusy(false);
+      });
+  }
+
+  document.addEventListener("click", function (event) {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    var link = event.target.closest && event.target.closest("a.patient-card");
+    if (!link || link.hasAttribute("download") || (link.getAttribute("target") && link.getAttribute("target") !== "_self")) return;
+    if (!document.querySelector(".detail-panel")) return;
+    var url = new URL(link.href, window.location.href);
+    if (url.origin !== window.location.origin || !/^\/workbench\/[^/]+\/?$/.test(url.pathname)) return;
+    event.preventDefault(); navigatePatient(url.href, false);
+  });
+
+  window.addEventListener("popstate", function () {
+    if (!_committedHref || !/^\/workbench(?:\/[^/]+)?\/?$/.test(window.location.pathname)) return;
+    navigatePatient(window.location.href, true);
+  });
+
   // =========================================================
   // Review form 提交
   // =========================================================
   window.submitReview = function (ev) {
     ev.preventDefault();
+    if (_navigationPending || _reviewPending) return false;
     var form = ev.target;
     var runId = form.getAttribute("data-run-id");
     var verdict = (form.querySelector('input[name="verdict"]:checked') || {}).value;
@@ -64,6 +219,8 @@
       return false;
     }
     var comment = (form.querySelector('textarea[name="comment"]') || {}).value || null;
+    _reviewPending = true;
+    var reviewEpoch = _navigationEpoch;
     fetch("/review", {
       method: "POST",
       credentials: "same-origin",
@@ -83,8 +240,9 @@
       }
       showToast("已提交: " + verdictLabel(verdict), "review");
       // 重载页面以拿到最新数据 (简单做法 — pilot 阶段够用)
-      setTimeout(function () { location.reload(); }, 500);
+      setTimeout(function () { if (reviewEpoch === _navigationEpoch) location.reload(); }, 500);
     }).catch(function (e) {
+      _reviewPending = false;
       alert("提交失败: " + e.message);
     });
     return false;
@@ -123,6 +281,7 @@
   var _rawCache = {};
   var _rawPending = {};
   function fetchRaw(pid, tab, force) {
+    var epoch = _navigationEpoch;
     var key = pid + ":" + tab;
     if (!force && _rawCache[key]) return Promise.resolve(_rawCache[key]);
     if (!force && _rawPending[key]) return _rawPending[key];
@@ -139,7 +298,7 @@
           throw err;
         });
       })
-      .then(function (data) { _rawCache[key] = data; return data; })
+      .then(function (data) { if (epoch === _navigationEpoch) _rawCache[key] = data; return data; })
       .finally(function () { if (_rawPending[key] === pending) delete _rawPending[key]; });
     _rawPending[key] = pending;
     return pending;
@@ -280,8 +439,11 @@
   }
 
   window.showRawData = function (patientId) {
+    if (_navigationPending) return;
+    var epoch = _navigationEpoch;
     var root = document.getElementById("modal-root") || document.body;
     _firstAvailableRaw(patientId, ["notes", "fees", "labs"]).then(function (data) {
+      if (epoch !== _navigationEpoch) return;
       var activeTab = data.tab || "notes";
       root.innerHTML =
         '<div class="modal-overlay" onclick="if(event.target===this)closeModal()">' +
@@ -312,10 +474,12 @@
         var inp = document.querySelector(".raw-modal .src-search-input");
         if (inp) inp.focus();
       }, 0);
-    }).catch(function (e) { alert(_rawErrorMessage(e)); });
+    }).catch(function (e) { if (epoch === _navigationEpoch) alert(_rawErrorMessage(e)); });
   };
 
   window.switchRawTab = function (btn, tab, patientId) {
+    if (_navigationPending) return;
+    var epoch = _navigationEpoch;
     var container = btn.closest(".raw-modal") || btn.closest("#source-panel");
     if (!container) return;
     var scope = container.querySelector(".src-scope");
@@ -325,11 +489,13 @@
     if (existing) { switchTab(btn, tab); return; }
     btn.disabled = true;
     fetchRaw(patientId, tab).then(function (data) {
+      if (epoch !== _navigationEpoch || !container.isConnected) return;
       if (scope) scope.insertAdjacentHTML("beforeend", _tabPanelHtml(tab, data, true));
       btn.textContent = _tabLabel(tab) + " (" + _tabCount(tab, data) + ")";
       btn.disabled = false;
       switchTab(btn, tab);
     }).catch(function (err) {
+      if (epoch !== _navigationEpoch || !container.isConnected) return;
       btn.disabled = false;
       var hint = container.querySelector(".source-hint");
       if (hint) {
@@ -364,6 +530,8 @@
   }
 
   window.openSourcePanel = function (anchor) {
+    if (_navigationPending) return;
+    var epoch = _navigationEpoch;
     if (!anchor) return;
     var pid = window.JAVERT_PATIENT;
     if (!pid) return;
@@ -378,6 +546,7 @@
       '<div class="source-hint">正在加载' + _tabLabel(targetTab) + '…</div>';
     document.body.classList.add("compare-open");
     fetchRaw(pid, targetTab).then(function (data) {
+      if (epoch !== _navigationEpoch) return;
       panel.innerHTML =
         '<div class="source-head">' +
           '<strong>' + _esc(patientDisplayLabel(pid)) + ' · 原文对照</strong>' +
@@ -401,6 +570,7 @@
           _tabPanelHtml(targetTab, data, false) + '</div>';
       _applyAnchorInScope(panel, anchor);
     }).catch(function (err) {
+      if (epoch !== _navigationEpoch) return;
       panel.innerHTML = '<div class="source-head"><strong>' + _esc(patientDisplayLabel(pid)) +
         ' · 原文对照</strong><button class="close-btn" onclick="closeSourcePanel()">×</button></div>' +
         '<div class="source-hint">' + _esc(_rawErrorMessage(err)) +
@@ -827,6 +997,7 @@
       }).then(function (data) {
         if (sequence !== _sidebarSequence) return;
         list.innerHTML = data.html;
+        markActivePatient();
         _sidebarPage = data.page; _sidebarPages = data.pages;
         _saveFacets(st);
         document.getElementById("patient-count").textContent = data.total === data.unfiltered_total ? data.total : data.total + "/" + data.unfiltered_total;
@@ -915,7 +1086,7 @@
       try {
         var data = JSON.parse(e.data);
         if (/^CD\d{2,3}$/.test(data.rule_id || "")) {
-          if (data.patient_id === window.JAVERT_PATIENT) window.location.reload();
+          if (data.patient_id === window.JAVERT_PATIENT && !_navigationPending && !_reviewPending) window.location.reload();
           else { clearTimeout(_sidebarTimer); _sidebarTimer = setTimeout(loadPatientSidebar, 11000); }
           return;
         }
@@ -975,7 +1146,7 @@
       try {
         var data = JSON.parse(e.data);
         if (/^CD\d{2,3}$/.test(data.rule_id || "")) {
-          if (data.patient_id === window.JAVERT_PATIENT) window.location.reload();
+          if (data.patient_id === window.JAVERT_PATIENT && !_navigationPending && !_reviewPending) window.location.reload();
           else { clearTimeout(_sidebarTimer); _sidebarTimer = setTimeout(loadPatientSidebar, 11000); }
           return;
         }

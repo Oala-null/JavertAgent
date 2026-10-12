@@ -3,7 +3,9 @@
 <div class="workbench-grid">
   {% include "_sidebar.html" %}
 
-  <section class="detail-panel">
+  <section class="detail-panel" id="detail-panel" data-patient-id="{{ active_patient }}"
+           data-display-label="{{ display_label or (overview.display_label if overview else none) or active_patient }}"
+           data-filter="{{ filter }}" data-user="{{ current_user.username if current_user else '' }}">
     <div class="patient-header">
       <h1>{{ display_label or (overview.display_label if overview else none) or active_patient }}</h1>
       <span class="meta">{{ filter_label }} · 共 {{ runs|length }} 条</span>
