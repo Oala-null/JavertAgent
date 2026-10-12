@@ -7,7 +7,7 @@
 <div class="workbench-grid">
   {% include "_sidebar.html" %}
 
-  <section class="detail-panel" id="detail-panel">
+  <section class="detail-panel" id="detail-panel" data-patient-id="" data-display-label="" data-filter="{{ filter }}" data-user="{{ current_user.username if current_user else '' }}">
     <div class="detail-empty">
       <p>请从左侧列表选择一个病人</p>
       <p class="muted">当前 filter: {{ filter_label }} · 总计 {{ patients|length }} 个病人有命中</p>
@@ -15,6 +15,7 @@
   </section>
 </div>
 
+<div id="modal-root"></div>
 <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
 {% endblock %}
 

@@ -166,7 +166,9 @@ uv run python scripts/test_router_smoke.py
 
 ## 审核工作台 (v0.6)
 
-工作台加载优化：患者详情与侧栏独立请求，侧栏每页最多 50 人、全名单筛选排序；历史审核保留批注并精简未展示大字段。验证范围和运行边界见 [加载性能验收](docs/workbench_loading_qa.md)。
+工作台加载优化：患者详情与侧栏独立请求，侧栏每页最多 50 人、全名单筛选排序；历史审核保留批注并精简未展示大字段。切换患者保留当前画面，同一标签页短期复用已读详情；后端共享当前请求的费用预处理，并压缩常规响应。验证范围和运行边界见 [加载性能验收](docs/workbench_loading_qa.md)，缓存及刷新方式见 [专家使用手册](docs/review_workbench_user_guide.md#重复打开患者)。
+
+2026-10-12 的 main 性能归并不代表再次部署 62，也未合入 62 发布线独有的慢病与原始身份功能；现场发布事实以 [62 运维手册](docs/deployment_192_62.md)及对应部署记录为准。
 
 线上地址: **http://192.168.31.62:8090/** (内网, systemd 纳管)
 
@@ -187,7 +189,7 @@ uv run python scripts/test_router_smoke.py
 | `/login` `/logout` | session cookie (itsdangerous 签名, 30 天), bcrypt 12 轮密码 |
 | `/register` | **403 关闭** (走 `javert mssql-user create`) |
 | `/account/password` | 自助改密 (旧 + 新 + 确认), 改完强制重登 |
-| `/workbench` | sidebar 100+ 病人 (V/I/C 计数 + 已审 N/M 进度 + **v0.9 主诊/¥金额/更新时间富卡片**), filter 4 档, **v0.9 facet (tag/费用区间/主诊关键词/更新时间, 纯前端叠加)**, welcome banner |
+| `/workbench` | 侧栏每页最多 50 人（V/I/C 计数、已审 N/M 进度、主诊/费用/更新时间），filter 4 档；tag、费用区间、主诊关键词、更新时间在全名单范围由服务器筛选排序后分页；welcome banner |
 | `/workbench/{pid}` | 病案概览 (主诊/手术/费用结构/科室/医师) + 违规卡 + 三态决策 form + 其他专家行 (**v0.9 长评语 hover 全文**) + 原始病历 modal |
 | **公开解释与命中项目** | 完整结果契约含已门控短标题和完整中文化“审核说明”（保留持久化 reasoning 语义），以及结论、核查项目、收费事实、依据、临床证据和复核事项；结构化事实不从说明反解析，费用/药品命中必须关联患者实际净正收费行，不展示内部规则号或原始 evidence JSON |
 | **原文对照面板** | 点命中项目后先按锚点懒加载文书/费用/检验目标页签，再定位高亮；源暂不可用可重试，真实无数据与定位失效分别提示 |

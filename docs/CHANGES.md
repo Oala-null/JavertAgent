@@ -46,3 +46,5 @@
 - **公开审核短标题 additive 合同 (add-public-audit-headline-contract，2026-08-26 本地完成、待授权发布)**: 同一次最终裁决 JSON 增加 15–60 字单行 `headline`，在 verdict/结构化/技术质量及历史漂移防护后按最终三态执行公开安全门控；失败只做规则元数据/结构化事实的确定性回退，不重调模型、不修改 reasoning/evidence。precheck、Promise、RD04 结构化和技术故障路径统一生成标题；SQLite/SQL Server 以 nullable 列双写，旧行不回填并在公开读取时回退。v1/v2/v3、审计 SSE、Workbench 与 `public_explanation` 只加字段，matched_items 和原端点语义不变；提供 30 条去标识 golden、2C v3 fixture 与 §10.14 发布顺序。定向组合 **206 passed / 1 skipped**；完整套件 **1200 collected / 1199 passed / 1 skipped / 0 failed / 0 errors**，唯一 skip 为既有不可达理论分支；OpenSpec strict 通过。未连接或部署 62。→ `openspec/changes/add-public-audit-headline-contract/` + `docs/2c_headline_handoff.md`
 
 - **2026-09-28 工作台加载优化（本地验证，尚未部署）**：患者首屏与分页侧栏解耦；历史 LOB 与锚点只读最新主卡；原文并发请求去重，侧栏筛选防抖和失败重试，SSE/轮询不再整页刷新。合成结果和既有测试夹具债务见 `docs/workbench_loading_qa.md`。
+
+- **2026-10-12 主干工作台性能归并**：在既有分页/历史减载基础上，移植GZip、来源缓存、请求内费用预处理、无白屏导航与有界详情缓存；保持主干患者身份/筛选，不夹带62眼科/慢病功能。修复旧锚点测试的外部CSV依赖后，相关组合179项Python、29项JS全部通过，主干浏览器缓存验证和三个OpenSpec strict通过。本次不再次部署62或院内；范围、配套文件和原始失败记录见 `docs/workbench_performance_main_qa.md`。

@@ -1,7 +1,9 @@
 """工作台性能回归：只用合成患者，走真实路由、模板和查询。"""
 import re
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 from types import SimpleNamespace
+from urllib.parse import quote
 
 import pytest
 from fastapi import FastAPI
@@ -26,6 +28,7 @@ def synthetic_workbench(monkeypatch):
         calls.append(filter_mode)
         return patients
     store = SimpleNamespace(
+        latest_batch_tag_for_patient=lambda patient_id: None,
         list_patients_with_violations=list_patients,
         list_runs_for_patient=lambda patient_id, filter_mode: [RunWithReviews(
             run_id="aud_SYNTHETIC", rule_id="R191", patient_id=patient_id,
@@ -60,6 +63,47 @@ def test_patient_first_response_does_not_query_or_render_other_patients(syntheti
     assert not calls, "当前患者首屏不应等待全患者侧栏查询"
     assert "CASE-01199" not in response.text
     assert "aud_SYNTHETIC" in response.text
+
+
+def test_navigation_metadata_contract_on_real_workbench_pages(synthetic_workbench, monkeypatch):
+    client, _, _ = synthetic_workbench
+    patient_id = 'CASE-SYNTHETIC-"&<ID>'
+    username = 'SYNTHETIC-"&<USER>'
+    monkeypatch.setattr(rw, "current_user", lambda req: User(id=1, username=username, created_at=NOW))
+    monkeypatch.setattr(rw, "build_overview", lambda *args: {
+        "patient_id": patient_id, "fees_sum": 0,
+    })
+
+    class NavigationMetadata(HTMLParser):
+        def __init__(self, html):
+            super().__init__(convert_charrefs=True)
+            self.panels = []
+            self.modal_roots = 0
+            self.feed(html)
+
+        def handle_starttag(self, tag, attributes):
+            attrs = dict(attributes)
+            if "detail-panel" in attrs.get("class", "").split():
+                self.panels.append(attrs)
+            if attrs.get("id") == "modal-root":
+                self.modal_roots += 1
+
+    for url, expected_patient, expected_label, expected_filter in [
+        (f"/workbench/{quote(patient_id, safe='')}?filter=all", patient_id, patient_id, "all"),
+        ("/workbench?filter=i_only", "", "", "i_only"),
+    ]:
+        response = client.get(url)
+        assert response.status_code == 200
+        metadata = NavigationMetadata(response.text)
+        assert len(metadata.panels) == 1
+        panel = metadata.panels[0]
+        # HTMLParser 解码后必须原样取回身份；引号不能截断属性或注入新属性。
+        assert panel["data-patient-id"] == expected_patient
+        assert panel["data-display-label"] == expected_label
+        assert panel["data-filter"] == expected_filter
+        assert panel["data-user"] == username
+        assert "onfocus" not in panel
+        assert metadata.modal_roots == 1
 
 
 @pytest.fixture

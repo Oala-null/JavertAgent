@@ -25,7 +25,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 from pydantic import BaseModel, Field
@@ -116,11 +116,13 @@ def _clean_code(v: Any) -> str:
     return "" if s.lower() in ("nan", "none", "null") else s
 
 
-def _drug_fee_rows(df) -> list[tuple[str, str, str]]:
+def prepare_fee_rows(df) -> list[tuple[str, str, str]]:
     """fee_df → [(fee_name, code_nat, code_local), ...] (去 nan 名).
 
     fix-fee-refund-netting (4.2): 完全充退项 (净≤0) 的行不返回 — 避免命中锚到已抵消收费.
     """
+    if df is None or len(df) == 0 or "medins_list_name" not in df.columns:
+        return []
     has_nat = "med_list_codg" in df.columns
     has_local = "medins_list_codg" in df.columns
     full_refunded = fully_refunded_keys(df)
@@ -156,6 +158,7 @@ def _match_fee_rows(
     *,
     is_drug: bool,
     kb_code_set: set[str] | None = None,
+    prepared_rows: list[tuple[str, str, str]] | None = None,
 ) -> list[dict[str, str]]:
     """返回该 patient fee 表里匹配 name 的 distinct (fee_name, code) 行.
 
@@ -167,7 +170,7 @@ def _match_fee_rows(
     """
     if fee_df is None or len(fee_df) == 0 or "medins_list_name" not in fee_df.columns:
         return []
-    all_rows = _drug_fee_rows(fee_df)
+    all_rows = prepared_rows if prepared_rows is not None else prepare_fee_rows(fee_df)
 
     if is_drug:
         codeset = set(kb_code_set or ())
@@ -630,6 +633,8 @@ def resolve_hits_from_json(
     drug_rule_type: str | None,
     patient_fee_df: pd.DataFrame | None,
     kb_drugs: dict[str, Any] | None,
+    *,
+    fee_rows_factory: Callable[[], list[tuple[str, str, str]]] | None = None,
 ) -> list[HitItem]:
     """底层纯函数: 直接吃 json 串 + 已切片 fee df + KB drugs dict, 组装 HitItem[]."""
     try:
@@ -650,6 +655,7 @@ def resolve_hits_from_json(
 
     hits: list[HitItem] = []
     seen: set[tuple] = set()
+    fee_rows = None
     for ev in evidence:
         if not isinstance(ev, dict):
             continue
@@ -717,8 +723,11 @@ def resolve_hits_from_json(
             # KB 命中时统一显示规范通用名; 未命中仍保留历史 evidence 的显式药品名.
             name = _g if _ents else lookup_name
             kb_code_set = set(_codes)
+        if fee_rows is None:
+            fee_rows = fee_rows_factory() if fee_rows_factory else prepare_fee_rows(patient_fee_df)
         rows = _match_fee_rows(
-            name, patient_fee_df, is_drug=(kind == "drug"), kb_code_set=kb_code_set
+            name, patient_fee_df, is_drug=(kind == "drug"), kb_code_set=kb_code_set,
+            prepared_rows=fee_rows,
         )
         if not rows:
             # 公开费用/药品命中必须关联患者实际净正收费组；搜索词和 locator 只留内部追溯。
@@ -816,6 +825,7 @@ def resolve_hits(
     *,
     patient_fee_df: pd.DataFrame | None = None,
     kb_drugs: dict[str, Any] | None = None,
+    fee_rows_factory: Callable[[], list[tuple[str, str, str]]] | None = None,
 ) -> list[HitItem]:
     """纯函数. 读 run.evidence_json + run.tool_calls_json (source∈{fee,drug,note})
     + 已切片 patient_fee_df + KB drugs → HitItem[]. 二次调用 byte-identical.
@@ -828,6 +838,7 @@ def resolve_hits(
         rule_drug_type,
         patient_fee_df,
         kb_drugs,
+        fee_rows_factory=fee_rows_factory,
     )
 
 
