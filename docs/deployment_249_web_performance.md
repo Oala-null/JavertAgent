@@ -1,8 +1,14 @@
-# 249 工作台完整性能升级 v2（2026-10-12）
+# 249 工作台完整性能升级 v2.1（2026-10-13）
 
-当前交付目录为`JiaZhongXin/Releases/Javert-249-Web-performance-v2`，只生成目录，不生成ZIP。用户确认院内已安装`Javert-249-history-dates-v1`，且性能v1尚未上传；本包以日期版为唯一安装起点，包含首批和后续性能代码，不要求先装性能v1。由用户拷贝安装，本次不连接院内。
+当前交付目录为`JiaZhongXin/Releases/Javert-249-Web-performance-v2.1`，只生成目录，不生成ZIP。用户确认院内已安装`Javert-249-history-dates-v1`，且性能v1尚未上传；本包以日期版为唯一安装起点，包含首批和后续性能代码，不要求先装性能v1。由用户拷贝安装，本次不连接院内。
 
 安装与回滚见[包内说明](../delivery/web_performance_v2/README_zh.md)。原性能v1、日期包和LIS包保持不变。未知、无日期或混合版本会STOP；不得手工覆盖文件来绕过检查。
+
+## v2.1现场安装修复
+
+用户截图显示v2预检通过，但stop_web.py读取同账号进程cwd时PermissionError，安装器也中止。用户用`ps`确认该进程为admin2的systemd。Web仍返回200只是原服务在线；本次没有PATCH_INSTALLED成功证据。
+
+v2.1两个入口先筛选命令，再读取应用候选cwd。无关systemd不再阻挡；命令不可读或候选cwd不可读仍STOP，不sudo、不停systemd、不忽略全部PermissionError。README安装/回滚链以`&&`连接，前步失败后不继续。9个payload摘要、11个依赖、PATCH_ID和监测context保持；原v2包不修改，已成功安装v2无需重装。
 
 ## 实际发布范围
 

@@ -7,7 +7,7 @@ from pathlib import Path
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PACKAGE_NAME = 'Javert-249-Web-performance-v2'
+PACKAGE_NAME = 'Javert-249-Web-performance-v2.1'
 SUPPORT = ('installer.py', 'install.sh', 'stop_web.py', 'runtime_check.py', 'README_zh.md', 'VALIDATION.md', 'QA-browser.jpg')
 WATCH = ('watcher.py', 'ledger.py', 'check_249_hotfix.py', 'known-release.json', 'watch.sh', 'launch.py')
 

@@ -1,6 +1,6 @@
-# 243/249 完整工作台性能补丁 v2
+# 243/249 完整工作台性能补丁 v2.1
 
-把整个`Javert-249-Web-performance-v2`目录拷贝到医院的`/home/admin2/releases/`，用应用所属账号`admin2`操作。243是历史称呼，院内维护线为gnome-243，应用路径是大写`/home/admin2/Javert`。
+把整个`Javert-249-Web-performance-v2.1`目录拷贝到医院的`/home/admin2/releases/`，用应用所属账号`admin2`操作。243是历史称呼，院内维护线为gnome-243，应用路径是大写`/home/admin2/Javert`。
 
 **本包只用于已经安装`Javert-249-history-dates-v1`的机器。不用先安装性能v1。**
 用户已确认院内安装了日期补丁。本包保留其日期合并、历史多日期筛选和LIS行为，只叠加性能优化，共更新9个源码/模板文件。
@@ -13,11 +13,17 @@
 
 本包不读写`.env`、`243_config.env`、`effective-config.json`、数据库、患者文件、规则、模型、批次账本；不联网下载依赖，不运行SQL或重算历史。上海取数、LIS本次住院/pending分区和原文接口保持。
 
+## 安装工具修订说明
+
+v2.1修复v2扫描同账号systemd进程时读取受限cwd导致的误报。先读取命令判断是否为应用候选，再核验候选cwd；应用候选cwd或进程命令不可读时仍STOP。不要停止systemd，不要sudo，不要跳过进程检查。
+
+9个性能源码文件、11个依赖和安装PATCH_ID与v2完全一致。目录改名用于区分安装工具修订，原v2目录及SHA256SUMS保持原样。v2备份仍兼容。已成功安装v2的机器无需重复覆盖源码。后续需要安装/回滚时使用本包。
+
 ## 1. 在线只读检查
 
 ```bash
-cd /home/admin2/releases/Javert-249-Web-performance-v2
-sha256sum -c SHA256SUMS
+cd /home/admin2/releases/Javert-249-Web-performance-v2.1 &&
+sha256sum -c SHA256SUMS &&
 bash install.sh check
 ```
 
@@ -45,13 +51,17 @@ bash /home/admin2/Javert/scripts/lis_batch.sh status
 确认任务都已停止后，执行：
 
 ```bash
-cd /home/admin2/releases/Javert-249-Web-performance-v2
-python3 stop_web.py
-bash install.sh install --services-stopped
-bash install.sh verify
-bash /home/admin2/start_javert_web_bg.sh
+cd /home/admin2/releases/Javert-249-Web-performance-v2.1 &&
+sha256sum -c SHA256SUMS &&
+bash install.sh check &&
+python3 stop_web.py &&
+bash install.sh install --services-stopped &&
+bash install.sh verify &&
+bash /home/admin2/start_javert_web_bg.sh &&
 curl --noproxy '*' -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8090/login
 ```
+
+命令用`&&`连接；前一步失败，后续安装、验证和启动均不会执行。出现`STOP`时保留输出，不继续粘贴剩余步骤。登录页200不能证明已安装。
 
 保存安装输出的`BACKUP=/home/admin2/Javert/output/web-performance-backup.<实际后缀>`。备份只含本次9个代码文件及回执；新文件原来不存在时，回滚会移除它。
 
@@ -80,8 +90,8 @@ python3 check_249_hotfix.py --root /home/admin2/Javert --manifest known-release-
 安装后不会自动恢复监测。若需要恢复，使用本包兼容入口，继续原账本：
 
 ```bash
-bash /home/admin2/releases/Javert-249-Web-performance-v2/watch/watch.sh start 300
-bash /home/admin2/releases/Javert-249-Web-performance-v2/watch/watch.sh status
+bash /home/admin2/releases/Javert-249-Web-performance-v2.1/watch/watch.sh start 300
+bash /home/admin2/releases/Javert-249-Web-performance-v2.1/watch/watch.sh status
 ```
 
 不要在性能v2生效时使用旧日期包的watch入口，它的文件校验清单仍对应旧Web代码。新入口保留原watcher、ledger、检查器和原版本标记的字节，只允许这9个性能文件的已知变化，并按新完整清单校验现场。账本context、盐、队列、完成记录均不迁移、不清空；批跑CODE_FILES也不改变。恢复监测会按原逻辑处理队列/新增输入，已成功且输入未变的患者继续跳过。
@@ -91,13 +101,13 @@ bash /home/admin2/releases/Javert-249-Web-performance-v2/watch/watch.sh status
 先停止本包监测，等待当前患者完成，再停止Web。替换下列备份目录后执行：
 
 ```bash
-cd /home/admin2/releases/Javert-249-Web-performance-v2
-bash watch/watch.sh stop
+cd /home/admin2/releases/Javert-249-Web-performance-v2.1 &&
+bash watch/watch.sh stop &&
 bash watch/watch.sh status
 # 确认监测已退出，再继续
-python3 stop_web.py
-bash install.sh rollback --services-stopped --backup /home/admin2/Javert/output/web-performance-backup.替换为实际后缀
-bash install.sh check
+python3 stop_web.py &&
+bash install.sh rollback --services-stopped --backup /home/admin2/Javert/output/web-performance-backup.替换为实际后缀 &&
+bash install.sh check &&
 bash /home/admin2/start_javert_web_bg.sh
 ```
 

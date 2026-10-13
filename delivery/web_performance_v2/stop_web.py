@@ -16,14 +16,18 @@ def stop(root):
         if not entry.name.isdigit():
             continue
         try:
-            if entry.stat().st_uid != os.getuid() or (entry / 'cwd').resolve() != root:
+            if entry.stat().st_uid != os.getuid():
                 continue
             command = (entry / 'cmdline').read_bytes()
             args = command.split(b'\0')
             if b'web' in args and (b'javert.cli' in args or any(Path(a.decode(errors='replace')).name == 'javert' for a in args)):
-                found.append((entry, command))
+                # 无关的同账号进程也可能禁止读取cwd，先筛选命令。
+                if (entry / 'cwd').resolve() == root:
+                    found.append((entry, command))
         except (FileNotFoundError, ProcessLookupError):
             continue
+        except PermissionError:
+            raise RuntimeError(f'无法核验 PID {entry.name} 的应用进程身份：权限不足；未发送信号') from None
     if not found:
         print('NO_MATCHING_WEB；未停止任何进程；安装器还会验证活动任务')
         return

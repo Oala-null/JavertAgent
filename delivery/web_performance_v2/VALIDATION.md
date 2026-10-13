@@ -1,4 +1,8 @@
-# v2 验证范围
+# v2.1 验证范围
+
+2026-10-13安装工具修订：现场用户确认受限cwd所属进程为admin2的systemd。合成/proc先复现2 failed / 8 passed；修复后加入真实命令形态、活动Web同时存在、多Web拒绝及候选权限拒绝用例。相关安装器组合49 collected / 49 passed / 0 failed / 0 skipped / 0 errors，含14项新进程回归。模拟信号只改合成stat文件，没有读取或终止真实进程。
+
+v2.1只修订installer.py与stop_web.py的筛选顺序、包名和操作说明。9个性能源码、11个依赖、PATCH_ID和原watch文件字节均保持。命令或应用候选cwd不可读仍STOP；不跳过安全闸。README安装/回滚链使用&&，失败后不会继续启动。OpenSpec strict、Bash语法和diff检查通过。以下228+30结果为v2原性能代码验证记录，本轮未重复运行前端测试；医院实机重试仍待用户完成。
 
 最终相关组合：228 collected / 228 passed / 0 failed / 0 skipped / 0 errors；另有30项Node测试全部通过。覆盖性能、工作台/API/鉴权/原文、LIS、日期、旧/新安装器、故障恢复、回滚、锁、运行环境和监测context保持；不是全仓测试声明。
 

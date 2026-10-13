@@ -246,15 +246,15 @@ def idle_locks(root, stack):
         try:
             if entry.stat().st_uid != os.getuid():
                 continue  # 本实例使用应用所属账号；其它账号不在本机进程证明范围。
-            if (entry / 'cwd').resolve() != root:
-                continue
             args = (entry / 'cmdline').read_bytes().decode(errors='replace').split('\0')
             if ('javert.cli' in args or any(Path(arg).name in active | {'javert', 'uvicorn', 'gunicorn'} for arg in args)):
-                raise RuntimeError('应用目录仍有 Web/审计/取数进程，先按原运维流程停止；未覆盖代码')
+                # 无关的同账号进程也可能禁止读取cwd，先筛选命令。
+                if (entry / 'cwd').resolve() == root:
+                    raise RuntimeError('应用目录仍有 Web/审计/取数进程，先按原运维流程停止；未覆盖代码')
         except (FileNotFoundError, ProcessLookupError):
             continue
         except PermissionError:
-            raise RuntimeError('无法验证应用进程状态，请使用应用所属账号运行') from None
+            raise RuntimeError(f'无法核验 PID {entry.name} 的应用进程身份：权限不足；未覆盖代码') from None
 
 
 def main():
