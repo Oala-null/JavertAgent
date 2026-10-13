@@ -10,6 +10,10 @@
 
 v2.1两个入口先筛选命令，再读取应用候选cwd。无关systemd不再阻挡；命令不可读或候选cwd不可读仍STOP，不sudo、不停systemd、不忽略全部PermissionError。README安装/回滚链以`&&`连接，前步失败后不继续。9个payload摘要、11个依赖、PATCH_ID和监测context保持；原v2包不修改，已成功安装v2无需重装。
 
+v2.1从提交`7bd5a735ddd5fbb491db44e9567bd473258231a7`构建，25项包内校验通过。`SHA256SUMS`自身SHA-256为`4f1ef6d4df6c33a38d690b450242adecdbf0bd118675712648a49b8df47bc59d`。与v2相比仅README、VALIDATION、installer、stop_web、manifest的source_commit和校验文件改变，运行文件逐字相同。旧性能v1、v2、日期包校验全部通过且摘要保持。
+
+本轮49 collected / 49 passed / 0 failed / 0 skipped / 0 errors，含14项合成/proc回归。实际新包再次演练：旧v2两个入口均复现受限cwd错误；v2.1停止合成Web、CLI安装、CLI verify、监测策略核验及CLI回滚通过。安装后378文件匹配，回滚后377文件匹配，合成配置和账本未改；systemd的cwd访问次数为0。验收回执保存在本地`output/qa/249-web-performance-v21-20261013.json`。进程信号和/proc权限使用合成替身，未连接医院或代用户重试。
+
 ## 实际发布范围
 
 | 文件组 | 改动 |
