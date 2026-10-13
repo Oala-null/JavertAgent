@@ -1,0 +1,47 @@
+{
+  "patch_id": "249-history-date-view-v1",
+  "base_commit": "8645a2deb1c4c99921a65a3ab01754275ec2ac4e",
+  "files": {
+    "src/javert/store/models.py": {
+      "before": "aeb3ee46ff8f5b53040e1d897adda8701fb4c9dc31ac3d1b4845a92ac351c809",
+      "after": "eef3f6648dde605a8dbdb24d6705631e5a66310eb49d544841f9fe7122d9fc7e",
+      "mode": 420
+    },
+    "src/javert/web/api/routes_workbench.py": {
+      "before": "7d724263baf0970f14897f3d74d2b5e43ce7dcf063aaa1a007f1b0d1a5920b16",
+      "after": "bc8029a87d6706a280fc64556fd306b89f5d7871825bd30e3749e9bf7c88e130",
+      "mode": 420
+    },
+    "src/javert/web/batch_dates.py": {
+      "before": null,
+      "after": "a01840cd6072b7b77010cd7d6815847ff9b0a2f40c367136d9b76d74defd418a",
+      "mode": 420
+    },
+    "src/javert/web/static/app.js": {
+      "before": "85717be400cfeebcea5dc6814e98dabaeb5fddcbc51dbef55147e3180afbd933",
+      "after": "108768ecb394e7ad888e308590122bfce15bff9ea9bc13d565d4ed075ca2bfb4",
+      "mode": 420
+    },
+    "src/javert/web/templates/_sidebar.html": {
+      "before": "32f2e6c878089707da8e7bc489e796e1521ec198972614d7707a8a38f405ec4d",
+      "after": "8fcf012e4af05d672345b4f9916d60892d178b39a168ff912980018d20747d20",
+      "mode": 420
+    },
+    "src/javert/web/templates/patient_detail.html": {
+      "before": "a295d2d572cd3e56635df7e18f634d89c491a1f058940e83bba619e1a1c4deae",
+      "after": "20dde20946812e5c242ff734e5f1e0cbeb9fe66816eb1455b7b58873f4174e11",
+      "mode": 420
+    },
+    "src/javert/web/templating.py": {
+      "before": "763ad9a96e7a9ea2d73a288bca313fd0b61cff2561e7b75048ae83447b05da95",
+      "after": "7fe3bdfbf667c000d7d4581c5b9454d0ade1e4cfeadb05b0aede201f9decf519",
+      "mode": 420
+    }
+  },
+  "old_watch_files": {
+    "watcher.py": "65238145769087b42edc7ddb522f7770c4f2629f07380ed746e2b7c58367c497",
+    "ledger.py": "091fde4ac384a595ea080d79a8260f57d0fc94d11b7a66ef20255a55ee30b856",
+    "check_249_hotfix.py": "69b702cd283a89186e6389a4011018edf03e7a67964951810a8d48460edcf283",
+    "known-release.json": "31c2463e1660e6e20a151ac6ec6e8b22f2edbbaacf5671ecfecb68f61884449a"
+  }
+}

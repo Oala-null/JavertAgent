@@ -1,4 +1,4 @@
-// Javert 审核工作台 — vanilla JS (~250 行)
+// Javert 审核工作台 — vanilla JS
 // 处理: review form 提交 / SSE 订阅 / banner dismiss / 原始病历 modal / sidebar 增量更新
 
 (function () {
@@ -51,11 +51,226 @@
     return c === "v" || c === "i";        // v_and_i (默认)
   }
 
+  // 患者切换保留页面框架，只在新详情完整到达时替换。
+  var _navigationEpoch = 0, _navigationPending = false, _navigationRequest = null;
+  var _committedHref = null, _reviewPending = false;
+  var _detailCache = new Map(), _detailCacheChars = 0, _detailCacheEpoch = 0;
+  var _detailCacheEnabled = true;
+  var DETAIL_CACHE_TTL = 60000, DETAIL_CACHE_LIMIT = 5, DETAIL_CACHE_CHARS = 2 * 1024 * 1024;
+
+  function detailCacheKey(href) {
+    var url = new URL(href, window.location.href);
+    url.hash = "";
+    url.searchParams.sort();
+    return (window.JAVERT_USER || "") + "\n" + url.href;
+  }
+
+  function forgetDetail(key) {
+    var entry = _detailCache.get(key);
+    if (entry) _detailCacheChars -= entry.html.length;
+    _detailCache.delete(key);
+  }
+
+  function invalidateDetails(patient) {
+    ++_detailCacheEpoch;
+    _detailCache.forEach(function (entry, key) {
+      if (!patient || entry.patient === patient) forgetDetail(key);
+    });
+  }
+
+  function cachedDetail(url) {
+    // 无显式filter时服务端会读取cookie，不能复用上次的筛选口径。
+    if (!_detailCacheEnabled || !url.searchParams.get("filter")) return null;
+    var key = detailCacheKey(url.href), entry = _detailCache.get(key);
+    if (!entry) return null;
+    if (Date.now() >= entry.expiresAt) { forgetDetail(key); return null; }
+    _detailCache.delete(key); _detailCache.set(key, entry);
+    return entry.html;
+  }
+
+  function rememberDetail(href, page) {
+    if (!_detailCacheEnabled) return;
+    var panel = page.querySelector(".detail-panel");
+    var patient = panel && panel.getAttribute("data-patient-id");
+    if (!patient || panel.getAttribute("data-user") !== window.JAVERT_USER) return;
+    var url = new URL(href, window.location.href);
+    if (!url.searchParams.get("filter")) url.searchParams.set("filter", panel.getAttribute("data-filter"));
+    var html = "<title>" + _esc(page.title) + "</title>" + panel.outerHTML;
+    if (html.length > DETAIL_CACHE_CHARS) return;
+    var key = detailCacheKey(url.href);
+    forgetDetail(key);
+    while (_detailCache.size >= DETAIL_CACHE_LIMIT || _detailCacheChars + html.length > DETAIL_CACHE_CHARS) {
+      forgetDetail(_detailCache.keys().next().value);
+    }
+    _detailCache.set(key, {patient: patient, html: html, expiresAt: Date.now() + DETAIL_CACHE_TTL});
+    _detailCacheChars += html.length;
+  }
+
+  window.addEventListener("focus", function () { invalidateDetails(); });
+  window.addEventListener("pagehide", function () { invalidateDetails(); });
+  document.addEventListener("visibilitychange", function () { invalidateDetails(); });
+
+  function markActivePatient() {
+    $$(".patient-card").forEach(function (card) {
+      card.classList.toggle("active", card.getAttribute("data-patient-id") === window.JAVERT_PATIENT);
+    });
+  }
+
+  function navigationStatus(message, retry) {
+    var status = document.getElementById("patient-navigation-status");
+    if (!status) {
+      status = document.createElement("div");
+      status.id = "patient-navigation-status";
+      status.className = "source-hint";
+      status.setAttribute("role", "status");
+      status.style.cssText = "position:fixed;top:72px;right:24px;z-index:2100;background:var(--bg-light);padding:10px 16px;border:1px solid var(--border);border-radius:8px;";
+      document.body.appendChild(status);
+    }
+    status.textContent = message;
+    status.hidden = !message;
+    if (retry) {
+      var button = document.createElement("button");
+      button.type = "button"; button.className = "btn-secondary"; button.textContent = "重试";
+      button.onclick = retry;
+      status.appendChild(button);
+    }
+  }
+
+  function setNavigationBusy(busy) {
+    _navigationPending = busy;
+    var panel = document.querySelector(".detail-panel");
+    if (panel) {
+      panel.inert = busy;
+      panel.setAttribute("aria-busy", String(busy));
+      panel.style.pointerEvents = busy ? "none" : "";
+    }
+  }
+
+  function canLeavePatient() {
+    var panel = document.querySelector(".detail-panel");
+    var dirty = panel && $$(".review-form input, .review-form textarea", panel).some(function (field) {
+      return field.type === "radio" || field.type === "checkbox" ?
+        field.checked !== field.defaultChecked : field.value !== field.defaultValue;
+    });
+    return !dirty || window.confirm("当前患者有未提交的审核内容，确定离开？");
+  }
+
+  function navigatePatient(href, fromHistory) {
+    var panel = document.querySelector(".detail-panel");
+    if (!panel) return;
+    var url = new URL(href, window.location.href);
+    _committedHref = _committedHref || window.location.href;
+    if (_reviewPending) {
+      showToast("正在提交审核，请稍后切换");
+      if (window.location.href !== _committedHref) history.replaceState(history.state, "", _committedHref);
+      return;
+    }
+    if (url.href === _committedHref) {
+      if (_navigationPending) {
+        ++_navigationEpoch;
+        if (_navigationRequest) _navigationRequest.abort();
+      }
+      if (window.location.href !== _committedHref) history.replaceState(history.state, "", _committedHref);
+      setNavigationBusy(false); navigationStatus(""); return;
+    }
+    if (!_navigationPending && !canLeavePatient()) {
+      if (window.location.href !== _committedHref) history.replaceState(history.state, "", _committedHref);
+      return;
+    }
+    var previous = new URL(_committedHref);
+    var oldFilter = _activeFilterMode();
+    var epoch = ++_navigationEpoch;
+    var cacheEpoch = _detailCacheEpoch, cached = cachedDetail(url);
+    if (_navigationRequest) _navigationRequest.abort();
+    var controller = new AbortController(); _navigationRequest = controller;
+    var timedOut = false;
+    var timeout = setTimeout(function () { timedOut = true; controller.abort(); }, 30000);
+    _rawCache = Object.create(null); _rawCacheAt = Object.create(null); _rawPending = Object.create(null);
+    clearTimeout(_searchTimer); closeModal(); closeSourcePanel();
+    setNavigationBusy(true); navigationStatus(cached ? "" : "正在切换患者…");
+    var responseHtml = cached ? Promise.resolve(cached) : fetch(url.href, {credentials: "same-origin", signal: controller.signal})
+      .then(function (response) {
+        if (epoch !== _navigationEpoch) return null;
+        var destination = new URL(response.url || url.href, url.href);
+        if (destination.origin !== url.origin) throw new Error("unexpected redirect");
+        if (response.status === 401 || destination.pathname === "/login") {
+          invalidateDetails();
+          window.location.assign("/login?next=" + encodeURIComponent(url.pathname + url.search));
+          return null;
+        }
+        if (!response.ok) throw new Error("patient request failed");
+        return response.text();
+      });
+    responseHtml.then(function (html) {
+        if (html === null || epoch !== _navigationEpoch) return;
+        var nextDocument = new DOMParser().parseFromString(html, "text/html");
+        var nextPanel = nextDocument.querySelector(".detail-panel");
+        var path = url.pathname.replace(/\/$/, "");
+        var expectedPatient = path === "/workbench" ? "" : decodeURIComponent(path.slice("/workbench/".length));
+        if (!nextPanel || nextPanel.getAttribute("data-patient-id") !== expectedPatient) throw new Error("invalid patient response");
+        if (nextPanel.hasAttribute("data-user") && nextPanel.getAttribute("data-user") !== window.JAVERT_USER) {
+          invalidateDetails();
+          window.location.assign(url.href); return;
+        }
+        if (!cached && cacheEpoch === _detailCacheEpoch) rememberDetail(url.href, nextDocument);
+        // 脚本不重跑；身份只从经过HTML转义的明确元数据获取。
+        window.JAVERT_PATIENT = expectedPatient;
+        window.JAVERT_DISPLAY_LABEL = nextPanel.getAttribute("data-display-label") || expectedPatient;
+        document.title = nextDocument.title;
+        panel.replaceWith(nextPanel);
+        document.body.classList.remove("only-i", "show-gated-only", "hide-missing-doc", "hide-inconclusive", "hide-clean");
+        var banner = document.getElementById("welcome-banner");
+        if (banner) banner.remove();
+        var nextBanner = nextDocument.querySelector("#welcome-banner");
+        var grid = document.querySelector(".workbench-grid");
+        if (nextBanner && grid) grid.parentNode.insertBefore(nextBanner, grid);
+        var form = document.querySelector(".filter-form");
+        var select = document.querySelector('.filter-form select[name="filter"]');
+        var filter = nextPanel.getAttribute("data-filter") || oldFilter;
+        if (select) select.value = filter;
+        if (form) form.action = url.pathname;
+        var sidebar = document.getElementById("sidebar");
+        if (sidebar) { sidebar.setAttribute("data-filter", filter); sidebar.setAttribute("data-active-patient", expectedPatient); }
+        if (!fromHistory) history.pushState({javertPatientNavigation: true}, "", url.href);
+        _committedHref = url.href;
+        markActivePatient(); initVerdictFilter(); updateDateNote();
+        var focus = nextPanel.querySelector("h1") || nextPanel;
+        focus.setAttribute("tabindex", "-1"); focus.focus({preventScroll: true});
+        if (url.hash) scrollToHashRun();
+        else window.scrollTo({top: 0, behavior: "instant"});
+        if (oldFilter !== filter || previous.searchParams.get("batch_tag") !== url.searchParams.get("batch_tag")) loadPatientSidebar();
+        navigationStatus("");
+      }).catch(function (error) {
+        if (epoch !== _navigationEpoch) return;
+        if (window.location.href !== _committedHref) history.replaceState(history.state, "", _committedHref);
+        navigationStatus(timedOut ? "加载超时，当前页面已保留。" : "未能打开患者，当前页面已保留。", function () { navigatePatient(url.href, false); });
+      }).finally(function () {
+        clearTimeout(timeout);
+        if (epoch === _navigationEpoch) setNavigationBusy(false);
+      });
+  }
+
+  document.addEventListener("click", function (event) {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    var link = event.target.closest && event.target.closest("a.patient-card");
+    if (!link || link.hasAttribute("download") || (link.getAttribute("target") && link.getAttribute("target") !== "_self")) return;
+    if (!document.querySelector(".detail-panel")) return;
+    var url = new URL(link.href, window.location.href);
+    if (url.origin !== window.location.origin || !/^\/workbench\/[^/]+\/?$/.test(url.pathname)) return;
+    event.preventDefault(); navigatePatient(url.href, false);
+  });
+
+  window.addEventListener("popstate", function () {
+    if (!_committedHref || !/^\/workbench(?:\/[^/]+)?\/?$/.test(window.location.pathname)) return;
+    navigatePatient(window.location.href, true);
+  });
+
   // =========================================================
   // Review form 提交
   // =========================================================
   window.submitReview = function (ev) {
     ev.preventDefault();
+    if (_navigationPending || _reviewPending) return false;
     var form = ev.target;
     var runId = form.getAttribute("data-run-id");
     var verdict = (form.querySelector('input[name="verdict"]:checked') || {}).value;
@@ -64,6 +279,9 @@
       return false;
     }
     var comment = (form.querySelector('textarea[name="comment"]') || {}).value || null;
+    _reviewPending = true;
+    invalidateDetails(window.JAVERT_PATIENT);
+    var reviewEpoch = _navigationEpoch;
     fetch("/review", {
       method: "POST",
       credentials: "same-origin",
@@ -71,6 +289,7 @@
       body: JSON.stringify({run_id: runId, verdict: verdict, comment: comment}),
     }).then(function (resp) {
       if (!resp.ok) {
+        if (resp.status === 401) invalidateDetails();
         return resp.json().then(function (j) { throw new Error(j.error || ("HTTP " + resp.status)); });
       }
       return resp.json();
@@ -83,8 +302,9 @@
       }
       showToast("已提交: " + verdictLabel(verdict), "review");
       // 重载页面以拿到最新数据 (简单做法 — pilot 阶段够用)
-      setTimeout(function () { location.reload(); }, 500);
+      setTimeout(function () { if (reviewEpoch === _navigationEpoch) location.reload(); }, 500);
     }).catch(function (e) {
+      _reviewPending = false;
       alert("提交失败: " + e.message);
     });
     return false;
@@ -124,11 +344,12 @@
   var _rawCacheAt = Object.create(null);
   var _rawPending = Object.create(null);
   function fetchRaw(pid) {
+    var epoch = _navigationEpoch;
     if (_rawCache[pid] && Date.now() - _rawCacheAt[pid] < 30000) return Promise.resolve(_rawCache[pid]);
     if (_rawPending[pid]) return _rawPending[pid];
     var pending = fetch("/api/patient/" + encodeURIComponent(pid) + "/raw", {credentials: "same-origin"})
-      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
-      .then(function (data) { _rawCache[pid] = data; _rawCacheAt[pid] = Date.now(); return data; })
+      .then(function (r) { if (r.status === 401) invalidateDetails(); if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (data) { if (epoch === _navigationEpoch) { _rawCache[pid] = data; _rawCacheAt[pid] = Date.now(); } return data; })
       .finally(function () { if (_rawPending[pid] === pending) delete _rawPending[pid]; });
     _rawPending[pid] = pending;
     return pending;
@@ -242,8 +463,11 @@
 
   // ---------- 原始病历 modal (全量浏览入口, 保留) ----------
   window.showRawData = function (patientId) {
+    if (_navigationPending) return;
+    var epoch = _navigationEpoch;
     var root = document.getElementById("modal-root") || document.body;
     fetchRaw(patientId).then(function (data) {
+      if (epoch !== _navigationEpoch) return;
       root.innerHTML =
         '<div class="modal-overlay" onclick="if(event.target===this)closeModal()">' +
         '<div class="modal raw-modal" style="max-width:1040px;">' +
@@ -274,7 +498,7 @@
         var inp = document.querySelector(".raw-modal .src-search-input");
         if (inp) inp.focus();
       }, 0);
-    }).catch(function (e) { alert("加载原始数据失败: " + e.message); });
+    }).catch(function (e) { if (epoch === _navigationEpoch) alert("加载原始数据失败: " + e.message); });
   };
 
   window.closeModal = function () {
@@ -296,6 +520,8 @@
   }
 
   window.openSourcePanel = function (anchor) {
+    if (_navigationPending) return;
+    var epoch = _navigationEpoch;
     if (!anchor) return;
     var pid = window.JAVERT_PATIENT;
     if (!pid) return;
@@ -303,6 +529,7 @@
     // 不再退回 modal — modal 会盖住整页且有渲染竞态.
     var panel = _ensureSourcePanel();
     fetchRaw(pid).then(function (data) {
+      if (epoch !== _navigationEpoch) return;
       panel.innerHTML =
         '<div class="source-head">' +
           '<strong>' + _esc(pid) + ' · 原文对照</strong>' +
@@ -324,7 +551,7 @@
           _notesPanelHtml(data) + _feesPanelHtml(data, true) + _labsPanelHtml(data, true) + '</div>';
       document.body.classList.add("compare-open");
       _applyAnchorInScope(panel, anchor);
-    }).catch(function (e) { showToast("加载原文失败: " + e.message); });
+    }).catch(function (e) { if (epoch === _navigationEpoch) showToast("加载原文失败: " + e.message); });
   };
 
   window.closeSourcePanel = function () {
@@ -664,7 +891,7 @@
   // =========================================================
   // 病人列表 facet — 纯前端 show/hide, 与服务端 verdict filter 叠加 (D5)
   // =========================================================
-  var FACET_KEY = "javert_facets";
+  var FACET_KEY = "javert_date_facets_v1";
 
   function _facetState() {
     return {
@@ -673,12 +900,17 @@
       fee: (document.getElementById("facet-fee") || {}).value || "all",
       time: (document.getElementById("facet-time") || {}).value || "all",
       sort: (document.getElementById("facet-sort") || {}).value || "default",
-      tags: $$(".facet-chip.active").map(function (c) { return c.getAttribute("data-tag"); }),
+      dates: $$(".facet-chip.active").map(function (c) { return c.getAttribute("data-date"); }),
     };
   }
 
-  var _sidebarPage = 1, _sidebarPages = 1, _sidebarTimer = null;
-  var _sidebarAbort = null, _sidebarSequence = 0, _sidebarTags = [];
+  var _sidebarPage = 1, _sidebarPages = 1, _sidebarTimer = null, _sidebarFailed = false;
+
+  function updateDateNote() {
+    var note = document.getElementById("date-filter-note");
+    if (note) note.hidden = !_sidebarDates.length;
+  }
+  var _sidebarAbort = null, _sidebarSequence = 0, _sidebarDates = [];
 
   function _saveFacets(st) {
     st.page = _sidebarPage;
@@ -692,12 +924,12 @@
     _sidebarAbort = new AbortController();
     var sequence = ++_sidebarSequence;
     var st = _facetState();
-    st.tags = _sidebarTags.slice();
+    st.dates = _sidebarDates.slice();
     _saveFacets(st);
     var params = new URLSearchParams({filter: _activeFilterMode(), page: _sidebarPage,
       pid: st.pid, dx: st.dx, fee: st.fee, sort: st.sort,
       active_patient: window.JAVERT_PATIENT || ""});
-    st.tags.forEach(function (tag) { params.append("tag", tag); });
+    st.dates.forEach(function (tag) { params.append("date", tag); });
     if (st.time !== "all") {
       var now = new Date();
       var since = st.time === "today" ? new Date(now.getFullYear(), now.getMonth(), now.getDate()) :
@@ -713,14 +945,17 @@
     var next = document.getElementById("sidebar-next");
     prev.disabled = next.disabled = true;
     var clear = document.getElementById("facet-clear");
-    if (clear) clear.hidden = !(st.pid || st.dx || st.fee !== "all" || st.time !== "all" || st.tags.length || st.sort !== "default");
+    if (clear) clear.hidden = !(st.pid || st.dx || st.fee !== "all" || st.time !== "all" || st.dates.length || st.sort !== "default");
     fetch("/api/workbench/patients?" + params, {credentials: "same-origin", signal: _sidebarAbort.signal})
       .then(function (r) {
+        if (r.status === 401) invalidateDetails();
         if (!r.ok) throw new Error(r.status === 401 ? "登录已失效，请重新登录。" : "患者列表加载失败，请重试。");
         return r.json();
       }).then(function (data) {
         if (sequence !== _sidebarSequence) return;
+        _sidebarFailed = false;
         list.innerHTML = data.html;
+        markActivePatient();
         _sidebarPage = data.page; _sidebarPages = data.pages;
         _saveFacets(st);
         document.getElementById("patient-count").textContent = data.total === data.unfiltered_total ? data.total : data.total + "/" + data.unfiltered_total;
@@ -728,11 +963,12 @@
         prev.disabled = data.page <= 1; next.disabled = data.page >= data.pages;
         var tags = document.getElementById("facet-tags");
         tags.replaceChildren();
-        data.tags.forEach(function (tag) {
+        (data.dates || []).forEach(function (tag) {
           var btn = document.createElement("button");
           btn.type = "button";
-          btn.className = "facet-chip" + (_sidebarTags.indexOf(tag) >= 0 ? " active" : "");
-          btn.setAttribute("data-tag", tag);
+          btn.className = "facet-chip" + (_sidebarDates.indexOf(tag) >= 0 ? " active" : "");
+          btn.setAttribute("data-date", tag);
+          btn.setAttribute("aria-pressed", _sidebarDates.indexOf(tag) >= 0 ? "true" : "false");
           btn.textContent = tag;
           btn.onclick = function () { window.toggleTagChip(btn); };
           tags.appendChild(btn);
@@ -741,6 +977,7 @@
         list.scrollTop = 0;
       }).catch(function (err) {
         if (sequence !== _sidebarSequence || err.name === "AbortError") return;
+        _sidebarFailed = true;
         status.textContent = err.message || "患者列表加载失败，请重试。";
         // 保留已加载卡片供导航；首次失败移除“正在加载”占位。
         if (!list.querySelector(".patient-card")) list.replaceChildren();
@@ -751,6 +988,7 @@
   }
 
   window.applyFacets = function () {
+    updateDateNote();
     _sidebarPage = 1;
     // 输入发生即失效旧响应；防抖期间也不能被旧筛选结果覆盖。
     ++_sidebarSequence;
@@ -769,28 +1007,37 @@
   };
   window.toggleTagChip = function (btn) {
     btn.classList.toggle("active");
-    _sidebarTags = $$(".facet-chip.active").map(function (c) { return c.getAttribute("data-tag"); });
+    btn.setAttribute("aria-pressed", btn.classList.contains("active") ? "true" : "false");
+    _sidebarDates = $$(".facet-chip.active").map(function (c) { return c.getAttribute("data-date"); });
     applyFacets();
   };
   window.clearFacets = function () {
     ["pid", "dx"].forEach(function (key) { var el = document.getElementById("facet-" + key); if (el) el.value = ""; });
     ["fee", "time", "sort"].forEach(function (key) { var el = document.getElementById("facet-" + key); if (el) el.value = key === "sort" ? "default" : "all"; });
-    _sidebarTags = [];
-    $$(".facet-chip.active").forEach(function (c) { c.classList.remove("active"); });
+    _sidebarDates = [];
+    $$(".facet-chip.active").forEach(function (c) { c.classList.remove("active"); c.setAttribute("aria-pressed", "false"); });
     applyFacets();
   };
   function restoreFacets() {
     if (!document.getElementById("facet-bar")) return;
     var st = null;
-    try { st = JSON.parse(sessionStorage.getItem(FACET_KEY) || "null"); } catch (_) {}
+    try {
+      st = JSON.parse(sessionStorage.getItem(FACET_KEY) || "null");
+      if (!st) {
+        st = JSON.parse(sessionStorage.getItem("javert_facets") || "null");
+        if (st) st.dates = [];
+      }
+      sessionStorage.removeItem("javert_facets");
+    } catch (_) {}
     if (st) {
       ["pid", "dx", "fee", "time", "sort"].forEach(function (key) {
         var el = document.getElementById("facet-" + key);
         if (el && typeof st[key] === "string") el.value = st[key];
       });
-      _sidebarTags = Array.isArray(st.tags) ? st.tags.filter(function (t) { return typeof t === "string"; }) : [];
+      _sidebarDates = Array.isArray(st.dates) ? st.dates.filter(function (t) { return typeof t === "string"; }) : [];
       _sidebarPage = Number.isInteger(st.page) && st.page > 0 ? st.page : 1;
     }
+    updateDateNote();
     loadPatientSidebar();
   }
 
@@ -806,6 +1053,7 @@
     es.addEventListener("review_submitted", function (e) {
       try {
         var data = JSON.parse(e.data);
+        invalidateDetails(data.patient_id);
         // Sidebar 计数同步 (全局口径): 某 run 被「任意专家」首次审 (run_first_review) +
         // 该 run 的 AI 裁决落在当前 filter 命中集 → 进度 +1. 不分审核人 — 别的专家审完,
         // 我这边的卡片也实时 +1. run_first_review 保证改判 / 二次审不重复计数.
@@ -861,6 +1109,7 @@
     es.addEventListener("new_audit_run", function (e) {
       try {
         var data = JSON.parse(e.data);
+        invalidateDetails(data.patient_id);
         showToast("新增审计: " + data.patient_id + " " + data.rule_id + " → " + verdictLabel(data.verdict));
         // 重跑会替换旧 verdict；由服务器重算当前页，禁止无限插卡或盲加计数。
         clearTimeout(_sidebarTimer);
@@ -869,7 +1118,14 @@
     });
 
     es.addEventListener("heartbeat", function () { /* keepalive */ });
-    es.onerror = function () { /* 浏览器会自动重连 */ };
+    es.addEventListener("open", function () {
+      if (!_detailCacheEnabled) invalidateDetails();
+      _detailCacheEnabled = true;
+    });
+    es.onerror = function () {
+      _detailCacheEnabled = false;
+      invalidateDetails();
+    };
 
     window.addEventListener("beforeunload", function () { es.close(); });
   }
@@ -906,13 +1162,14 @@
     function poll() {
       if (document.hidden) return;
       fetch("/api/workbench/sig", { credentials: "same-origin" })
-        .then(function (r) { return r.json(); })
+        .then(function (r) { if (r.status === 401) invalidateDetails(); return r.json(); })
         .then(function (j) {
           var s = j && j.sig;
           if (s === null || s === undefined) return;     // 142 抖 → 不动
           if (baseSig === null) { baseSig = s; return; }  // 首次 = 基线
-          if (s !== baseSig) {                            // 有新裁决
+          if (s !== baseSig || _sidebarFailed) {                            // 有新裁决
             baseSig = s;
+            invalidateDetails();
             if (settleTimer) clearTimeout(settleTimer);
             settleTimer = setTimeout(doReload, 18000);    // 防抖: 稳定 18s 再刷
           }
@@ -925,6 +1182,7 @@
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", function () {
+      rememberDetail(window.location.href, document);
       startSse();
       scrollToHashRun();
       restoreFacets();
@@ -933,6 +1191,7 @@
       initAutoRefresh();
     });
   } else {
+    rememberDetail(window.location.href, document);
     startSse();
     scrollToHashRun();
     restoreFacets();

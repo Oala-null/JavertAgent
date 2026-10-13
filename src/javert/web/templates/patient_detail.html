@@ -3,7 +3,9 @@
 <div class="workbench-grid">
   {% include "_sidebar.html" %}
 
-  <section class="detail-panel">
+  <section class="detail-panel" id="detail-panel" data-patient-id="{{ active_patient }}"
+           data-display-label="{{ active_patient }}" data-filter="{{ filter }}"
+           data-user="{{ current_user.username if current_user else '' }}">
     <div class="patient-header">
       <h1>{{ active_patient }}</h1>
       <span class="meta">{{ filter_label }} · 共 {{ runs|length }} 条</span>
@@ -14,6 +16,8 @@
       </a>
       <button class="btn-secondary" type="button" onclick="showRawData('{{ active_patient }}')">查看原始病历</button>
     </div>
+
+    <p class="muted" id="date-filter-note" hidden>左侧日期筛选曾在当天审计的患者；下方仍显示每条规则的最新结果，历史结果可展开查看。</p>
 
     {% if overview %}
       {% include "_patient_overview.html" %}
@@ -79,7 +83,7 @@
           <span class="badge badge-{{ run.verdict | verdict_color }}">{{ run.verdict | verdict_label }}</span>
           <span class="confidence">置信 {{ '%.2f' % (run.confidence or 0.0) }}</span>
           {% if run.gate_tag %}<span class="gate-badge gate-{{ run.gate_tag }}" title="该裁决被确定性 gate 降级 ({{ run.gate_tag }}) — 详见下方推理">⚙ {{ run.gate_tag }}</span>{% endif %}
-          {% if run.batch_tag %}<span class="batch-badge batch-{{ run.batch_tag }}">{{ run.batch_tag }}</span>{% endif %}
+          <span class="batch-badge">{{ run.batch_tag | batch_date(run.created_at) }}</span>
           {% if run.history %}<span class="history-hint" title="该规则之前跑过 {{ run.history|length }} 次, 末尾可展开看老 verdict + 当时批注">📜 +{{ run.history|length }}</span>{% endif %}
         </div>
         {% if meta %}
@@ -194,13 +198,13 @@
         {# v0.7: 历史 (老 v1.0 verdict + 当时批注) #}
         {% if run.history %}
         <details class="history-runs">
-          <summary>📜 历史 {{ run.history|length }} 次 (含老 verdict + 当时专家批注 — latest 是上方的 {{ run.batch_tag or 'v1.0' }} 那条)</summary>
+          <summary>📜 历史 {{ run.history|length }} 次（含当时专家批注；上方最新结果日期为 {{ run.batch_tag | batch_date(run.created_at) }}）</summary>
           {% for h in run.history %}
           <div class="history-run">
             <div class="history-head">
               <span class="badge badge-{{ h.verdict | verdict_color }}">{{ h.verdict | verdict_label }}</span>
               <span class="confidence">conf {{ '%.2f' % h.confidence }}</span>
-              <span class="muted">{{ h.batch_tag or 'v1.0' }} · {{ h.created_at | humanize_since }}</span>
+              <span class="muted">{{ h.batch_tag | batch_date(h.created_at) }} · {{ h.created_at | humanize_since }}</span>
             </div>
             <div class="history-reasoning">{{ (h.reasoning or '(无 reasoning)')[:400] }}{% if h.reasoning and h.reasoning|length > 400 %}…{% endif %}</div>
             {% if h.reviews %}

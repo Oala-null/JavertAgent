@@ -1,0 +1,74 @@
+{
+  "patch_id": "249-workbench-performance-v2",
+  "base_commit": "8645a2deb1c4c99921a65a3ab01754275ec2ac4e",
+  "baselines": {
+    "history-dates-v1": {
+      "src/javert/store/sqlserver_store.py": "9f473cb5f699833f3eef0e8111280584b26f0a4279f9c532d8abdd429002a029",
+      "src/javert/web/api/main.py": "63aae431284eaee8886325596c61b4526811cded0e8f5a1070404e50d35020ac",
+      "src/javert/web/api/routes_workbench.py": "bc8029a87d6706a280fc64556fd306b89f5d7871825bd30e3749e9bf7c88e130",
+      "src/javert/web/hit_resolver.py": "b6f927a2dfa713477752c705d861cde73b4a17cfb18b6e0da5727b7c62952ffb",
+      "src/javert/web/static/app.js": "108768ecb394e7ad888e308590122bfce15bff9ea9bc13d565d4ed075ca2bfb4",
+      "src/javert/web/templates/_patient_cards.html": null,
+      "src/javert/web/templates/_sidebar.html": "8fcf012e4af05d672345b4f9916d60892d178b39a168ff912980018d20747d20",
+      "src/javert/web/templates/patient_detail.html": "20dde20946812e5c242ff734e5f1e0cbeb9fe66816eb1455b7b58873f4174e11",
+      "src/javert/web/templates/workbench.html": "89b6638c59669fdffa76bfc5bf481b7456baa6ffff82f766cf141297f58b571f"
+    }
+  },
+  "files": {
+    "src/javert/store/sqlserver_store.py": {
+      "after": "8f4a3db380b45edcad7d96f6214c91b41588da8edf6e8b830d40c00b06f26ac8",
+      "mode": 420
+    },
+    "src/javert/web/api/main.py": {
+      "after": "86698d2ff469cd6ba6b594531cec06d90c54c6d34725ed595c29a0b7f6fb2529",
+      "mode": 420
+    },
+    "src/javert/web/api/routes_workbench.py": {
+      "after": "694cbe385985b5cb49f2495f59a34d3453cd4e2bd379df38da332dfbd256082c",
+      "mode": 420
+    },
+    "src/javert/web/hit_resolver.py": {
+      "after": "adffe6883d3be9a19a25a4effab27017675a8c97b396ae0642d8bc3530ec08d3",
+      "mode": 420
+    },
+    "src/javert/web/static/app.js": {
+      "after": "3dc620c61b9cc5087e0bc8baf39edd39301df571adac5fc7cc4dd63dad3b8370",
+      "mode": 420
+    },
+    "src/javert/web/templates/_patient_cards.html": {
+      "after": "5c7d16a42810c7103242195b8135404103eafbd9ddbafede9702cc53ff77870e",
+      "mode": 420
+    },
+    "src/javert/web/templates/_sidebar.html": {
+      "after": "61d9d0dbb6b2fa811822697bf3f1ca72ce1baa76c7c66a266bbe93c751a23c6b",
+      "mode": 420
+    },
+    "src/javert/web/templates/patient_detail.html": {
+      "after": "dd2b171ba45cccc3f90089c88d29d971b7a22ccc0147660dc14cf88ba11f971c",
+      "mode": 420
+    },
+    "src/javert/web/templates/workbench.html": {
+      "after": "8c2e6c83e0c419e7107fbd29aa944ffc12a619f7e2d61d20d626799100271851",
+      "mode": 420
+    }
+  },
+  "dependencies": {
+    "src/javert/data/fee_netting.py": "9a30a8458d618d36e42d633c60ac420cfe8b41cca6a7f883936f049663a6bf17",
+    "src/javert/data/hub_source.py": "db73357dccb0647272c3a7b06bd390cb96de3be9cb5ab59812ad14aac8322bce",
+    "src/javert/store/models.py": "eef3f6648dde605a8dbdb24d6705631e5a66310eb49d544841f9fe7122d9fc7e",
+    "src/javert/tools/drug_audit_lookup.py": "30a5be1e1db5c7b70cd361168c810f344fb56bbaadbd58d3866798da79d3f181",
+    "src/javert/web/auth.py": "20230d0e9254c02656435e780b412f293f118fa4c722d6ac614688d89e4032d6",
+    "src/javert/web/hub_raw_source.py": "153f22c0aa18dcae95590a4ff36386b1b88e68c84008791d2de95b3761f1d38c",
+    "src/javert/web/patient_overview.py": "f50d67c7b712af5445f3ac99594dd1d16a311b1cc63803d14f021755b0cdc57e",
+    "src/javert/web/static/style.css": "b1ede6793770cdc5de42d92bd9f407fe68a1c8450c50e98099a94430c44dadbd",
+    "src/javert/web/templates/base.html": "771fd6024e0f7dd0469eb3ea99e57f14f248bd2ea609451266fbe304ebc153cd",
+    "src/javert/web/templating.py": "7fe3bdfbf667c000d7d4581c5b9454d0ade1e4cfeadb05b0aede201f9decf519",
+    "src/javert/web/batch_dates.py": "a01840cd6072b7b77010cd7d6815847ff9b0a2f40c367136d9b76d74defd418a"
+  },
+  "watch_files": {
+    "watcher.py": "65238145769087b42edc7ddb522f7770c4f2629f07380ed746e2b7c58367c497",
+    "ledger.py": "091fde4ac384a595ea080d79a8260f57d0fc94d11b7a66ef20255a55ee30b856",
+    "check_249_hotfix.py": "69b702cd283a89186e6389a4011018edf03e7a67964951810a8d48460edcf283",
+    "known-release.json": "603189ad519a0c1a8b4203fe6c1d2a32eff5d81650ec1e71792d6660f95fdeaa"
+  }
+}

@@ -3,10 +3,11 @@
 当前院内维护分支为 **gnome-243**。243是历史名称，已确认院内地址为249。费用使用DETAIL/STFSJ，LIS使用住院医疗记录路径；原8645a2d基线已叠加结算、侧栏和LIS补丁。**不从FP8分支覆盖院内。**
 
 - [当前运维入口](docs/deployment_243_gnome.md)：启动、续跑、核验和统计。
+- [完整性能补丁v2](docs/deployment_249_web_performance.md)：用于已安装日期补丁的院内版本，包含首批性能优化，不用先装性能v1；由用户拷贝安装。
 - [LIS安装/回滚](docs/deployment_249_lis_medical.md) · [代码核验事实](docs/243_249_hotfix_qa.md) · [维护发布](docs/243_release_cookbook.md)。
 - [下班EDA统计](delivery/audit_eda/README_zh.md) · [只改SYXH查指标](scripts/sql/249_lis_by_syxh.sql)。
 
-本地受控文件已与交付摘要对齐；2026-09-21现场回传也确认376个运行文件及14个热补丁文件匹配、基线戳匹配。进程内存代码尚未验证，不能把磁盘一致、提交、推送、部署视作同一步。下文带日期的性能/数据/历史部署数是历史快照，实时规则状态使用 `.venv/bin/javert list`。
+2026-09-21现场回传确认当时376个运行文件及14个热补丁文件匹配、基线戳匹配。2026-10-12用户确认已安装日期补丁，性能v2按该版本制作；旧摘要不描述v2目标。进程内存代码尚未验证，不能把磁盘一致、提交、推送、部署视作同一步。下文带日期的性能/数据/历史部署数是历史快照，实时规则状态使用 `.venv/bin/javert list`。
 
 > 243/249维护与发布约束：见[当前Cookbook](docs/243_release_cookbook.md)。
 > 本次不合并fp8；显式shanghai模式解析SYXH/BAH/JZLSH，现场env和数据不随代码包覆盖。院内验收状态单独记录。

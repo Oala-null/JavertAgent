@@ -15,7 +15,8 @@ def test_lis_rendering_escaping_and_cache_expiry(tmp_path):
     fetch=source[source.index('  var _rawCache ='):source.index('  function _notesPanelHtml')]
     render=source[source.index('  function _labTableHtml'):source.index('  // ---------- 原始病历 modal')]
     code='''const assert=require('node:assert/strict');
-let now=0, calls=0;
+let now=0, calls=0, _navigationEpoch=0;
+function invalidateDetails() {}
 Date.now=()=>now;
 const fetch=async()=>{ calls++; return {ok:true,json:async()=>({n_labs:calls})}; };
 '''+escape+fetch+render+'''

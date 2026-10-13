@@ -1,4 +1,46 @@
-# 249 工作台加载优化部署
+# 249 工作台完整性能升级 v2（2026-10-12）
+
+当前交付目录为`JiaZhongXin/Releases/Javert-249-Web-performance-v2`，只生成目录，不生成ZIP。用户确认院内已安装`Javert-249-history-dates-v1`，且性能v1尚未上传；本包以日期版为唯一安装起点，包含首批和后续性能代码，不要求先装性能v1。由用户拷贝安装，本次不连接院内。
+
+安装与回滚见[包内说明](../delivery/web_performance_v2/README_zh.md)。原性能v1、日期包和LIS包保持不变。未知、无日期或混合版本会STOP；不得手工覆盖文件来绕过检查。
+
+## 实际发布范围
+
+| 文件组 | 改动 |
+|---|---|
+| `store/sqlserver_store.py` | 当前患者的最新主卡取完整大字段；历史保留批注和院内实际展示的400字说明预览（取401字判断省略号） |
+| `web/api/routes_workbench.py`、`web/hit_resolver.py` | 独立50人分页、全历史日期筛选后分页、60秒侧栏缓存/签名失效、费用预处理每请求一次 |
+| `web/api/main.py` | 大响应GZip，SSE不压缩；保留上海启动不DDL/不回灌 |
+| `web/static/app.js` | 无白屏导航、短期详情缓存、事件/401/焦点失效、旧原文世代隔离，保留日期选择和提示 |
+| `web/templates/_sidebar.html`、`_patient_cards.html`、`patient_detail.html`、`workbench.html` | 分页与导航配套元数据，保留日期徽标/历史日期、上海筛选隔离和原文容器 |
+
+上述9个文件必须整包安装。`models.py`、`templating.py`、`batch_dates.py`在维护分支补登已交付日期包的原字节；它们不在性能payload中，现场作为11个未变依赖的一部分校验。因此不会重新添加或覆盖日期功能。
+
+院内没有62的来源profile查询，未为移植来源缓存新增该业务路径。费用命中/退费/缓存锚点语义、原文全量接口与30秒缓存、LIS本次住院/pending、规则/模型/2C合同均保持。无SQL、依赖安装、配置覆盖或审计重跑。
+
+## 监测兼容
+
+日期版watcher会校验全部运行文件。性能v2提供兼容入口，以日期+性能的新完整清单校验磁盘，并严格限制差异为9个性能文件。原watcher、ledger、检查器、known-release四文件逐字保持，原审计context不变。安装与回滚不迁移/修改SQLite账本。
+
+性能v2生效后若需恢复监测，使用本包`watch/watch.sh`；回滚后用原日期包入口。安装不自动恢复监测。监测锁、批跑锁和同目录进程检查防止运行中覆盖；原批跑CODE_FILES未改变。
+
+## 构建与验证
+
+构建只读取已提交源码，目标存在即拒绝覆盖：
+
+```bash
+python3 scripts/build_249_web_performance_v2.py /Users/shane/26er/Javert/JiaZhongXin/Releases
+```
+
+manifest固定日期基线、9个目标摘要和11个依赖摘要。`known-release-after.json`描述日期版叠加性能后的378文件范围；原`deploy/249/known-release.json`仍保留旧LIS交付身份，不被改写。
+
+只在本机使用合成数据验证。实际浏览器确认日期筛选为2/4、上海无全局费用筛选，A→C→A保留Document及日期选择，返回A复用初始响应；截图在包内`QA-browser.jpg`。性能、LIS、日期、安装/故障恢复/回滚、监测context不变等测试记录见[VALIDATION](../delivery/web_performance_v2/VALIDATION.md)。
+
+初次日期兼容组合227 collected / 226 passed / 1 failed / 0 skipped / 0 errors；失败来自旧模板测试仍要求随机tag。按已安装日期合同改为验证日期chip/data-dates，没有修改生产逻辑来迎合断言。后续还新增了历史说明预览先红回归，避免院内可见内容被减载丢失。
+
+---
+
+# 历史性能v1交付记录
 
 交付目录：`JiaZhongXin/Releases/Javert-249-Web-performance-v1`，默认不生成 ZIP。
 
@@ -19,7 +61,7 @@
 维护者从已提交树构建：
 
 ```bash
-python3 scripts/build_249_web_performance.py JiaZhongXin/Releases
+python3 scripts/build_249_web_performance.py JiaZhongXin/Releases --ref b853b3d578bad9785987a9853c0dd70b501e7a4c
 ```
 
 目标目录存在即拒绝覆盖。新代码若已改变 v1 清单中的 payload 或依赖，构建拒绝，必须另立版本。`DEPLOY_COMMIT` 保留旧基线；新包以 `manifest.json` 的源码提交和文件摘要标识。医院是否已安装、Web 是否已重启需现场验收，本次本地交付不作这一声明。

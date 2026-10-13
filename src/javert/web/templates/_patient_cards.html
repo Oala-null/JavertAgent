@@ -9,12 +9,12 @@
        data-relevant="{{ p.relevant_count }}"
        data-fees="{{ "%.0f"|format(p.fees_sum or 0) }}"
        data-dx="{{ p.primary_dx }}"
-       data-tag="{{ p.batch_tag or '' }}"
+       data-dates='{{ p | sidebar_dates | tojson }}'
        data-updated="{{ p.updated_at.isoformat() if p.updated_at else '' }}"
        href="/workbench/{{ p.patient_id | urlencode }}?filter={{ filter }}">
       <div class="row1">
         <span>{% if p.fully_reviewed %}<span class="check-icon"></span>{% endif %}{{ p.patient_id }}</span>
-        {% if p.batch_tag %}<span class="batch-badge batch-{{ p.batch_tag }}">{{ p.batch_tag }}</span>{% endif %}
+        <span class="batch-badge" title="最近一条审计所属日期">{{ p.batch_tag | batch_date(p.updated_at) }}</span>
       </div>
       {% if summary_available and p.primary_dx %}
       <div class="row-dx" title="{{ p.primary_dx }}">{{ p.primary_dx }}</div>

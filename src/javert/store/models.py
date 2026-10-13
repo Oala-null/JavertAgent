@@ -88,6 +88,8 @@ class PatientSidebarItem(BaseModel):
     fully_reviewed: bool = False
     # v0.7: 该 patient 的 latest batch_tag (跨 rule 取 max created_at 的). None = baseline.
     batch_tag: str | None = None
+    batch_dates: list[str] = Field(default_factory=list)  # 全部历史审计所属日期，仅用于展示/筛选。
+    batch_dates_available: bool = True  # 日期查询暂不可用时提示，避免把不完整集合当全历史。
     # v0.9 (enhance-workbench-usability): 富卡片摘要 — 渲染前由路由填充, 默认值不破坏现有构造.
     fees_sum: float = 0.0          # 该 patient 费用合计 (进程级 groupby 缓存, 近似值)
     primary_dx: str = ""           # 主诊断 (病案首页 maindiag_flag=1 优先, note 兜底)

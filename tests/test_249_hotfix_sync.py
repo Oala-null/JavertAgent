@@ -46,6 +46,11 @@ def test_maintenance_tree_matches_frozen_delivery_with_performance_patch():
     for name, item in patch['files'].items():
         assert manifest['files'].get(name) == item['before']
         manifest['files'][name] = item['after']
+    complete = json.loads((root / 'delivery/web_performance_v2/v2-manifest.json').read_text())
+    manifest = json.loads((root / 'delivery/web_performance_v2/baseline-known-release.json').read_text())
+    for name, before in complete['baselines']['history-dates-v1'].items():
+        assert manifest['files'].get(name) == before
+    manifest['files'].update({name: item['after'] for name, item in complete['files'].items()})
     result = compare(root, manifest)
     assert result['disk_match'], result['differences']
-    assert result['hotfix_files'] == 14
+    assert result['hotfix_files'] == len(manifest['hotfix_paths'])

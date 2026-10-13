@@ -36,6 +36,9 @@ def synthetic_workbench(monkeypatch):
     monkeypatch.setattr(rw, "get_sqlserver_store", lambda: store)
     monkeypatch.setattr(rw, "current_user", lambda req: User(id=1, username="SYNTHETIC", created_at=NOW))
     monkeypatch.setattr(rw, "_enrich_sidebar", lambda rows: rows)
+    monkeypatch.setattr(rw, "all_patient_dates", lambda source: {
+        p.patient_id: [rw.batch_date(p.batch_tag, p.updated_at)] for p in patients
+    })
     monkeypatch.setattr(rw, "_get_loader", lambda: SimpleNamespace(get_notes=lambda pid: None, get_fees=lambda pid: None))
     if hasattr(rw, "_get_profile_hub_source_for_patient"):
         monkeypatch.setattr(rw, "_get_profile_hub_source_for_patient", lambda pid: None)
@@ -113,6 +116,13 @@ def test_history_keeps_reviews_without_transferring_large_payloads(synthetic_sql
                 if isinstance(value, str) and len(value) > 60000]
     print(f"large_tool_payloads_transferred={len(payloads)}")
     assert len(payloads) == 1, "只有最新主卡需要完整工具调用记录"
+
+
+def test_hospital_history_keeps_visible_reasoning_preview(synthetic_sql_store):
+    store, _, _ = synthetic_sql_store
+    runs = store.list_runs_for_patient('CASE-00000', 'all')
+    expected = ('合成推理' * 1024)[:401]
+    assert all(history.reasoning == expected for history in runs[0].history)
 
 
 def test_sidebar_filters_whole_cohort_before_paging(synthetic_workbench):
@@ -198,6 +208,7 @@ def test_shanghai_sidebar_does_not_read_or_offer_global_patient_summaries(monkey
     monkeypatch.setattr(rw, 'current_user', lambda req: User(id=1, username='SYNTHETIC', created_at=NOW))
     rows = [PatientSidebarItem(patient_id='CASE-SYNTHETIC', v_count=1, relevant_count=1)]
     monkeypatch.setattr(rw, 'get_sqlserver_store', lambda: SimpleNamespace(list_patients_with_violations=lambda filter_mode: rows))
+    monkeypatch.setattr(rw, 'all_patient_dates', lambda source: {'CASE-SYNTHETIC': ['2026-09-28']})
     rw._sidebar_cache.clear()
     app = FastAPI(); app.include_router(rw.router)
     try:

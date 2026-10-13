@@ -1,7 +1,7 @@
 {% set summary_available = sidebar_summary_available is not sameas false %}
 {# partial: patient sidebar; expects vars: patients, active_patient, filter, filter_label #}
-{% set tags = patients | selectattr('batch_tag') | map(attribute='batch_tag') | unique | list %}
-<aside class="sidebar-panel" id="sidebar" data-filter="{{ filter }}">
+{% set dates = patients | date_choices %}
+<aside class="sidebar-panel" id="sidebar" data-filter="{{ filter }}" data-active-patient="{{ active_patient or '' }}">
   <div class="sidebar-head">
     <h2>病人 (<span id="patient-count">…</span>)</h2>
     <form class="filter-form" method="get" action="{% if active_patient %}/workbench/{{ active_patient }}{% else %}/workbench{% endif %}">
@@ -50,9 +50,13 @@
         <option value="time_asc">生成时间 ↑ (旧→新)</option>
       </select>
     </div>
+    {% if patients | selectattr('batch_dates_available', 'equalto', false) | list %}
+    <p class="muted">历史日期暂不可用，目前仅显示最近日期，请稍后刷新。</p>
+    {% endif %}
+    <p class="muted">审计日期（可多选）</p>
     <div class="facet-tags" id="facet-tags">
-      {% for t in tags %}
-      <button type="button" class="facet-chip" data-tag="{{ t }}" onclick="toggleTagChip(this)">{{ t }}</button>
+      {% for day in dates %}
+      <button type="button" class="facet-chip" data-date="{{ day }}" aria-pressed="false" onclick="toggleTagChip(this)">{{ day }}</button>
       {% endfor %}
     </div>
     <button type="button" class="facet-clear" id="facet-clear" onclick="clearFacets()" hidden>✕ 清空筛选</button>

@@ -9,6 +9,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from .utils.humanize_zh import humanize_delta_zh, humanize_since_zh
+from .batch_dates import batch_date, date_choices, sidebar_dates
 
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
@@ -73,6 +74,9 @@ def build_env() -> Environment:
     env.filters["verdict_color"] = _verdict_color
     env.filters["verdict_label"] = _verdict_label_zh
     env.filters["format_dt"] = _format_dt
+    env.filters["batch_date"] = batch_date
+    env.filters["sidebar_dates"] = sidebar_dates
+    env.filters["date_choices"] = date_choices
     env.globals["now"] = lambda: datetime.now(timezone.utc)
     env.globals["asset_v"] = _asset_version()
     return env

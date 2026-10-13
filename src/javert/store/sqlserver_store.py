@@ -878,7 +878,7 @@ class SqlServerStore:
         if engine is None:
             return []
         from sqlalchemy import text
-        # 仅在患者范围内排序标识；历史行不取未展示的大字段。
+        # 院内历史卡展示前400字；多取1字保留省略号，其余大字段仅主卡读取。
         verdicts = {
             "v_and_i": "N'VIOLATION', N'INCONCLUSIVE'",
             "v_only": "N'VIOLATION'", "i_only": "N'INCONCLUSIVE'",
@@ -895,7 +895,7 @@ class SqlServerStore:
                 SELECT rule_id FROM ranked WHERE rn = 1 AND verdict IN ({verdicts})
             )
             SELECT r.run_id, r.rule_id, r.patient_id, r.verdict, r.confidence,
-                   CASE WHEN n.rn = 1 THEN r.reasoning END AS reasoning,
+                   CASE WHEN n.rn = 1 THEN r.reasoning ELSE SUBSTRING(r.reasoning, 1, 401) END AS reasoning,
                    CASE WHEN n.rn = 1 THEN r.evidence_json END AS evidence_json,
                    CASE WHEN n.rn = 1 THEN r.tool_calls_json END AS tool_calls_json,
                    r.duration_ms, r.model, r.started_at, r.created_at, r.triggered_by, r.batch_tag,

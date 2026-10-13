@@ -197,12 +197,12 @@ def test_workbench_sidebar_facets_and_summary(alice):
     assert 'id="facet-dx"' in out
     assert 'id="facet-fee"' in out
     assert 'id="facet-time"' in out
-    # tag chip (从 batch_tag szx 派生)
-    assert 'class="facet-chip" data-tag="szx"' in out
+    # 已安装日期补丁：旧无日期tag回退到记录日期。
+    assert 'class="facet-chip" data-date="2026-05-27"' in out
     # 富卡片摘要 + data-* facet 驱动属性
     assert 'data-fees="26871"' in out
     assert 'data-dx="甲状腺恶性肿瘤 (C73.x00)"' in out
-    assert 'data-tag="szx"' in out
+    assert 'data-dates=\'["2026-05-27"]\'' in out
     assert 'data-updated="2026-05-22T03:14:00+00:00"' in out
     assert "¥26,871" in out
     assert "甲状腺恶性肿瘤" in out

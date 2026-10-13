@@ -13,6 +13,7 @@ import json
 import logging
 import time
 from datetime import datetime, timezone
+from functools import cache
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -29,8 +30,9 @@ from javert.data.examination_loader import ExaminationLoader
 from javert.data.lab_loader import LabLoader
 from javert.store.sqlserver_store import get_sqlserver_store
 from javert.web.auth import current_user, request_meta, session_user_id
+from javert.web.batch_dates import all_patient_dates, batch_date, date_choices, sidebar_dates
 from javert.web.doc_order import bucket_of
-from javert.web.hit_resolver import hits_from_json, load_kb_drugs, resolve_hits
+from javert.web.hit_resolver import hits_from_json, load_kb_drugs, prepare_fee_rows, resolve_hits
 from javert.web.patient_overview import (
     build_overview,
     get_fees_sum_map,
@@ -75,8 +77,9 @@ def _enrich_sidebar(patients: list) -> list:
 # 侧栏摘要由独立分页请求读取，详情首屏不触发全局查询。
 # ponytail: CSV 主诊/费用无法在结果库统一分页；短 TTL 缓存摘要后筛选，
 # 冷摘要查询仍为 O(患者数)，规模扩大时将摘要物化后改 SQL 分页。
-_SIDEBAR_TTL_SECONDS = 10.0
+_SIDEBAR_TTL_SECONDS = 60.0
 _sidebar_cache: dict[str, tuple[float, list]] = {}
+_sidebar_audit_signature: int | None = None
 
 
 def _sidebar_patients(store, filter_mode: str, *, allow_cached: bool) -> list:
@@ -86,6 +89,15 @@ def _sidebar_patients(store, filter_mode: str, *, allow_cached: bool) -> list:
         if hit is not None and (now - hit[0]) < _SIDEBAR_TTL_SECONDS:
             return hit[1]
     patients = _enrich_sidebar(store.list_patients_with_violations(filter_mode=filter_mode))
+    try:
+        dates = all_patient_dates(store) if patients else {}
+        available = True
+    except Exception as exc:
+        logger.warning("侧栏历史日期暂不可用: %s", type(exc).__name__)
+        dates, available = {}, False
+    for patient in patients:
+        patient.batch_dates = dates.get(patient.patient_id) or [batch_date(patient.batch_tag, patient.updated_at)]
+        patient.batch_dates_available = available
     _sidebar_cache[filter_mode] = (time.monotonic(), patients)
     return patients
 
@@ -100,6 +112,7 @@ def workbench_patients(
     fee: str = Query("all", pattern="^(all|lt1|1to5|gt5)$"),
     sort: str = Query("default", pattern="^(default|fee_desc|fee_asc|time_desc|time_asc)$"),
     tag: list[str] = Query(default=[]),
+    date: list[str] = Query(default=[]),
     updated_since: datetime | None = None,
     active_patient: str = Query("", max_length=120),
 ):
@@ -108,7 +121,11 @@ def workbench_patients(
         return JSONResponse(status_code=401, content={"error": "未登录"})
     f = _filter_from(request, filter)
     patients = _sidebar_patients(get_sqlserver_store(), f, allow_cached=True)
+    if any(not p.batch_dates_available for p in patients):
+        _sidebar_cache.pop(f, None)
+        return JSONResponse(status_code=503, content={"error": "历史日期暂不可用"})
     tags = sorted({p.batch_tag for p in patients if p.batch_tag})
+    dates = date_choices(patients)
     pid, dx = pid.strip().casefold(), dx.strip().casefold()
     since = updated_since
     if since is not None and since.tzinfo is None:
@@ -118,6 +135,8 @@ def workbench_patients(
         if pid not in p.patient_id.casefold() or dx not in p.primary_dx.casefold():
             return False
         if tag and p.batch_tag not in tag:
+            return False
+        if date and not set(date).intersection(sidebar_dates(p)):
             return False
         amount = p.fees_sum or 0
         if ((fee == "lt1" and amount >= 10000)
@@ -145,7 +164,7 @@ def workbench_patients(
                   active_patient=active_patient, filter=f,
                   sidebar_summary_available=get_config().hub_linkage_mode != "shanghai")
     return JSONResponse({"html": html, "page": page, "pages": pages,
-                         "total": len(selected), "unfiltered_total": len(patients), "tags": tags},
+                         "total": len(selected), "unfiltered_total": len(patients), "tags": tags, "dates": dates},
                         headers={"Cache-Control": "no-store"})
 
 
@@ -163,6 +182,11 @@ def _resolve_hits_for_runs(
     anchors_map = anchors_map or {}
     fee_df = None
     fee_loaded = False
+
+    @cache
+    def fee_rows_for_request():
+        return prepare_fee_rows(fee_df)
+
     kb_drugs: dict = {}
     kb_loaded = False
     for run in runs:
@@ -191,6 +215,7 @@ def _resolve_hits_for_runs(
                 run, drug_type,
                 patient_fee_df=fee_df,
                 kb_drugs=(kb_drugs if drug_type else {}),
+                fee_rows_factory=fee_rows_for_request,
             )
         except Exception as e:  # noqa: BLE001
             logger.warning("resolve_hits 失败 run=%s: %s", run.run_id, e)
@@ -252,6 +277,7 @@ def workbench_sig(request: Request):
     不依赖 SSE/AuditWatcher (142 抖时 SSE 会 backoff); MAX(id) 走主键索引 O(1), 极廉价.
     142 不可达 → 返回 sig=None, 前端按"无变化"处理 (绝不误刷).
     """
+    global _sidebar_audit_signature
     if current_user(request) is None:
         return JSONResponse(status_code=401, content={"error": "未登录"})
     try:
@@ -261,9 +287,30 @@ def workbench_sig(request: Request):
             return {"sig": None}
         with eng.connect() as c:
             sig = c.execute(text("SELECT MAX(id) FROM javert_audit_runs")).scalar()
-        return {"sig": int(sig) if sig is not None else 0}
+        signature = int(sig) if sig is not None else 0
+        if signature != _sidebar_audit_signature:
+            _sidebar_cache.clear()
+            _sidebar_audit_signature = signature
+        return {"sig": signature}
     except Exception:  # noqa: BLE001 — 142 抖 → None → 前端不动
         return {"sig": None}
+
+
+@router.get("/api/workbench/sidebar", response_class=HTMLResponse)
+def workbench_sidebar(request: Request, filter: str | None = None, active_patient: str | None = None):
+    """兼容既有日期侧栏入口；限制首屏卡片数量，新脚本使用分页接口。"""
+    if current_user(request) is None:
+        return JSONResponse(status_code=401, content={"error": "未登录"})
+    f = _filter_from(request, filter)
+    patients = _sidebar_patients(get_sqlserver_store(), f, allow_cached=False)
+    if any(not patient.batch_dates_available for patient in patients):
+        _sidebar_cache.pop(f, None)
+        return JSONResponse(status_code=503, content={"error": "历史日期暂不可用"})
+    return HTMLResponse(render(
+        "_sidebar.html", patients=patients[:50], active_patient=active_patient,
+        filter=f, filter_label=_filter_label(f),
+        sidebar_summary_available=get_config().hub_linkage_mode != "shanghai",
+    ), headers={"Cache-Control": "no-store"})
 
 
 @router.get("/workbench", response_class=HTMLResponse)

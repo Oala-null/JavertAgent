@@ -16,10 +16,11 @@ def install_env(tmp_path):
     shutil.copytree(ROOT / 'delivery/web_performance', package)
     shutil.copyfile(package / 'v1-manifest.json', package / 'manifest.json')
     m = json.loads((package / 'manifest.json').read_text())
+    frozen = json.loads(gzip.decompress((ROOT / 'tests/fixtures/249_web_performance_v1_code.json.gz').read_bytes()))
     for name in m['files']:
         target = package / 'files' / name
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(ROOT / name, target)
+        target.write_text(frozen[name], encoding='utf-8')
     spec = importlib.util.spec_from_file_location('performance_installer', package / 'installer.py')
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
