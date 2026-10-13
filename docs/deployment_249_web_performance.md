@@ -38,6 +38,16 @@ manifest固定日期基线、9个目标摘要和11个依赖摘要。`known-relea
 
 初次日期兼容组合227 collected / 226 passed / 1 failed / 0 skipped / 0 errors；失败来自旧模板测试仍要求随机tag。按已安装日期合同改为验证日期chip/data-dates，没有修改生产逻辑来迎合断言。后续还新增了历史说明预览先红回归，避免院内可见内容被减载丢失。
 
+最终相关组合228 collected / 228 passed / 0 failed / 0 skipped / 0 errors；另有30项Node全部通过，JS/Bash语法、diff和OpenSpec strict通过。不是全仓测试声明。
+
+## v2交付证据
+
+构建源码提交`73a71ea69586056ec5c0b2f0c6a1b4be9ba2fcb6`已推送gnome-243。实际目录为`/Users/shane/26er/Javert/JiaZhongXin/Releases/Javert-249-Web-performance-v2`。25项SHA校验全通过；9个payload、11个未变依赖；本地完整安装目标378文件匹配。用实际包执行check、文件安装、CLI verify、监测策略校验、回滚；精确恢复日期版，合成配置和账本字节不变。Linux进程控制没有在医院实机执行。
+
+`SHA256SUMS`自身SHA-256：`1acaf192f7843c7527a4420f0d978912bd9faac38af4f3b1c579263bd52b8a2f`。同名目录重建被拒绝。旧性能v1的13项校验和日期包36项校验仍全部通过。
+
+后续仅提交本交付记录及任务完成状态，不重写已构建目录。用户自行拷贝安装；未连接院内、未启动监测或审计，现场安装/重启/真实页面验收仍由用户按包内README完成。
+
 ---
 
 # 历史性能v1交付记录
